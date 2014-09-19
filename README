@@ -1,0 +1,7 @@
+Not quite complete yet.
+
+Plans:
+
+ - Logger trait
+ - actual support for the flexibility of the c api functions (format strings +
+   iovecs)
