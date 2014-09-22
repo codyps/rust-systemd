@@ -1,18 +1,21 @@
 HOWTO:
 
    # cat >Cargo.toml <<EOF
-   [dependencies]
-   git = "https://github.com/jmesmon/rust-systemd-journal"
+   [dependencies.systemd]
+   git = "https://github.com/jmesmon/rust-systemd"
    EOF
 
    # editor src/main.rs
 
-   extern crate rust-systemd-journal
+
+   #![feature(phase)]
+   #[phase(plugin,link)] extern crate log;
+   #[phase(plugin,link)] extern crate systemd;
    use systemd::journal;
 
    fn main() {
       use systemd::journal;
-      use log::{set_logger};
+      use log::set_logger;
       journal::print(1, format!("Rust can talk to the journal: {}",
                                 4i).as_slice());
       journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
