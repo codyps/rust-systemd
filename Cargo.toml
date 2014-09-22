@@ -1,6 +1,6 @@
 [package]
 
-name = "systemd_journal"
+name = "systemd"
 version = "0.0.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 
