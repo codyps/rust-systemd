@@ -18,11 +18,9 @@ HOWTO:
       journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
       set_logger(box journal::JournalLogger);
       log!(0, "HI");
+      sd_journal_log!(4, "HI {}", 2i);
    }
 
 TODO:
 
    - rustdoc
-   - some macros to wrap format!() & use code location to provide
-     unconditional logging (log!  like usage but let journald decide what
-     priority is important).
