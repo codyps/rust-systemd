@@ -1,5 +1,6 @@
 [package]
 
-name = "rust-systemd-journal"
+name = "systemd_journal"
 version = "0.0.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
+
