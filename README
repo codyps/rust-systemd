@@ -1,7 +1,28 @@
-Not quite complete yet.
+HOWTO:
 
-Plans:
+   # cat >Cargo.toml <<EOF
+   [dependencies]
+   git = "https://github.com/jmesmon/rust-systemd-journal"
+   EOF
 
- - Logger trait
- - actual support for the flexibility of the c api functions (format strings +
-   iovecs)
+   # editor src/main.rs
+
+   extern crate rust-systemd-journal
+   use systemd::journal;
+
+   fn main() {
+      use systemd::journal;
+      use log::{set_logger};
+      journal::print(1, format!("Rust can talk to the journal: {}",
+                                4i).as_slice());
+      journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
+      set_logger(box journal::JournalLogger);
+      log!(0, "HI");
+   }
+
+TODO:
+
+   - rustdoc
+   - some macros to wrap format!() & use code location to provide
+     unconditional logging (log!  like usage but let journald decide what
+     priority is important).
