@@ -1,3 +1,6 @@
+Only impliments journal sending api (at the moment)
+
+
 HOWTO:
 
    # cat >Cargo.toml <<EOF
@@ -27,3 +30,4 @@ HOWTO:
 TODO:
 
    - rustdoc
+   - other systemd apis
