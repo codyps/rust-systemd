@@ -35,16 +35,10 @@ mod systemd {
 
             fn sd_journal_print_with_location(prio: c_int, file_ish: *const c_char,
                                               line_ish: *const c_char, func: *const c_char,
-                                              fmt: *const c_char, ...);
+                                              fmt: *const c_char, ...) -> c_int;
             fn sd_journal_sendv_with_location(file_ish: *const c_char, line_ish: *const c_char,
                                               func: *const c_char, iv: *const const_iovec,
-                                              n : c_int);
-        }
-
-        pub fn print(lvl : uint, s : &str) -> int {
-            s.with_c_str(|c_s| {
-                unsafe { sd_journal_print(lvl as c_int, c_s) }
-            }) as int
+                                              n : c_int) -> c_int;
         }
 
         fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
@@ -56,6 +50,13 @@ mod systemd {
         pub fn send(args : &[&str]) -> c_int {
             let iovecs = array_to_iovecs(args);
             unsafe { sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+        }
+
+        pub fn print(lvl : uint, s : &str) -> c_int {
+            send([
+                 format!("PRIORITY={}", lvl).as_slice(),
+                 format!("MESSAGE={}", s).as_slice()
+            ])
         }
 
         pub struct JournalLogger;
