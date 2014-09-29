@@ -27,7 +27,7 @@ pub mod journal {
     use log::{Logger,LogRecord,LogLevel,LogLocation};
     use std::fmt;
 
-    #[link(name = "systemd")]
+    #[link(name = "systemd-journal")]
     extern {
         fn sd_journal_sendv(iv : *const const_iovec, n : c_int) -> c_int;
         /* There are a bunch of other methods, but for rust it doesn't make sense to call them (we
