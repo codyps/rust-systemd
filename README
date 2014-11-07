@@ -1,7 +1,8 @@
-Only impliments journal sending api (at the moment)
+Only has bindings for the journal APIs at the moment. Journal sending is
+supported, and systemd::journal::Journal is a (low functionality) wrapper
+around the read API.
 
-
-HOWTO:
+HOWTO log to journald:
 
    # cat >Cargo.toml <<EOF
    [dependencies.systemd]
