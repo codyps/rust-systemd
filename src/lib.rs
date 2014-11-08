@@ -32,6 +32,9 @@ macro_rules! sd_try(
 /// Most of this module is Rust versions of the systemd headers. The goal of
 /// this crate is to make it unattractive to ever use the FFI directly, but
 /// it's there if you need it.
+///
+/// Items in this module corresponding to systemd functions are well-documented
+/// by the systemd man pages.
 #[unstable]
 pub mod ffi;
 

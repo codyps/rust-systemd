@@ -2,23 +2,26 @@
 
 use libc::{c_char,c_int,c_void,size_t};
 
-pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
-pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
-pub const SD_JOURNAL_SYSTEM:       c_int = 4;
-pub const SD_JOURNAL_CURRENT_USER: c_int = 8;
+#[stable] pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
+#[stable] pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
+#[stable] pub const SD_JOURNAL_SYSTEM:       c_int = 4;
+#[stable] pub const SD_JOURNAL_CURRENT_USER: c_int = 8;
 
 #[repr(C)]
+#[stable]
 pub struct iovec {
     pub iov_base: *mut c_void,
     pub iov_len: size_t
 }
 
 #[repr(C)]
+#[stable]
 pub struct const_iovec {
     pub iov_base: *const c_void,
     pub iov_len: size_t
 }
 
+#[stable]
 pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
     args.iter().map(|d| {
         const_iovec { iov_base: d.as_ptr() as *const c_void, iov_len: d.len() as size_t }
@@ -33,6 +36,7 @@ extern {
     pub fn sd_journal_sendv(iv : *const const_iovec, n : c_int) -> c_int;
     /* There are a bunch of other send methods, but for rust it doesn't make sense to call them
      * (we don't need to do c-style format strings) */
+
     pub fn sd_journal_open(ret: *const sd_journal, flags: c_int) -> c_int;
     pub fn sd_journal_close(j: sd_journal) -> ();
 
