@@ -4,11 +4,16 @@ use std::{fmt,io,ptr};
 use std::collections::BTreeMap;
 use ffi;
 
+/// Send preformatted fields to systemd.
+///
+/// This is a relatively low-level operation and probably not suitable unless
+/// you need precise control over which fields are sent to systemd.
 pub fn send(args : &[&str]) -> c_int {
     let iovecs = ffi::array_to_iovecs(args);
     unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
 }
 
+/// Send a simple message to systemd.
 pub fn print(lvl : uint, s : &str) -> c_int {
     send([
          format!("PRIORITY={}", lvl).as_slice(),
@@ -16,6 +21,7 @@ pub fn print(lvl : uint, s : &str) -> c_int {
          ])
 }
 
+/// Send a `log::LogRecord` to systemd.
 pub fn log_(record: &LogRecord) {
     let LogLevel(lvl) = record.level;
     send([format!("PRIORITY={}", lvl).as_slice(),
@@ -44,19 +50,40 @@ impl Logger for JournalLogger {
     }
 }
 
+#[experimental]
 pub type JournalRecord = BTreeMap<String, String>;
 
+/// A cursor into the systemd journal.
+///
+/// Supports read, next, previous, and seek operations.
 pub struct Journal {
     j: ffi::sd_journal
 }
 
+/// Represents the set of journal files to read.
+#[stable]
 pub enum JournalFiles {
+    /// The system-wide journal.
     System,
+    /// The current user's journal.
     CurrentUser,
+    /// Both the system-wide journal and the current user's journal.
     All
 }
 
 impl Journal {
+    /// Open the systemd journal for reading.
+    ///
+    /// Params:
+    ///
+    /// * files: the set of journal files to read. If the calling process
+    ///   doesn't have permission to read the system journal, a call to
+    ///   `Journal::open` with `System` or `All` will succeed, but system
+    ///   journal entries won't be included. This behavior is due to systemd.
+    /// * runtime_only: if true, include only journal entries from the current
+    ///   boot. If false, include all entries.
+    /// * local_only: if true, include only journal entries originating from
+    ///   localhost. If false, include all entries.
     pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> io::IoResult<Journal> {
         let mut flags: c_int = 0;
         if runtime_only {
@@ -77,6 +104,8 @@ impl Journal {
         Ok(journal)
     }
 
+    /// Read the next record from the journal. Returns `io::EndOfFile` if there
+    /// are no more records to read.
     pub fn next_record(&self) -> io::IoResult<JournalRecord> {
         if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
             return Err(io::IoError {
@@ -95,10 +124,10 @@ impl Journal {
             unsafe {
                 ::collections::slice::raw::mut_buf_as_slice(data, sz as uint, |b| {
                     let field = ::std::str::raw::from_utf8(b);
-                    let name_value: Vec<&str> = field.splitn(1, '=').collect();
+                    let name_value = field.splitn(1, '=');
                     ret.insert(
-                        String::from_str(name_value[0]),
-                        String::from_str(name_value[1]));
+                        String::from_str(name_value.next()),
+                        String::from_str(name_value.next()));
                 });
             }
         }
