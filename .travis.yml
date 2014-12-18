@@ -1,6 +1,6 @@
 language: rust
 install:
-  - sudo apt-add-repository ppa:pitti/systemd
+  - sudo apt-add-repository ppa:pitti/systemd -y
   - sudo apt-get update -qq
   - sudo apt-get install libsystemd-journal-dev
 script:
