@@ -13,6 +13,7 @@ pub struct iovec {
     pub iov_base: *mut c_void,
     pub iov_len: size_t
 }
+impl Copy for iovec {}
 
 #[repr(C)]
 #[stable]
@@ -20,6 +21,7 @@ pub struct const_iovec {
     pub iov_base: *const c_void,
     pub iov_len: size_t
 }
+impl Copy for const_iovec {}
 
 #[stable]
 pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
