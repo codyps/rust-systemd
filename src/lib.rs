@@ -27,6 +27,16 @@ macro_rules! sd_try(
     })
 )
 
+/// Given an Option<&str>, either returns a pointer to a const char*, or a NULL
+/// pointer if None.
+#[macro_export]
+macro_rules! char_or_null(
+    ($e:expr) => (match $e {
+        Some(p) => p.to_c_str().as_ptr(),
+        None => ptr::null()
+    })
+)
+
 /// Contains definitions for low-level bindings.
 ///
 /// Most of this module is Rust versions of the systemd headers. The goal of
@@ -65,3 +75,6 @@ macro_rules! log_with(
 macro_rules! sd_journal_log(
     ($lvl:expr, $($arg:tt)+) => (log_with!(::systemd::journal::log, $lvl, $($arg)+))
 )
+
+/// High-level interface to the systemd daemon module.
+pub mod daemon;
