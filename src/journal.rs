@@ -44,13 +44,13 @@ pub fn log(level: u32, loc: &'static LogLocation, args: &fmt::Arguments)
     });
 }
 
+#[deriving(Copy)]
 pub struct JournalLogger;
 impl Logger for JournalLogger {
     fn log(&mut self, record: &LogRecord) {
         log_(record);
     }
 }
-impl Copy for JournalLogger {}
 
 #[experimental]
 pub type JournalRecord = BTreeMap<String, String>;
@@ -64,6 +64,7 @@ pub struct Journal {
 
 /// Represents the set of journal files to read.
 #[stable]
+#[deriving(Copy)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
@@ -72,8 +73,6 @@ pub enum JournalFiles {
     /// Both the system-wide journal and the current user's journal.
     All
 }
-
-impl Copy for JournalFiles {}
 
 impl Journal {
     /// Open the systemd journal for reading.
