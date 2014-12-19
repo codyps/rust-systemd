@@ -24,3 +24,13 @@ fn test_watchdog_enabled() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 0);
 }
+
+#[test]
+fn test_notify() {
+    let mut state = ::std::collections::HashMap::new();
+    state.insert(daemon::STATE_READY, "1");
+    state.insert(daemon::STATE_STATUS, "Running test_notify()");
+    let result = daemon::notify(false, state);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), false); // should fail, since this is not systemd-launched.
+}
