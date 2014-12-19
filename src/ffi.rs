@@ -34,7 +34,7 @@ pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
 pub type sd_id128 = [u64, ..2];
 pub type sd_journal = *mut c_void;
 
-#[link(name = "systemd-journal")]
+#[link(name = "systemd")]
 extern {
     pub fn sd_journal_sendv(iv : *const const_iovec, n : c_int) -> c_int;
     /* There are a bunch of other send methods, but for rust it doesn't make sense to call them
@@ -91,20 +91,17 @@ extern {
 
     pub fn sd_journal_get_catalog(j: sd_journal, text: *const *mut c_char) -> c_int;
     pub fn sd_journal_get_catalog_for_message_id(id: sd_id128, ret: *const *mut c_char) -> c_int;
-}
 
-#[link(name = "systemd-daemon")]
-extern {
     pub fn sd_listen_fds(unset_environment: c_int) -> c_int;
     pub fn sd_is_fifo(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_is_special(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_is_socket(fd: c_int, family: c_int, sock_type: c_int, listening: c_int) -> c_int;
     pub fn sd_is_socket_inet(fd: c_int, family: c_int, sock_type: c_int, listening: c_int, port: u16) -> c_int;
-    pub fn sd_is_socket_unix(fd: c_int, family: c_int, sock_type: c_int, listening: c_int, path: *const c_char, length: size_t) -> c_int;
+    pub fn sd_is_socket_unix(fd: c_int, sock_type: c_int, listening: c_int, path: *const c_char, length: size_t) -> c_int;
     pub fn sd_is_mq(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_notify(unset_environment: c_int, state: *const c_char) -> c_int;
     // skipping sd_*notifyf; ignoring format strings
     pub fn sd_pid_notify(pid: pid_t, unset_environment: c_int, state: *const c_char) -> c_int;
     pub fn sd_booted() -> c_int;
-    pub fn sd_watchdog_enable(unset_environment: c_int, usec: *mut u64) -> c_int;
+    pub fn sd_watchdog_enabled(unset_environment: c_int, usec: *mut u64) -> c_int;
 }
