@@ -9,6 +9,7 @@ use ffi;
 
 /// Options for checking whether a socket is in listening mode
 #[deriving(Copy)]
+#[stable]
 pub enum Listening {
     /// Verify that socket is in listening mode
     IsListening,
@@ -19,6 +20,7 @@ pub enum Listening {
 }
 
 /// Number of the first passed file descriptor
+#[stable]
 pub const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished

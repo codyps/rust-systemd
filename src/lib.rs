@@ -77,4 +77,5 @@ macro_rules! sd_journal_log(
 )
 
 /// High-level interface to the systemd daemon module.
+#[experimental]
 pub mod daemon;
