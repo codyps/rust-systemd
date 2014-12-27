@@ -40,9 +40,9 @@ pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
 /// `unset_environment` is `true`
-pub fn listen_fds(unset_environment: bool) -> io::IoResult<uint> {
+pub fn listen_fds(unset_environment: bool) -> io::IoResult<Fd> {
     let fds = sd_try!(ffi::sd_listen_fds(unset_environment as c_int));
-    Ok(fds as uint)
+    Ok(fds)
 }
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is
