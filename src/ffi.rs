@@ -31,7 +31,7 @@ pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
     }).collect()
 }
 
-pub type sd_id128 = [u64, ..2];
+pub type sd_id128 = [u64; 2];
 pub type sd_journal = *mut c_void;
 
 #[link(name = "systemd")]

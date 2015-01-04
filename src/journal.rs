@@ -37,14 +37,14 @@ pub fn log(level: u32, loc: &'static LogLocation, args: &fmt::Arguments)
 {
     log_(&LogRecord {
         level: LogLevel(level),
-        args: args,
+        args: *args,
         file: loc.file,
         module_path: loc.module_path,
         line: loc.line,
     });
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct JournalLogger;
 impl Logger for JournalLogger {
     fn log(&mut self, record: &LogRecord) {
@@ -64,7 +64,7 @@ pub struct Journal {
 
 /// Represents the set of journal files to read.
 #[stable]
-#[deriving(Copy)]
+#[derive(Copy)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,

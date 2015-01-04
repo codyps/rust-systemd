@@ -4,11 +4,12 @@ use std::os::unix::Fd;
 use std::io::net::addrinfo::SocketType;
 use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use libc::types::os::arch::posix88::pid_t;
+use std::c_str::ToCStr;
 use std::num::SignedInt;
 use ffi;
 
 /// Options for checking whether a socket is in listening mode
-#[deriving(Copy)]
+#[derive(Copy)]
 #[stable]
 pub enum Listening {
     /// Verify that socket is in listening mode
