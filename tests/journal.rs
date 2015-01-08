@@ -1,7 +1,5 @@
-#![feature(phase)]
-
-#[phase(plugin,link)] extern crate systemd;
-#[phase(plugin,link)] extern crate log;
+#[macro_use] extern crate systemd;
+#[macro_use] extern crate log;
 
 #[test]
 fn test() {

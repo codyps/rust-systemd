@@ -125,15 +125,14 @@ impl Journal {
         let data: *mut u8 = ptr::null_mut();
         while sd_try!(ffi::sd_journal_enumerate_data(self.j, &data, &mut sz)) > 0 {
             unsafe {
-                ::collections::slice::raw::mut_buf_as_slice(data, sz as uint, |b| {
-                    let field = ::std::str::from_utf8_unchecked(b);
-                    let mut name_value = field.splitn(1, '=');
-                    let name = name_value.next().unwrap();
-                    let value = name_value.next().unwrap();
-                    ret.insert(
-                        String::from_str(name),
-                        String::from_str(value));
-                });
+                let b = ::collections::slice::from_raw_mut_buf(&data, sz as uint);
+                let field = ::std::str::from_utf8_unchecked(b);
+                let mut name_value = field.splitn(1, '=');
+                let name = name_value.next().unwrap();
+                let value = name_value.next().unwrap();
+                ret.insert(
+                    String::from_str(name),
+                    String::from_str(value));
             }
         }
 

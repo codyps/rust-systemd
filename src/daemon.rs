@@ -1,10 +1,9 @@
 use libc::{c_int,size_t};
-use std::{io,ptr,c_str,collections};
+use std::{io,ptr,collections};
 use std::os::unix::Fd;
 use std::io::net::addrinfo::SocketType;
 use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use libc::types::os::arch::posix88::pid_t;
-use std::c_str::ToCStr;
 use std::num::SignedInt;
 use ffi;
 
@@ -120,7 +119,7 @@ pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening
     let c_length: size_t;
     match path {
         Some(p) => {
-            let path_cstr = p.to_c_str();
+            let path_cstr = ::std::ffi::CString::from_slice(p.as_bytes());
             c_length = path_cstr.len() as size_t;
             c_path = path_cstr.as_ptr();
         },
@@ -142,13 +141,13 @@ pub fn is_mq(fd: Fd, path: Option<&str>) -> io::IoResult<bool> {
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
-fn state_to_c_string(state: collections::HashMap<&str, &str>) -> c_str::CString {
+fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CString {
     let mut state_vec = Vec::new();
     for (key, value) in state.iter() {
         state_vec.push(vec![*key, *value].connect("="));
     }
     let state_str = state_vec.connect("\n");
-    state_str.to_c_str()
+    ::std::ffi::CString::from_slice(state_str.as_bytes())
 }
 
 /// Notifies systemd that daemon state has changed.  state is made up of a set

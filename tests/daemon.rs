@@ -1,6 +1,4 @@
-#![feature(phase)]
-
-#[phase(plugin,link)] extern crate systemd;
+extern crate systemd;
 
 use systemd::daemon;
 

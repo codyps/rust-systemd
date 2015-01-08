@@ -1,10 +1,8 @@
-#![feature(phase)]
-#![feature(macro_rules)]
 #![unstable]
 
 extern crate collections;
 extern crate libc;
-#[phase(plugin,link)] extern crate log;
+#[macro_use] extern crate log;
 
 /// An analogue of `try!()` for systemd FFI calls.
 ///
@@ -32,7 +30,7 @@ macro_rules! sd_try{
 #[macro_export]
 macro_rules! char_or_null{
     ($e:expr) => (match $e {
-        Some(p) => p.to_c_str().as_ptr(),
+        Some(p) => ::std::ffi::CString::from_slice(p.as_bytes()).as_ptr(),
         None => ptr::null()
     })
 }
