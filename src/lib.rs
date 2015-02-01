@@ -1,10 +1,8 @@
-#![feature(phase)]
-#![feature(macro_rules)]
 #![unstable]
 
 extern crate collections;
 extern crate libc;
-#[phase(plugin,link)] extern crate log;
+#[macro_use] extern crate log;
 
 /// An analogue of `try!()` for systemd FFI calls.
 ///
@@ -14,7 +12,7 @@ extern crate libc;
 /// Otherwise, the value of `sd_try!()` is the non-negative value returned by
 /// the FFI call.
 #[macro_export]
-macro_rules! sd_try(
+macro_rules! sd_try{
     ($e:expr) => ({
         let ret: i32;
         unsafe {
@@ -25,7 +23,17 @@ macro_rules! sd_try(
         }
         ret
     })
-)
+}
+
+/// Given an Option<&str>, either returns a pointer to a const char*, or a NULL
+/// pointer if None.
+#[macro_export]
+macro_rules! char_or_null{
+    ($e:expr) => (match $e {
+        Some(p) => ::std::ffi::CString::from_slice(p.as_bytes()).as_ptr(),
+        None => ptr::null()
+    })
+}
 
 /// Contains definitions for low-level bindings.
 ///
@@ -48,7 +56,7 @@ pub mod journal;
 /// Similar to `log!()`, except it accepts a func argument rather than hard
 /// coding `::log::log()`, and it doesn't filter on `log_enabled!()`.
 #[macro_export]
-macro_rules! log_with(
+macro_rules! log_with{
     ($func:expr, $lvl:expr, $($arg:tt)+) => ({
         static LOC: ::log::LogLocation = ::log::LogLocation {
             line: line!(),
@@ -59,9 +67,13 @@ macro_rules! log_with(
         let func = $func;
         format_args!(|args| { func(lvl, &LOC, args) }, $($arg)+)
     })
-)
+}
 
 #[macro_export]
-macro_rules! sd_journal_log(
+macro_rules! sd_journal_log{
     ($lvl:expr, $($arg:tt)+) => (log_with!(::systemd::journal::log, $lvl, $($arg)+))
-)
+}
+
+/// High-level interface to the systemd daemon module.
+#[experimental]
+pub mod daemon;

@@ -37,20 +37,20 @@ pub fn log(level: u32, loc: &'static LogLocation, args: &fmt::Arguments)
 {
     log_(&LogRecord {
         level: LogLevel(level),
-        args: args,
+        args: *args,
         file: loc.file,
         module_path: loc.module_path,
         line: loc.line,
     });
 }
 
+#[derive(Copy)]
 pub struct JournalLogger;
 impl Logger for JournalLogger {
     fn log(&mut self, record: &LogRecord) {
         log_(record);
     }
 }
-impl Copy for JournalLogger {}
 
 #[experimental]
 pub type JournalRecord = BTreeMap<String, String>;
@@ -64,6 +64,7 @@ pub struct Journal {
 
 /// Represents the set of journal files to read.
 #[stable]
+#[derive(Copy)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
@@ -72,8 +73,6 @@ pub enum JournalFiles {
     /// Both the system-wide journal and the current user's journal.
     All
 }
-
-impl Copy for JournalFiles {}
 
 impl Journal {
     /// Open the systemd journal for reading.
@@ -126,15 +125,14 @@ impl Journal {
         let data: *mut u8 = ptr::null_mut();
         while sd_try!(ffi::sd_journal_enumerate_data(self.j, &data, &mut sz)) > 0 {
             unsafe {
-                ::collections::slice::raw::mut_buf_as_slice(data, sz as uint, |b| {
-                    let field = ::std::str::from_utf8_unchecked(b);
-                    let mut name_value = field.splitn(1, '=');
-                    let name = name_value.next().unwrap();
-                    let value = name_value.next().unwrap();
-                    ret.insert(
-                        String::from_str(name),
-                        String::from_str(value));
-                });
+                let b = ::collections::slice::from_raw_mut_buf(&data, sz as uint);
+                let field = ::std::str::from_utf8_unchecked(b);
+                let mut name_value = field.splitn(1, '=');
+                let name = name_value.next().unwrap();
+                let value = name_value.next().unwrap();
+                ret.insert(
+                    String::from_str(name),
+                    String::from_str(value));
             }
         }
 
