@@ -1,11 +1,19 @@
-use libc::{c_int,size_t};
-use std::{io,ptr,collections};
+use libc::{c_int,c_uint,size_t};
+use std::{ptr,collections};
 use std::os::unix::Fd;
-use std::io::net::addrinfo::SocketType;
 use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use libc::types::os::arch::posix88::pid_t;
-use std::num::SignedInt;
 use ffi;
+use Error;
+use Result;
+
+// XXX: this is stolen from std::old_io::net::addrinfo until we have a replacement in the standard
+// lib.
+pub enum SocketType {
+    Stream,
+    Datagram,
+    Raw
+}
 
 /// Options for checking whether a socket is in listening mode
 #[derive(Copy)]
@@ -40,14 +48,14 @@ pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
 /// `unset_environment` is `true`
-pub fn listen_fds(unset_environment: bool) -> io::IoResult<Fd> {
+pub fn listen_fds(unset_environment: bool) -> Result<Fd> {
     let fds = sd_try!(ffi::sd_listen_fds(unset_environment as c_int));
     Ok(fds)
 }
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is
 /// supplied, the file descriptor must also match the path.
-pub fn is_fifo(fd: Fd, path: Option<&str>) -> io::IoResult<bool> {
+pub fn is_fifo(fd: Fd, path: Option<&str>) -> Result<bool> {
     let c_path = char_or_null!(path);
     let result = sd_try!(ffi::sd_is_fifo(fd, c_path));
     Ok(result != 0)
@@ -55,7 +63,7 @@ pub fn is_fifo(fd: Fd, path: Option<&str>) -> io::IoResult<bool> {
 
 /// Identifies whether the passed file descriptor is a special character device.
 /// If a path is supplied, the file descriptor must also match the path.
-pub fn is_special(fd: Fd, path: Option<&str>) -> io::IoResult<bool> {
+pub fn is_special(fd: Fd, path: Option<&str>) -> Result<bool> {
     let c_path = char_or_null!(path);
     let result = sd_try!(ffi::sd_is_special(fd, c_path));
     Ok(result != 0)
@@ -86,7 +94,7 @@ fn get_c_listening(listening: Listening) -> c_int {
 /// Identifies whether the passed file descriptor is a socket. If family and
 /// type are supplied, they must match as well. See `Listening` for listening
 /// check parameters.
-pub fn is_socket(fd: Fd, family: Option<uint>, socktype: Option<SocketType>, listening: Listening) -> io::IoResult<bool> {
+pub fn is_socket(fd: Fd, family: Option<c_uint>, socktype: Option<SocketType>, listening: Listening) -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -98,7 +106,7 @@ pub fn is_socket(fd: Fd, family: Option<uint>, socktype: Option<SocketType>, lis
 /// Identifies whether the passed file descriptor is an Internet socket. If
 /// family, type, and/or port are supplied, they must match as well. See
 /// `Listening` for listening check parameters.
-pub fn is_socket_inet(fd: Fd, family: Option<uint>, socktype: Option<SocketType>, listening: Listening, port: Option<u16>) -> io::IoResult<bool> {
+pub fn is_socket_inet(fd: Fd, family: Option<c_uint>, socktype: Option<SocketType>, listening: Listening, port: Option<u16>) -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -112,7 +120,7 @@ pub fn is_socket_inet(fd: Fd, family: Option<uint>, socktype: Option<SocketType>
 /// are supplied, it must match as well. For normal sockets, leave the path set
 /// to None; otherwise, pass in the full socket path.  See `Listening` for
 /// listening check parameters.
-pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening, path: Option<&str>) -> io::IoResult<bool> {
+pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening, path: Option<&str>) -> Result<bool> {
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_path: *const i8;
@@ -135,7 +143,7 @@ pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening
 
 /// Identifies whether the passed file descriptor is a POSIX message queue. If a
 /// path is supplied, it will also verify the name.
-pub fn is_mq(fd: Fd, path: Option<&str>) -> io::IoResult<bool> {
+pub fn is_mq(fd: Fd, path: Option<&str>) -> Result<bool> {
     let c_path = char_or_null!(path);
     let result = sd_try!(ffi::sd_is_mq(fd, c_path));
     Ok(result != 0)
@@ -154,7 +162,7 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
 /// of key-value pairs.  See `sd-daemon.h` for details. Some of the most common
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
-pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> io::IoResult<bool> {
+pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
     let c_state = state_to_c_string(state).as_ptr();
     let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state));
     Ok(result != 0)
@@ -162,21 +170,21 @@ pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) 
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify(pid: pid_t, unset_environment: bool, state: collections::HashMap<&str, &str>) -> io::IoResult<bool> {
+pub fn pid_notify(pid: pid_t, unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
     let c_state = state_to_c_string(state).as_ptr();
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state));
     Ok(result != 0)
 }
 
 /// Returns true if the system was booted with systemd.
-pub fn booted() -> io::IoResult<bool> {
+pub fn booted() -> Result<bool> {
     let result = sd_try!(ffi::sd_booted());
     Ok(result != 0)
 }
 
 /// Returns a timeout in microseconds before which the watchdog expects a
 /// response from the process. If 0, the watchdog is disabled.
-pub fn watchdog_enabled(unset_environment: bool) -> io::IoResult<u64> {
+pub fn watchdog_enabled(unset_environment: bool) -> Result<u64> {
     let mut timeout: u64 = 0;
     sd_try!(ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout));
     Ok(timeout)

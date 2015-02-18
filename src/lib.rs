@@ -1,8 +1,16 @@
+#![feature(libc,std_misc,collections,core)]
 #![unstable]
 
 extern crate collections;
 extern crate libc;
 #[macro_use] extern crate log;
+
+use std::result;
+
+pub enum Error {
+    Errno(libc::c_int)
+}
+pub type Result<T> = result::Result<T, Error>;
 
 /// An analogue of `try!()` for systemd FFI calls.
 ///
@@ -12,14 +20,14 @@ extern crate libc;
 /// Otherwise, the value of `sd_try!()` is the non-negative value returned by
 /// the FFI call.
 #[macro_export]
-macro_rules! sd_try{
+macro_rules! sd_try {
     ($e:expr) => ({
         let ret: i32;
         unsafe {
             ret = $e;
         }
         if ret < 0 {
-            return Err(::std::io::IoError::from_errno(ret.abs() as uint, false));
+            return Err(Error::Errno(-ret));
         }
         ret
     })
@@ -28,7 +36,7 @@ macro_rules! sd_try{
 /// Given an Option<&str>, either returns a pointer to a const char*, or a NULL
 /// pointer if None.
 #[macro_export]
-macro_rules! char_or_null{
+macro_rules! char_or_null {
     ($e:expr) => (match $e {
         Some(p) => ::std::ffi::CString::from_slice(p.as_bytes()).as_ptr(),
         None => ptr::null()
@@ -50,14 +58,14 @@ pub mod ffi;
 ///
 /// The main interface for writing to the journal is `fn log()`, and the main
 /// interface for reading the journal is `struct Journal`.
-#[experimental]
+#[unstable]
 pub mod journal;
 
 /// Similar to `log!()`, except it accepts a func argument rather than hard
 /// coding `::log::log()`, and it doesn't filter on `log_enabled!()`.
 #[macro_export]
 macro_rules! log_with{
-    ($func:expr, $lvl:expr, $($arg:tt)+) => ({
+    ($func:expr, $lvl:expr, $($arg:tt),+) => ({
         static LOC: ::log::LogLocation = ::log::LogLocation {
             line: line!(),
             file: file!(),
@@ -65,7 +73,7 @@ macro_rules! log_with{
         };
         let lvl = $lvl;
         let func = $func;
-        format_args!(|args| { func(lvl, &LOC, args) }, $($arg)+)
+        $func(lvl, &LOC, format_args!($($arg),+))
     })
 }
 
@@ -75,5 +83,5 @@ macro_rules! sd_journal_log{
 }
 
 /// High-level interface to the systemd daemon module.
-#[experimental]
+#[unstable]
 pub mod daemon;

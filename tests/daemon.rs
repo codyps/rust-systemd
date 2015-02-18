@@ -4,7 +4,7 @@ use systemd::daemon;
 
 #[test]
 fn test_listen_fds() {
-    assert_eq!(daemon::listen_fds(false).unwrap(), 0);
+    assert_eq!(daemon::listen_fds(false).ok().unwrap(), 0);
 }
 
 #[test]
@@ -13,14 +13,14 @@ fn test_booted() {
     assert!(result.is_ok());
     // Assuming that anyone using this library is probably running systemd. Is
     // that correct?
-    assert!(result.unwrap());
+    assert!(result.ok().unwrap());
 }
 
 #[test]
 fn test_watchdog_enabled() {
     let result = daemon::watchdog_enabled(false);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0);
+    assert_eq!(result.ok().unwrap(), 0);
 }
 
 #[test]
@@ -30,5 +30,5 @@ fn test_notify() {
     state.insert(daemon::STATE_STATUS, "Running test_notify()");
     let result = daemon::notify(false, state);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), false); // should fail, since this is not systemd-launched.
+    assert_eq!(result.ok().unwrap(), false); // should fail, since this is not systemd-launched.
 }

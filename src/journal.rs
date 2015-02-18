@@ -1,8 +1,9 @@
 use libc::{c_int,size_t};
-use log::{Logger,LogRecord,LogLevel,LogLocation};
-use std::{fmt,io,ptr};
-use std::num::SignedInt;
+use log::{self,Log,LogRecord,LogLevel,LogLocation,SetLoggerError};
+use std::{fmt,ptr,result};
 use std::collections::BTreeMap;
+use Result;
+use Error;
 use ffi;
 
 /// Send preformatted fields to systemd.
@@ -15,7 +16,7 @@ pub fn send(args : &[&str]) -> c_int {
 }
 
 /// Send a simple message to systemd.
-pub fn print(lvl : uint, s : &str) -> c_int {
+pub fn print(lvl : u32, s : &str) -> c_int {
     send(&[
          format!("PRIORITY={}", lvl).as_slice(),
          format!("MESSAGE={}", s).as_slice()
@@ -23,36 +24,44 @@ pub fn print(lvl : uint, s : &str) -> c_int {
 }
 
 /// Send a `log::LogRecord` to systemd.
-pub fn log_(record: &LogRecord) {
-    let LogLevel(lvl) = record.level;
-    send(&[format!("PRIORITY={}", lvl).as_slice(),
-    format!("MESSAGE={}", record.args).as_slice(),
-    format!("CODE_LINE={}", record.line).as_slice(),
-    format!("CODE_FILE={}", record.file).as_slice(),
-    format!("CODE_FUNCTION={}", record.module_path).as_slice(),
+pub fn log_record(record: &LogRecord) {
+    let lvl: u64 = unsafe {
+        use std::mem;
+        mem::transmute(record.level())
+    };
+    log(lvl, record.location(), record.args());
+}
+
+pub fn log(level: u64, loc: &LogLocation, args: &fmt::Arguments)
+{
+    send(&[format!("PRIORITY={}", level).as_slice(),
+    format!("MESSAGE={}", args).as_slice(),
+    format!("CODE_LINE={}", loc.line).as_slice(),
+    format!("CODE_FILE={}", loc.file).as_slice(),
+    format!("CODE_FUNCTION={}", loc.module_path).as_slice(),
     ]);
 }
 
-pub fn log(level: u32, loc: &'static LogLocation, args: &fmt::Arguments)
-{
-    log_(&LogRecord {
-        level: LogLevel(level),
-        args: *args,
-        file: loc.file,
-        module_path: loc.module_path,
-        line: loc.line,
-    });
-}
-
 #[derive(Copy)]
-pub struct JournalLogger;
-impl Logger for JournalLogger {
-    fn log(&mut self, record: &LogRecord) {
-        log_(record);
+pub struct JournalLog;
+impl Log for JournalLog {
+    fn enabled(&self, _level: LogLevel, _module: &str) -> bool {
+        true
+    }
+
+    fn log(&self, record: &LogRecord) {
+        log_record(record);
     }
 }
 
-#[experimental]
+impl JournalLog {
+    pub fn init() -> result::Result<(), SetLoggerError> {
+        log::set_logger(|_max_log_level| {
+            Box::new(JournalLog)
+        })
+    }
+}
+
 pub type JournalRecord = BTreeMap<String, String>;
 
 /// A cursor into the systemd journal.
@@ -87,7 +96,7 @@ impl Journal {
     ///   boot. If false, include all entries.
     /// * local_only: if true, include only journal entries originating from
     ///   localhost. If false, include all entries.
-    pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> io::IoResult<Journal> {
+    pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
         let mut flags: c_int = 0;
         if runtime_only {
             flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
@@ -109,13 +118,9 @@ impl Journal {
 
     /// Read the next record from the journal. Returns `io::EndOfFile` if there
     /// are no more records to read.
-    pub fn next_record(&self) -> io::IoResult<JournalRecord> {
+    pub fn next_record(&self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
-            return Err(io::IoError {
-                kind: io::EndOfFile,
-                desc: "end of journal",
-                detail: None
-            });
+            return Ok(None);
         }
         unsafe { ffi::sd_journal_restart_data(self.j) }
 
@@ -125,7 +130,7 @@ impl Journal {
         let data: *mut u8 = ptr::null_mut();
         while sd_try!(ffi::sd_journal_enumerate_data(self.j, &data, &mut sz)) > 0 {
             unsafe {
-                let b = ::collections::slice::from_raw_mut_buf(&data, sz as uint);
+                let b = ::collections::slice::from_raw_parts_mut(data, sz as usize);
                 let field = ::std::str::from_utf8_unchecked(b);
                 let mut name_value = field.splitn(1, '=');
                 let name = name_value.next().unwrap();
@@ -136,7 +141,7 @@ impl Journal {
             }
         }
 
-        Ok(ret)
+        Ok(Some(ret))
     }
 }
 
