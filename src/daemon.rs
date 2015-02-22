@@ -128,7 +128,7 @@ pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening
     match path {
         Some(p) => {
             let path_cstr = ::std::ffi::CString::from_slice(p.as_bytes());
-            c_length = path_cstr.len() as size_t;
+            c_length = path_cstr.as_bytes().len() as size_t;
             c_path = path_cstr.as_ptr();
         },
         None => {

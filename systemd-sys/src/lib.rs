@@ -1,5 +1,15 @@
+//! Contains definitions for low-level bindings.
+//!
+//! Most of this module is Rust versions of the systemd headers. The goal of
+//! this crate is to make it unattractive to ever use the FFI directly, but
+//! it's there if you need it.
+//!
+//! Items in this module corresponding to systemd functions are well-documented
+//! by the systemd man pages.
+
 #![allow(non_camel_case_types)]
 
+extern crate libc;
 use libc::{c_char,c_int,c_void,size_t};
 pub use libc::types::os::arch::posix88::pid_t;
 

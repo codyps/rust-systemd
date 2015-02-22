@@ -8,3 +8,5 @@ license = "LGPL"
 [dependencies]
 log = "*"
 
+[dependencies.systemd-sys]
+path = "systemd-sys"

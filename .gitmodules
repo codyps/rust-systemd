@@ -1,0 +1,3 @@
+[submodule "systemd-sys/systemd"]
+	path = systemd-sys/systemd
+	url = http://anongit.freedesktop.org/git/systemd/systemd.git

@@ -4,6 +4,7 @@
 extern crate collections;
 extern crate libc;
 #[macro_use] extern crate log;
+extern crate "systemd-sys" as ffi;
 
 use std::result;
 
@@ -42,17 +43,6 @@ macro_rules! char_or_null {
         None => ptr::null()
     })
 }
-
-/// Contains definitions for low-level bindings.
-///
-/// Most of this module is Rust versions of the systemd headers. The goal of
-/// this crate is to make it unattractive to ever use the FFI directly, but
-/// it's there if you need it.
-///
-/// Items in this module corresponding to systemd functions are well-documented
-/// by the systemd man pages.
-#[unstable]
-pub mod ffi;
 
 /// High-level interface to the systemd journal.
 ///
