@@ -1,5 +1,7 @@
 language: rust
 
+env: SYSTEMD_BUILD=1
+
 script:
   - cargo build
   - cargo test
