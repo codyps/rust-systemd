@@ -63,7 +63,7 @@ macro_rules! log_with{
         };
         let lvl = $lvl;
         let func = $func;
-        $func(lvl, &LOC, format_args!($($arg),+))
+        $func(lvl, &LOC, &format_args!($($arg),+))
     })
 }
 
