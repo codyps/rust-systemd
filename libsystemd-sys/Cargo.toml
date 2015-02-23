@@ -1,6 +1,6 @@
 [package]
 
-name = "systemd-sys"
+name = "libsystemd-sys"
 version = "0.0.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL"

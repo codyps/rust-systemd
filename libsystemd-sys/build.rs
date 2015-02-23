@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command,Stdio};
 
 fn main() {
-    match pkg_config::find_library("systemd") {
+    match pkg_config::find_library("libsystemd") {
         Ok(_) => return,
         Err(..) => {}
     }
