@@ -4,7 +4,7 @@
 extern crate collections;
 extern crate libc;
 #[macro_use] extern crate log;
-extern crate "systemd-sys" as ffi;
+extern crate "libsystemd-sys" as ffi;
 
 use std::result;
 
