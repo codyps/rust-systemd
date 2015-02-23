@@ -44,7 +44,6 @@ pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
 pub type sd_id128 = [u64; 2];
 pub type sd_journal = *mut c_void;
 
-#[link(name = "systemd")]
 extern {
     pub fn sd_journal_sendv(iv : *const const_iovec, n : c_int) -> c_int;
     /* There are a bunch of other send methods, but for rust it doesn't make sense to call them
