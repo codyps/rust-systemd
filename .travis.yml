@@ -3,6 +3,6 @@ language: rust
 env: SYSTEMD_BUILD=1
 
 script:
-  - cargo build
-  - cargo test
-  - cargo doc
+  - cargo build --verbose
+  - cargo test --verbose
+  - cargo doc --verbose
