@@ -4,6 +4,8 @@ name = "systemd"
 version = "0.0.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
+description = "A rust interface to libsystemd provided APIs"
+repository = "https://github.com/jmesmon/rust-systemd"
 
 [dependencies]
 log = "*"
