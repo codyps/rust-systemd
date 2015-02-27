@@ -3,7 +3,7 @@
 name = "libsystemd-sys"
 version = "0.0.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
-license = "LGPL"
+license = "LGPL-2.1+"
 description = "FFI bindings to libsystemd"
 repository = "https://github.com/jmesmon/rust-systemd"
 
