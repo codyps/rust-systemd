@@ -127,7 +127,7 @@ pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening
     let c_length: size_t;
     match path {
         Some(p) => {
-            let path_cstr = ::std::ffi::CString::from_slice(p.as_bytes());
+            let path_cstr = ::std::ffi::CString::new(p.as_bytes()).unwrap();
             c_length = path_cstr.as_bytes().len() as size_t;
             c_path = path_cstr.as_ptr();
         },
@@ -155,7 +155,7 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
         state_vec.push(vec![*key, *value].connect("="));
     }
     let state_str = state_vec.connect("\n");
-    ::std::ffi::CString::from_slice(state_str.as_bytes())
+    ::std::ffi::CString::new(state_str.as_bytes()).unwrap()
 }
 
 /// Notifies systemd that daemon state has changed.  state is made up of a set

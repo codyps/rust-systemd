@@ -5,8 +5,8 @@
 fn test() {
     use systemd::journal;
     journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
-    journal::print(1, format!("Rust can talk to the journal: {}",
-                              4).as_slice());
+    journal::print(1, &format!("Rust can talk to the journal: {}",
+                              4));
 
     journal::JournalLog::init().ok().unwrap();
     log!(log::LogLevel::Info, "HI");

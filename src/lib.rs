@@ -39,7 +39,7 @@ macro_rules! sd_try {
 #[macro_export]
 macro_rules! char_or_null {
     ($e:expr) => (match $e {
-        Some(p) => ::std::ffi::CString::from_slice(p.as_bytes()).as_ptr(),
+        Some(p) => ::std::ffi::CString::new(p.as_bytes()).unwrap().as_ptr(),
         None => ptr::null()
     })
 }
@@ -62,7 +62,6 @@ macro_rules! log_with{
             module_path: module_path!()
         };
         let lvl = $lvl;
-        let func = $func;
         $func(lvl, &LOC, &format_args!($($arg),+))
     })
 }
