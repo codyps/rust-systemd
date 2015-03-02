@@ -8,31 +8,36 @@ journal
 Journal sending is supported, and systemd::journal::Journal is a (low
 functionality) wrapper around the read API.
 
-HOWTO log to journald:
 
-```rust
-# cat >Cargo.toml <<EOF
+In `Cargo.toml`:
+```toml
 [dependencies.systemd]
 git = "https://github.com/jmesmon/rust-systemd"
-EOF
+```
 
-# editor src/main.rs
+Or
 
+```toml
+[dependencies]
+systemd = "*"
+```
 
-#![feature(phase)]
-#[phase(plugin,link)] extern crate log;
-#[phase(plugin,link)] extern crate systemd;
+Then:
+
+```rust
+#[macro_use] extern crate log;
+#[macro_use] extern crate systemd;
 use systemd::journal;
 
 fn main() {
    use systemd::journal;
    use log::set_logger;
-   journal::print(1, format!("Rust can talk to the journal: {}",
-                             4i).as_slice());
+   journal::print(1, &format!("Rust can talk to the journal: {:?}",
+                             4));
    journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
-   set_logger(box journal::JournalLogger);
-   log!(0, "HI");
-   sd_journal_log!(4, "HI {}", 2i);
+   journal::JournalLogger::init().unwrap();
+   warn!("HI");
+   sd_journal_log!(4, "HI {:?}", 2i);
 }
 ```
 
