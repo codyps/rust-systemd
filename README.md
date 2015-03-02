@@ -17,7 +17,7 @@ journal
 Journal sending is supported, and systemd::journal::Journal is a (low
 functionality) wrapper around the read API.
 
-Then:
+An example of the journal writing api:
 
 ```rust
 #[macro_use] extern crate log;
