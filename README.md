@@ -1,26 +1,21 @@
 rust-systemd
 ============
 
-Only has bindings for the journal and daemon APIs at the moment.
-
-journal
--------
-Journal sending is supported, and systemd::journal::Journal is a (low
-functionality) wrapper around the read API.
-
-
 In `Cargo.toml`:
 ```toml
 [dependencies.systemd]
 git = "https://github.com/jmesmon/rust-systemd"
 ```
-
 Or
-
 ```toml
 [dependencies]
 systemd = "*"
 ```
+
+journal
+-------
+Journal sending is supported, and systemd::journal::Journal is a (low
+functionality) wrapper around the read API.
 
 Then:
 
