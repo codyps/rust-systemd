@@ -48,4 +48,4 @@ TODO
 
  - [ ] rustdoc
  - [ ] other systemd apis
- - [ ] split out the -sys package
+ - [ ] pass travis automated tests
