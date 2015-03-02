@@ -26,7 +26,6 @@ use systemd::journal;
 
 fn main() {
    use systemd::journal;
-   use log::set_logger;
    journal::print(1, &format!("Rust can talk to the journal: {:?}",
                              4));
    journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
