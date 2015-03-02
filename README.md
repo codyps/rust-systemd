@@ -31,7 +31,7 @@ fn main() {
    journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
    journal::JournalLogger::init().unwrap();
    warn!("HI");
-   sd_journal_log!(4, "HI {:?}", 2i);
+   sd_journal_log!(4, "HI {:?}", 2);
 }
 ```
 
