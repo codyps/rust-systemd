@@ -1,6 +1,6 @@
 #![feature(env, path, fs, process, os)]
 
-extern crate "pkg-config" as pkg_config;
+extern crate pkg_config;
 use std::{env,fs,ffi};
 use std::path::PathBuf;
 use std::process::{Command,Stdio};
@@ -18,8 +18,8 @@ fn main() {
 }
 
 fn build_systemd() {
-    let src = PathBuf::new(&env::current_dir().unwrap());
-    let dst = PathBuf::new(&env::var("OUT_DIR").unwrap());
+    let src = PathBuf::from(&env::current_dir().unwrap());
+    let dst = PathBuf::from(&env::var("OUT_DIR").unwrap());
     let build = dst.join("build");
 
     let _ = fs::create_dir(&build);
@@ -36,8 +36,8 @@ fn build_systemd() {
                 .arg("--disable-ldconfig")
                 .arg("--disable-manpages"));
 
-    let mut jobs = ffi::OsString::from_str("-j");
-    jobs.push_os_str(&ffi::OsStr::from_str(&env::var("NUM_JOBS").unwrap()));
+    let mut jobs : ffi::OsString = From::from("-j");
+    jobs.push(&env::var("NUM_JOBS").unwrap());
     run(Command::new("make")
                 .current_dir(&build)
                 .arg(&jobs));

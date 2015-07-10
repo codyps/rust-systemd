@@ -9,6 +9,7 @@ repository = "https://github.com/jmesmon/rust-systemd"
 
 [dependencies]
 log = "*"
+libc = "*"
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"

@@ -13,28 +13,23 @@ extern crate libc;
 use libc::{c_char,c_int,c_void,size_t};
 pub use libc::types::os::arch::posix88::pid_t;
 
-#[stable] pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
-#[stable] pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
-#[stable] pub const SD_JOURNAL_SYSTEM:       c_int = 4;
-#[stable] pub const SD_JOURNAL_CURRENT_USER: c_int = 8;
+pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
+pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
+pub const SD_JOURNAL_SYSTEM:       c_int = 4;
+pub const SD_JOURNAL_CURRENT_USER: c_int = 8;
 
 #[repr(C)]
-#[stable]
 pub struct iovec {
     pub iov_base: *mut c_void,
     pub iov_len: size_t
 }
-impl Copy for iovec {}
 
 #[repr(C)]
-#[stable]
 pub struct const_iovec {
     pub iov_base: *const c_void,
     pub iov_len: size_t
 }
-impl Copy for const_iovec {}
 
-#[stable]
 pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
     args.iter().map(|d| {
         const_iovec { iov_base: d.as_ptr() as *const c_void, iov_len: d.len() as size_t }

@@ -1,6 +1,6 @@
 use libc::{c_int,c_uint,size_t};
 use std::{ptr,collections};
-use std::os::unix::Fd;
+use std::os::unix::io::RawFd as Fd;
 use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use libc::types::os::arch::posix88::pid_t;
 use ffi;
@@ -16,8 +16,6 @@ pub enum SocketType {
 }
 
 /// Options for checking whether a socket is in listening mode
-#[derive(Copy)]
-#[stable]
 pub enum Listening {
     /// Verify that socket is in listening mode
     IsListening,
@@ -28,7 +26,6 @@ pub enum Listening {
 }
 
 /// Number of the first passed file descriptor
-#[stable]
 pub const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished

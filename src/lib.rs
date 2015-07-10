@@ -1,10 +1,6 @@
-#![feature(libc,std_misc,collections,core)]
-#![unstable]
-
-extern crate collections;
 extern crate libc;
 #[macro_use] extern crate log;
-extern crate "libsystemd-sys" as ffi;
+extern crate libsystemd_sys as ffi;
 
 use std::result;
 
@@ -48,7 +44,6 @@ macro_rules! char_or_null {
 ///
 /// The main interface for writing to the journal is `fn log()`, and the main
 /// interface for reading the journal is `struct Journal`.
-#[unstable]
 pub mod journal;
 
 /// Similar to `log!()`, except it accepts a func argument rather than hard
@@ -72,5 +67,4 @@ macro_rules! sd_journal_log{
 }
 
 /// High-level interface to the systemd daemon module.
-#[unstable]
 pub mod daemon;
