@@ -1,5 +1,3 @@
-#![feature(env, path, fs, process, os)]
-
 extern crate pkg_config;
 use std::{env,fs,ffi};
 use std::path::PathBuf;
