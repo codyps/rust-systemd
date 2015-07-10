@@ -2,9 +2,8 @@ use libc::{c_int,size_t};
 use log::{self,Log,LogRecord,LogLocation,SetLoggerError};
 use std::{fmt,ptr,result};
 use std::collections::BTreeMap;
-use Result;
-use Error;
 use ffi;
+use super::Result;
 
 /// Send preformatted fields to systemd.
 ///

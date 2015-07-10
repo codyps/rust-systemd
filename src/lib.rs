@@ -1,13 +1,7 @@
 extern crate libc;
 #[macro_use] extern crate log;
 extern crate libsystemd_sys as ffi;
-
-use std::result;
-
-pub enum Error {
-    Errno(libc::c_int)
-}
-pub type Result<T> = result::Result<T, Error>;
+pub use std::io::{Result, Error};
 
 /// An analogue of `try!()` for systemd FFI calls.
 ///
@@ -24,7 +18,7 @@ macro_rules! sd_try {
             ret = $e;
         }
         if ret < 0 {
-            return Err(Error::Errno(-ret));
+            return Err($crate::Error::from_raw_os_error(-ret));
         }
         ret
     })

@@ -3,9 +3,11 @@ use std::{ptr,collections};
 use std::os::unix::io::RawFd as Fd;
 use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use libc::types::os::arch::posix88::pid_t;
+use std::net::TcpListener;
 use ffi;
-use Error;
-use Result;
+use super::{Result, Error};
+use std::io::ErrorKind;
+use std::os::unix::io::FromRawFd;
 
 // XXX: this is stolen from std::old_io::net::addrinfo until we have a replacement in the standard
 // lib.
@@ -111,6 +113,14 @@ pub fn is_socket_inet(fd: Fd, family: Option<c_uint>, socktype: Option<SocketTyp
 
     let result = sd_try!(ffi::sd_is_socket_inet(fd, c_family, c_socktype, c_listening, c_port));
     Ok(result != 0)
+}
+
+pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
+    if ! try!(is_socket_inet(fd, None, Some(SocketType::Stream), Listening::IsListening, None)) {
+        Err(Error::new(ErrorKind::InvalidInput, "Socket type was not as expected"))
+    } else {
+        Ok(unsafe { TcpListener::from_raw_fd(fd) })
+    }
 }
 
 /// Identifies whether the passed file descriptor is an AF_UNIX socket. If type
