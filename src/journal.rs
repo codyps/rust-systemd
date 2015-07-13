@@ -24,14 +24,14 @@ pub fn print(lvl : u32, s : &str) -> c_int {
 
 /// Send a `log::LogRecord` to systemd.
 pub fn log_record(record: &LogRecord) {
-    let lvl: u64 = unsafe {
+    let lvl: usize = unsafe {
         use std::mem;
         mem::transmute(record.level())
     };
     log(lvl, record.location(), record.args());
 }
 
-pub fn log(level: u64, loc: &LogLocation, args: &fmt::Arguments)
+pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments)
 {
     send(&[&format!("PRIORITY={}", level),
         &format!("MESSAGE={}", args),
