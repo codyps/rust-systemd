@@ -10,8 +10,8 @@
 #![allow(non_camel_case_types)]
 
 extern crate libc;
-use libc::{c_char,c_int,c_void,size_t};
-pub use libc::types::os::arch::posix88::pid_t;
+pub use libc::{c_char,c_int,c_void,size_t};
+pub use libc::pid_t;
 
 pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
 pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;

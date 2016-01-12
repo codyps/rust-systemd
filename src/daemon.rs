@@ -1,8 +1,8 @@
-use libc::{c_int,c_uint,size_t};
 use std::{ptr,collections};
 use std::os::unix::io::RawFd as Fd;
-use libc::consts::os::bsd44::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
-use libc::types::os::arch::posix88::pid_t;
+use libc::c_uint;
+use super::ffi::{c_int,size_t,pid_t};
+use libc::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use std::net::TcpListener;
 use ffi;
 use super::{Result, Error};
@@ -159,9 +159,9 @@ pub fn is_mq(fd: Fd, path: Option<&str>) -> Result<bool> {
 fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CString {
     let mut state_vec = Vec::new();
     for (key, value) in state.iter() {
-        state_vec.push(vec![*key, *value].connect("="));
+        state_vec.push(vec![*key, *value].join("="));
     }
-    let state_str = state_vec.connect("\n");
+    let state_str = state_vec.join("\n");
     ::std::ffi::CString::new(state_str.as_bytes()).unwrap()
 }
 
