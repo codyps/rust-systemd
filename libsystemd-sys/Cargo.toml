@@ -1,7 +1,7 @@
 [package]
 
 name = "libsystemd-sys"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
 description = "FFI bindings to libsystemd"
@@ -11,7 +11,7 @@ repository = "https://github.com/jmesmon/rust-systemd"
 build = "build.rs"
 
 [dependencies]
-libc = "*"
+libc = "0.*"
 
 [build-dependencies]
-pkg-config = "*"
+pkg-config = "0.*"
