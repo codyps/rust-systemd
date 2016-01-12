@@ -8,9 +8,9 @@ description = "A rust interface to libsystemd provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 
 [dependencies]
-log = "*"
-libc = "*"
+log = "0.*"
+libc = "0.*"
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
-version = "*"
+version = "0.*"
