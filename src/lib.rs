@@ -46,9 +46,9 @@ pub mod journal;
 macro_rules! log_with{
     ($func:expr, $lvl:expr, $($arg:tt),+) => ({
         static LOC: ::log::LogLocation = ::log::LogLocation {
-            line: line!(),
-            file: file!(),
-            module_path: module_path!()
+            __line: line!(),
+            __file: file!(),
+            __module_path: module_path!()
         };
         let lvl = $lvl;
         $func(lvl, &LOC, &format_args!($($arg),+))
