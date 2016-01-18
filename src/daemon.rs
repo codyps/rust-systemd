@@ -1,6 +1,6 @@
 use std::{ptr,collections};
 use std::os::unix::io::RawFd as Fd;
-use libc::c_uint;
+use libc::{c_char, c_uint};
 use super::ffi::{c_int,size_t,pid_t};
 use libc::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use std::net::TcpListener;
@@ -130,13 +130,13 @@ pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
 pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening, path: Option<&str>) -> Result<bool> {
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
-    let c_path: *const i8;
+    let c_path: *const c_char;
     let c_length: size_t;
     match path {
         Some(p) => {
             let path_cstr = ::std::ffi::CString::new(p.as_bytes()).unwrap();
             c_length = path_cstr.as_bytes().len() as size_t;
-            c_path = path_cstr.as_ptr();
+            c_path = path_cstr.as_ptr() as *const c_char;
         },
         None => {
             c_path = ptr::null();
@@ -170,7 +170,7 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
 pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
-    let c_state = state_to_c_string(state).as_ptr();
+    let c_state = state_to_c_string(state).as_ptr() as *const c_char;
     let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state));
     Ok(result != 0)
 }
@@ -178,7 +178,7 @@ pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
 pub fn pid_notify(pid: pid_t, unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
-    let c_state = state_to_c_string(state).as_ptr();
+    let c_state = state_to_c_string(state).as_ptr() as *const c_char;
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state));
     Ok(result != 0)
 }
