@@ -121,7 +121,7 @@ impl Journal {
             unsafe {
                 let b = ::std::slice::from_raw_parts_mut(data, sz as usize);
                 let field = ::std::str::from_utf8_unchecked(b);
-                let mut name_value = field.splitn(1, '=');
+                let mut name_value = field.splitn(2, '=');
                 let name = name_value.next().unwrap();
                 let value = name_value.next().unwrap();
                 ret.insert(From::from(name), From::from(value));
