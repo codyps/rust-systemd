@@ -10,6 +10,9 @@ repository = "https://github.com/jmesmon/rust-systemd"
 # 'links' is purposefully omitted
 build = "build.rs"
 
+[features]
+bus = []
+
 [dependencies]
 libc = "0.*"
 
