@@ -10,8 +10,7 @@
 #![allow(non_camel_case_types)]
 
 extern crate libc;
-pub use libc::{c_char,c_int,c_void,size_t};
-pub use libc::pid_t;
+pub use libc::{c_char,c_int,c_void,size_t,pid_t};
 
 pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
 pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
@@ -40,6 +39,7 @@ pub type sd_id128 = [u64; 2];
 pub type sd_journal = *mut c_void;
 
 extern {
+    /* sd-journal */
     pub fn sd_journal_sendv(iv : *const const_iovec, n : c_int) -> c_int;
     /* There are a bunch of other send methods, but for rust it doesn't make sense to call them
      * (we don't need to do c-style format strings) */
@@ -96,6 +96,7 @@ extern {
     pub fn sd_journal_get_catalog(j: sd_journal, text: *const *mut c_char) -> c_int;
     pub fn sd_journal_get_catalog_for_message_id(id: sd_id128, ret: *const *mut c_char) -> c_int;
 
+    /* sd-daemon */
     pub fn sd_listen_fds(unset_environment: c_int) -> c_int;
     pub fn sd_is_fifo(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_is_special(fd: c_int, path: *const c_char) -> c_int;
@@ -108,4 +109,11 @@ extern {
     pub fn sd_pid_notify(pid: pid_t, unset_environment: c_int, state: *const c_char) -> c_int;
     pub fn sd_booted() -> c_int;
     pub fn sd_watchdog_enabled(unset_environment: c_int, usec: *mut u64) -> c_int;
+
+
+
 }
+
+#[cfg(features = "sd-bus")]
+pub mod sd_bus;
+pub use sd_bus::*;
