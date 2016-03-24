@@ -1,9 +1,10 @@
-use libc::{c_int, size_t};
 use log::{self, Log, LogRecord, LogLocation, SetLoggerError};
 use std::{fmt, ptr, result};
 use std::collections::BTreeMap;
 use ffi;
 use super::Result;
+use libc::{self, free, c_int, c_char, size_t};
+use std::ffi::{CString, CStr};
 
 /// Send preformatted fields to systemd.
 ///
@@ -129,6 +130,32 @@ impl Journal {
         }
 
         Ok(Some(ret))
+    }
+
+    pub fn cursor(&self) -> Result<String> {
+        let mut c_cursor: *mut c_char = ptr::null_mut();
+        let mut cursor: String = "".to_string();
+        if sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor)) == 0 {
+            unsafe {
+                // Cstr should be used for memory allocated by C
+                cursor = CStr::from_ptr(c_cursor as *const _)
+                             .to_string_lossy()
+                             .into_owned();
+
+                free(c_cursor as *mut libc::c_void);
+            }
+        }
+        Ok(cursor)
+    }
+
+    pub fn seek<S>(&self, cursor: S) -> Result<()>
+        where S: Into<String>
+    {
+        let c_position = CString::new(cursor.into());
+        // If no entry matching the specified cursor is found the call will seek to
+        // the next closest entry (in terms of time) instead
+        sd_try!(ffi::sd_journal_seek_cursor(self.j, c_position.unwrap().as_ptr() as *const _));
+        Ok(())
     }
 }
 
