@@ -61,7 +61,6 @@ pub type JournalRecord = BTreeMap<String, String>;
 /// Supports read, next, previous, and seek operations.
 pub struct Journal {
     j: ffi::sd_journal,
-    cursor: String,
 }
 
 /// Represents the set of journal files to read.
@@ -101,10 +100,7 @@ impl Journal {
             JournalFiles::All => 0,
         };
 
-        let journal = Journal {
-            j: ptr::null_mut(),
-            cursor: "".to_string(),
-        };
+        let journal = Journal { j: ptr::null_mut() };
         sd_try!(ffi::sd_journal_open(&journal.j, flags));
         sd_try!(ffi::sd_journal_seek_head(journal.j));
         Ok(journal)
@@ -112,7 +108,7 @@ impl Journal {
 
     /// Read the next record from the journal. Returns `io::EndOfFile` if there
     /// are no more records to read.
-    pub fn next_record(&mut self) -> Result<Option<JournalRecord>> {
+    pub fn next_record(&self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
             return Ok(None);
         }
@@ -133,9 +129,13 @@ impl Journal {
             }
         }
 
+        Ok(Some(ret))
+    }
+
+    pub fn get_cursor(&self) -> Result<String> {
         // update cursor
         let mut c_cursor: *mut c_char = ptr::null_mut();
-        let cursor: String;
+        let mut cursor: String = "".to_string();
         if sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor)) == 0 {
             unsafe {
                 // You should use Cstr for memory allocated by C
@@ -143,12 +143,11 @@ impl Journal {
                              .to_string_lossy()
                              .into_owned();
             }
-            self.cursor = cursor;
             unsafe {
                 free(c_cursor as *mut libc::c_void);
             }
         }
-        Ok(Some(ret))
+        Ok(cursor)
     }
 
     pub fn seek_cursor<S>(&self, position: S) -> Result<()>
@@ -168,8 +167,13 @@ impl Iterator for Journal {
     fn next(&mut self) -> Option<(JournalRecord, String)> {
         let next_record = self.next_record().unwrap();
         let wait_time: u64 = 1 << 63;
+        let cursor = match self.get_cursor() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+
         match next_record {
-            Some(record) => Some((record, self.cursor.clone())),
+            Some(record) => Some((record, cursor)),
             None => {
                 let wait_time: u64 = 1 << 63;
                 let w_ret: i32;
