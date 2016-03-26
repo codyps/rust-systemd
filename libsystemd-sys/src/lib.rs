@@ -10,7 +10,7 @@
 #![allow(non_camel_case_types)]
 
 extern crate libc;
-pub use libc::{c_char,c_int,c_void,size_t,pid_t};
+pub use libc::{c_char,c_int,c_void,size_t,pid_t,uid_t,gid_t,c_uint};
 
 pub const SD_JOURNAL_LOCAL_ONLY:   c_int = 1;
 pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 2;
@@ -114,7 +114,7 @@ extern {
 
 }
 
+pub mod id128;
+
 //#[cfg(features = "sd-bus")]
 pub mod bus;
-//#[cfg(features = "sd-bus")]
-pub use self::bus::*;

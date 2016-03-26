@@ -1,10 +1,20 @@
-use super::{c_char,c_int,c_void};
+use super::{c_char,c_int,c_void,uid_t,gid_t,pid_t,size_t,c_uint};
+use super::id128::sd_id128_t;
+use super::const_iovec;
 
 pub type sd_bus = c_void;
 pub type sd_bus_message = c_void;
 pub type sd_bus_slot = c_void;
 pub type sd_bus_creds = c_void;
 pub type sd_bus_track = c_void;
+
+pub type sd_event = c_void;
+pub type sd_bus_vtable = c_void;
+
+pub type sd_bus_track_handler_t = *mut c_void;
+pub type sd_bus_message_handler_t = *mut c_void;
+pub type sd_bus_object_find_t = *mut c_void;
+pub type sd_bus_node_enumerator_t = *mut c_void;
 
 #[repr(C)]
 pub struct sd_bus_error {
@@ -52,8 +62,8 @@ extern "C" {
     pub fn sd_bus_negotiate_creds(bus: *mut sd_bus, b: c_int, creds_mask: u64) -> c_int;
     pub fn sd_bus_negotiate_timestamp(bus: *mut sd_bus, b: c_int) -> c_int;
     pub fn sd_bus_negotiate_fds(bus: *mut sd_bus, b: c_int) -> c_int;
-    pub fn sd_bus_can_send(bus: *mut sd_bus, typ: char) -> c_int;
-    pub fn sd_bus_get_creds_mask(bus: *mut sd_bus, creds_mask: *mut uint64_t) -> c_int;
+    pub fn sd_bus_can_send(bus: *mut sd_bus, typ: c_char) -> c_int;
+    pub fn sd_bus_get_creds_mask(bus: *mut sd_bus, creds_mask: *mut u64) -> c_int;
     pub fn sd_bus_set_allow_interactive_authorization(bus: *mut sd_bus, b: c_int) -> c_int;
     pub fn sd_bus_get_allow_interactive_authorization(bus: *mut sd_bus) -> c_int;
 
@@ -112,14 +122,14 @@ extern "C" {
     pub fn sd_bus_slot_unref(slot: *mut sd_bus_slot) -> *mut sd_bus_slot;
 
     pub fn sd_bus_slot_get_bus(slot: *mut sd_bus_slot) -> *mut sd_bus;
-    pub fn sd_bus_slot_get_userdata(slot: *mut sd_bus_slot) -> *mut void;
-    pub fn sd_bus_slot_set_userdata(slot: *mut sd_bus_slot, userdata: *mut c_void) -> *mut void;
+    pub fn sd_bus_slot_get_userdata(slot: *mut sd_bus_slot) -> *mut c_void;
+    pub fn sd_bus_slot_set_userdata(slot: *mut sd_bus_slot, userdata: *mut c_void) -> *mut c_void;
     pub fn sd_bus_slot_set_description(slot: *mut sd_bus_slot, description: *const c_char) -> c_int;
     pub fn sd_bus_slot_get_description(slot: *mut sd_bus_slot, description: *mut *const c_char) -> c_int;
 
     pub fn sd_bus_slot_get_current_message(slot: *mut sd_bus_slot) -> *mut sd_bus_message;
     pub fn sd_bus_slot_get_current_handler(bus: *mut sd_bus_slot) -> sd_bus_message_handler_t;
-    pub fn sd_bus_slot_get_current_userdata(slot: *mut sd_bus_slot) -> *mut void;
+    pub fn sd_bus_slot_get_current_userdata(slot: *mut sd_bus_slot) -> *mut c_void;
 
     /* Message object */
 
@@ -320,7 +330,7 @@ extern "C" {
     pub fn sd_bus_track_remove_name(track: *mut sd_bus_track, name: *const c_char) -> c_int;
 
     pub fn sd_bus_track_count(track: *mut sd_bus_track) -> c_uint;
-    pub fn sd_bus_track_contains(track: *mut sd_bus_track, names: *const c_char) -> *const char;
-    pub fn sd_bus_track_first(track: *mut sd_bus_track) -> *const char;
-    pub fn sd_bus_track_next(track: *mut sd_bus_track) -> *const char;
+    pub fn sd_bus_track_contains(track: *mut sd_bus_track, names: *const c_char) -> *const c_char;
+    pub fn sd_bus_track_first(track: *mut sd_bus_track) -> *const c_char;
+    pub fn sd_bus_track_next(track: *mut sd_bus_track) -> *const c_char;
 }
