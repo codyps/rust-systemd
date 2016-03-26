@@ -115,5 +115,6 @@ extern {
 }
 
 #[cfg(features = "sd-bus")]
-pub mod sd_bus;
-pub use sd_bus::*;
+pub mod bus;
+#[cfg(features = "sd-bus")]
+pub use self::bus::*;
