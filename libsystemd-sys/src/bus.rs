@@ -1,6 +1,7 @@
 use super::{c_char,c_int,c_void,uid_t,gid_t,pid_t,size_t,c_uint};
 use super::id128::sd_id128_t;
 use super::const_iovec;
+use super::event::sd_event;
 
 pub type sd_bus = c_void;
 pub type sd_bus_message = c_void;
@@ -8,7 +9,6 @@ pub type sd_bus_slot = c_void;
 pub type sd_bus_creds = c_void;
 pub type sd_bus_track = c_void;
 
-pub type sd_event = c_void;
 pub type sd_bus_vtable = c_void;
 
 pub type sd_bus_track_handler_t = *mut c_void;

@@ -115,6 +115,7 @@ extern {
 }
 
 pub mod id128;
+pub mod event;
 
 //#[cfg(features = "sd-bus")]
 pub mod bus;
