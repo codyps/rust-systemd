@@ -11,7 +11,7 @@ repository = "https://github.com/jmesmon/rust-systemd"
 build = "build.rs"
 
 [features]
-sd-bus = []
+bus = []
 
 [dependencies]
 libc = "0.*"

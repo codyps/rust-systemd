@@ -36,7 +36,7 @@ pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
     }).collect()
 }
 
-pub type sd_id128 = [u64; 2];
+use id128::sd_id128_t;
 pub type sd_journal = *mut c_void;
 
 extern {
@@ -55,7 +55,7 @@ extern {
     pub fn sd_journal_next_skip(j: sd_journal, skip: u64) -> c_int;
 
     pub fn sd_journal_get_realtime_usec(j: sd_journal, ret: *const u64) -> c_int;
-    pub fn sd_journal_get_monotonic_usec(j: sd_journal, ret: *const u64, ret_boot_id: *const sd_id128) -> c_int;
+    pub fn sd_journal_get_monotonic_usec(j: sd_journal, ret: *const u64, ret_boot_id: *const sd_id128_t) -> c_int;
 
     pub fn sd_journal_set_data_threshold(j: sd_journal, sz: size_t) -> c_int;
     pub fn sd_journal_get_data_threshold(j: sd_journal, sz: *mut size_t) -> c_int;
@@ -71,7 +71,7 @@ extern {
 
     pub fn sd_journal_seek_head(j: sd_journal) -> c_int;
     pub fn sd_journal_seek_tail(j: sd_journal) -> c_int;
-    pub fn sd_journal_seek_monotonic_usec(j: sd_journal, boot_id: sd_id128, usec: u64) -> c_int;
+    pub fn sd_journal_seek_monotonic_usec(j: sd_journal, boot_id: sd_id128_t, usec: u64) -> c_int;
     pub fn sd_journal_seek_realtime_usec(j: sd_journal, usec: u64) -> c_int;
     pub fn sd_journal_seek_cursor(j: sd_journal, cursor: *const c_char) -> c_int;
 
@@ -79,7 +79,7 @@ extern {
     pub fn sd_journal_test_cursor(j: sd_journal, cursor: *const c_char) -> c_int;
 
     pub fn sd_journal_get_cutoff_realtime_usec(j: sd_journal, from: *mut u64, to: *mut u64) -> c_int;
-    pub fn sd_journal_get_cutoff_monotonic_usec(j: sd_journal, boot_id: sd_id128, from: *mut u64, to: *mut u64) -> c_int;
+    pub fn sd_journal_get_cutoff_monotonic_usec(j: sd_journal, boot_id: sd_id128_t, from: *mut u64, to: *mut u64) -> c_int;
 
     pub fn sd_journal_get_usage(j: sd_journal, bytes: *mut u64) -> c_int;
 
@@ -95,7 +95,7 @@ extern {
     pub fn sd_journal_reliable_fd(j: sd_journal) -> c_int;
 
     pub fn sd_journal_get_catalog(j: sd_journal, text: *const *mut c_char) -> c_int;
-    pub fn sd_journal_get_catalog_for_message_id(id: sd_id128, ret: *const *mut c_char) -> c_int;
+    pub fn sd_journal_get_catalog_for_message_id(id: sd_id128_t, ret: *const *mut c_char) -> c_int;
 
     /* sd-daemon */
     pub fn sd_listen_fds(unset_environment: c_int) -> c_int;
@@ -118,7 +118,7 @@ extern {
 pub mod id128;
 pub mod event;
 
-//#[cfg(features = "sd-bus")]
+#[cfg(features = "bus")]
 pub mod bus;
 
 
