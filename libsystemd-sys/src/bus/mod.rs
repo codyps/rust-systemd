@@ -334,3 +334,5 @@ extern "C" {
     pub fn sd_bus_track_first(track: *mut sd_bus_track) -> *const c_char;
     pub fn sd_bus_track_next(track: *mut sd_bus_track) -> *const c_char;
 }
+
+pub mod vtable;

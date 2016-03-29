@@ -1,4 +1,5 @@
-use super::c_char;
+use super::super::{c_char, size_t};
+use super::{sd_bus_message_handler_t,sd_bus_property_get_t,sd_bus_property_set_t};
 
 /* XXX: check this repr, might vary based on platform type sizes */
 #[derive(Clone,Copy)]
