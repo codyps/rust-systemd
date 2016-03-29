@@ -9,7 +9,8 @@ pub type sd_bus_slot = c_void;
 pub type sd_bus_creds = c_void;
 pub type sd_bus_track = c_void;
 
-pub type sd_bus_vtable = c_void;
+pub mod vtable;
+pub use self::vtable::sd_bus_vtable;
 
 pub type sd_bus_message_handler_t =
     Option<unsafe extern "C" fn(m: *mut sd_bus_message,
@@ -375,5 +376,3 @@ extern "C" {
     pub fn sd_bus_track_first(track: *mut sd_bus_track) -> *const c_char;
     pub fn sd_bus_track_next(track: *mut sd_bus_track) -> *const c_char;
 }
-
-pub mod vtable;
