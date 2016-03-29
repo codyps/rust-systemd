@@ -118,7 +118,7 @@ extern {
 pub mod id128;
 pub mod event;
 
-#[cfg(features = "bus")]
+#[cfg(feature = "bus")]
 pub mod bus;
 
 

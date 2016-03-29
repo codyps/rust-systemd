@@ -36,8 +36,9 @@ pub struct sd_bus_vtable {
 
 #[test]
 fn size_eq() {
-    assert_eq!(std::mem::size_of::<usize>(), std::mem::size_of::<size_t>());
-    assert_eq!(std::mem::size_of::<usize>(), std::mem::size_of::<*const u8>());
+    use std::mem::size_of;
+    assert_eq!(size_of::<usize>(), size_of::<size_t>());
+    assert_eq!(size_of::<usize>(), size_of::<*const u8>());
 }
 
 #[derive(Clone)]
