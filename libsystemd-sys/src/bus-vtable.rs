@@ -33,6 +33,12 @@ struct sd_bus_table {
     union_data: [usize;5],
 }
 
+#[test]
+fn size_eq() {
+    assert_eq!(std::mem::size_of<usize>(), std::mem::size_of<size_t>());
+    assert_eq!(std::mem::size_of<usize>(), std::mem::size_of<*const u8>());
+}
+
 #[derive(Clone)]
 #[repr(C)]
 struct sd_bus_table_start {
