@@ -1,3 +1,5 @@
+use std::mem::{transmute, zeroed};
+use std::default::Default;
 use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t,sd_bus_property_get_t,sd_bus_property_set_t};
 
@@ -34,17 +36,23 @@ pub struct sd_bus_vtable {
     union_data: [usize;5],
 }
 
-impl sd_bus_table {
+impl Default for sd_bus_vtable {
+    fn default() -> Self { unsafe { zeroed() } }
+}
+
+impl sd_bus_vtable {
     fn type_and_flags(typ: u32, flags: u64) -> u64 {
-        let val = [0u8;8];
+        let mut val = [0u8;8];
         assert!(typ <= ((1 << 8) - 1));
         assert!(flags <= ((1 << 56) - 1));
 
         val[0] = typ as u8;
-        let flags_raw : [u8;8] = transmute(flags);
+        let flags_raw : [u8;8] = unsafe { transmute(flags) };
         for i in 0..7 {
-            val[i + 1] = 
+            val[i + 1] = flags_raw[i];
         }
+
+        unsafe { transmute(val) }
     }
 
     /*
@@ -60,15 +68,25 @@ impl sd_bus_table {
 
     fn flags(&self) -> u64 {
         /* treat the first byte as 0 and the next 7 as their actual values */
-        let val = [0u8;8];
+        let mut val = [0u8;8];
         unsafe {
             let raw: *const u8 = transmute(&self.type_and_flags);
             for i in 1..8 {
-                val[i] = *raw.offset(i - 1);
+                val[0] = *raw.offset(i);
             }
             transmute(val)
         }
     }
+}
+
+#[test]
+fn vtable_bitfield() {
+    let mut b : sd_bus_vtable = Default::default();
+
+    b.type_and_flags = sd_bus_vtable::type_and_flags(0xAA, 0xBBBBBB);
+
+    assert_eq!(b.typ(), 0xAA);
+    assert_eq!(b.flags(), 0xBBBBBB);
 }
 
 #[test]
