@@ -34,6 +34,43 @@ pub struct sd_bus_vtable {
     union_data: [usize;5],
 }
 
+impl sd_bus_table {
+    fn type_and_flags(typ: u32, flags: u64) -> u64 {
+        let val = [0u8;8];
+        assert!(typ <= ((1 << 8) - 1));
+        assert!(flags <= ((1 << 56) - 1));
+
+        val[0] = typ as u8;
+        let flags_raw : [u8;8] = transmute(flags);
+        for i in 0..7 {
+            val[i + 1] = 
+        }
+    }
+
+    /*
+     * type & flags are stored in a bit field, the ordering of which might change depending on the
+     * platform.
+     */
+    fn typ(&self) -> u32 {
+        unsafe {
+            let raw: *const u8 = &self.type_and_flags as *const _ as *const u8;
+            *raw as u32
+        }
+    }
+
+    fn flags(&self) -> u64 {
+        /* treat the first byte as 0 and the next 7 as their actual values */
+        let val = [0u8;8];
+        unsafe {
+            let raw: *const u8 = transmute(&self.type_and_flags);
+            for i in 1..8 {
+                val[i] = *raw.offset(i - 1);
+            }
+            transmute(val)
+        }
+    }
+}
+
 #[test]
 fn size_eq() {
     use std::mem::size_of;
