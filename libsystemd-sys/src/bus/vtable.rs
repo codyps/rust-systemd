@@ -4,7 +4,7 @@ use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t,sd_bus_property_get_t,sd_bus_property_set_t};
 
 /* XXX: check this repr, might vary based on platform type sizes */
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,Debug)]
 #[repr(u32)]
 pub enum SdBusVtableType {
     Start = '<' as u32,
@@ -15,7 +15,7 @@ pub enum SdBusVtableType {
     WritableProperty = 'W' as u32
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u64)]
 pub enum SdBusVtableFlag {
     Deprecated = 1 << 0,
@@ -29,6 +29,7 @@ pub enum SdBusVtableFlag {
     CapabilityMask = 0xFFFF << 40
 }
 
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct sd_bus_vtable {
     type_and_flags : u64,
@@ -41,7 +42,7 @@ impl Default for sd_bus_vtable {
 }
 
 impl sd_bus_vtable {
-    fn type_and_flags(typ: u32, flags: u64) -> u64 {
+    pub fn type_and_flags(typ: u32, flags: u64) -> u64 {
         let mut val = [0u8;8];
         assert!(typ <= ((1 << 8) - 1));
         assert!(flags <= ((1 << 56) - 1));
@@ -59,20 +60,20 @@ impl sd_bus_vtable {
      * type & flags are stored in a bit field, the ordering of which might change depending on the
      * platform.
      */
-    fn typ(&self) -> u32 {
+    pub fn typ(&self) -> u32 {
         unsafe {
             let raw: *const u8 = &self.type_and_flags as *const _ as *const u8;
             *raw as u32
         }
     }
 
-    fn flags(&self) -> u64 {
+    pub fn flags(&self) -> u64 {
         /* treat the first byte as 0 and the next 7 as their actual values */
         let mut val = [0u8;8];
         unsafe {
             let raw: *const u8 = transmute(&self.type_and_flags);
             for i in 1..8 {
-                val[0] = *raw.offset(i);
+                val[i - 1] = *raw.offset(i as isize);
             }
             transmute(val)
         }
