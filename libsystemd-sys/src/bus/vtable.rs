@@ -97,13 +97,11 @@ fn size_eq() {
     assert_eq!(size_of::<usize>(), size_of::<*const u8>());
 }
 
-#[derive(Clone)]
 #[repr(C)]
 pub struct sd_bus_table_start {
     pub element_size: size_t,
 }
 
-#[derive(Clone)]
 #[repr(C)]
 pub struct sd_bus_table_method {
     pub member: *const c_char,
@@ -113,14 +111,12 @@ pub struct sd_bus_table_method {
     pub offset: size_t
 }
 
-#[derive(Clone)]
 #[repr(C)]
 pub struct sd_bus_table_signal {
     pub member: *const c_char,
     pub signature: *const c_char,
 }
 
-#[derive(Clone)]
 #[repr(C)]
 pub struct sd_bus_table_property {
     pub member: *const c_char,
