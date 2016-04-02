@@ -66,3 +66,7 @@ pub mod daemon;
 /// API for working with 128-bit ID values, which are a generalizastion of OSF UUIDs (see `man 3
 /// sd-id128` for details
 pub mod id128;
+
+/// Systemd's interface for working with dbus. Allows both dbus servers and clients to be created
+#[cfg(feature = "bus")]
+pub mod bus;
