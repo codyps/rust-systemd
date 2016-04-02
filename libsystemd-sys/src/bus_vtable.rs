@@ -27,7 +27,7 @@ enum SdBusVtableFlag {
 }
 
 #[repr(C)]
-struct sd_bus_table {
+struct sd_bus_vtable {
     type_and_flags : u64,
     /* NOTE: assumes that usize == pointer size == size_t */
     union_data: [usize;5],

@@ -122,4 +122,3 @@ pub mod bus;
 //#[cfg(features = "sd-bus")]
 pub mod bus_vtable;
 
-

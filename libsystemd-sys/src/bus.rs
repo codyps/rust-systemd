@@ -2,6 +2,7 @@ use super::{c_char,c_int,c_void,uid_t,gid_t,pid_t,size_t,c_uint};
 use super::id128::sd_id128_t;
 use super::const_iovec;
 use super::event::sd_event;
+use super::bus_vtable::sd_bus_vtable;
 
 pub type sd_bus = c_void;
 pub type sd_bus_message = c_void;
@@ -9,12 +10,65 @@ pub type sd_bus_slot = c_void;
 pub type sd_bus_creds = c_void;
 pub type sd_bus_track = c_void;
 
-pub type sd_bus_vtable = c_void;
-
-pub type sd_bus_track_handler_t = *mut c_void;
-pub type sd_bus_message_handler_t = *mut c_void;
-pub type sd_bus_object_find_t = *mut c_void;
-pub type sd_bus_node_enumerator_t = *mut c_void;
+pub type sd_bus_message_handler_t =
+    ::std::option::Option<unsafe extern "C" fn(m: *mut sd_bus_message,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void,
+                                               ret_error: *mut sd_bus_error)
+                              -> ::std::os::raw::c_int>;
+pub type sd_bus_property_get_t =
+    ::std::option::Option<unsafe extern "C" fn(bus: *mut sd_bus,
+                                               path:
+                                                   *const ::std::os::raw::c_char,
+                                               interface:
+                                                   *const ::std::os::raw::c_char,
+                                               property:
+                                                   *const ::std::os::raw::c_char,
+                                               reply: *mut sd_bus_message,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void,
+                                               ret_error: *mut sd_bus_error)
+                              -> ::std::os::raw::c_int>;
+pub type sd_bus_property_set_t =
+    ::std::option::Option<unsafe extern "C" fn(bus: *mut sd_bus,
+                                               path:
+                                                   *const ::std::os::raw::c_char,
+                                               interface:
+                                                   *const ::std::os::raw::c_char,
+                                               property:
+                                                   *const ::std::os::raw::c_char,
+                                               value: *mut sd_bus_message,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void,
+                                               ret_error: *mut sd_bus_error)
+                              -> ::std::os::raw::c_int>;
+pub type sd_bus_object_find_t =
+    ::std::option::Option<unsafe extern "C" fn(bus: *mut sd_bus,
+                                               path:
+                                                   *const ::std::os::raw::c_char,
+                                               interface:
+                                                   *const ::std::os::raw::c_char,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void,
+                                               ret_found:
+                                                   *mut *mut ::std::os::raw::c_void,
+                                               ret_error: *mut sd_bus_error)
+                              -> ::std::os::raw::c_int>;
+pub type sd_bus_node_enumerator_t =
+    ::std::option::Option<unsafe extern "C" fn(bus: *mut sd_bus,
+                                               prefix:
+                                                   *const ::std::os::raw::c_char,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void,
+                                               ret_nodes:
+                                                   *mut *mut *mut ::std::os::raw::c_char,
+                                               ret_error: *mut sd_bus_error)
+                              -> ::std::os::raw::c_int>;
+pub type sd_bus_track_handler_t =
+    ::std::option::Option<unsafe extern "C" fn(track: *mut sd_bus_track,
+                                               userdata:
+                                                   *mut ::std::os::raw::c_void)
+                              -> ::std::os::raw::c_int>;
 
 #[repr(C)]
 pub struct sd_bus_error {
