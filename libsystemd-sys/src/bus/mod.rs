@@ -2,7 +2,9 @@ use super::{c_char,c_int,c_void,uid_t,gid_t,pid_t,size_t,c_uint};
 use super::id128::sd_id128_t;
 use super::const_iovec;
 use super::event::sd_event;
-use super::bus_vtable::sd_bus_vtable;
+
+pub mod vtable;
+pub use self::vtable::sd_bus_vtable;
 
 pub type sd_bus = c_void;
 pub type sd_bus_message = c_void;
@@ -10,8 +12,6 @@ pub type sd_bus_slot = c_void;
 pub type sd_bus_creds = c_void;
 pub type sd_bus_track = c_void;
 
-pub mod vtable;
-pub use self::vtable::sd_bus_vtable;
 
 pub type sd_bus_message_handler_t =
     Option<unsafe extern "C" fn(m: *mut sd_bus_message,
