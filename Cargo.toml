@@ -7,6 +7,9 @@ license = "LGPL-2.1+"
 description = "A rust interface to libsystemd provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 
+[features]
+bus = ["libsystemd-sys/bus"]
+
 [dependencies]
 log = "0.*"
 libc = "0.*"

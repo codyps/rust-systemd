@@ -5,7 +5,7 @@ pub use std::io::{Result, Error};
 
 /// An analogue of `try!()` for systemd FFI calls.
 ///
-/// The parameter should be a call to a systemd FFI fn with an i32 return
+/// The parameter should be a call to a systemd FFI fn with an c_int return
 /// value. It is called, and if the return is negative then `sd_try!()`
 /// interprets it as an error code and returns IoError from the enclosing fn.
 /// Otherwise, the value of `sd_try!()` is the non-negative value returned by
@@ -13,10 +13,20 @@ pub use std::io::{Result, Error};
 #[macro_export]
 macro_rules! sd_try {
     ($e:expr) => ({
-        let ret: i32;
-        unsafe {
-            ret = $e;
+        let ret : $crate::ffi::c_int = unsafe { $e };
+        if ret < 0 {
+            return Err($crate::Error::from_raw_os_error(-ret));
         }
+        ret
+    })
+}
+
+/// An analogue of `try!()` for systemd FFI calls.
+///
+/// This is a variant of `sd_try!()` with the internal unsafe{} usage removed
+macro_rules! sd_try_unsafe {
+    ($e:expr) => ({
+        let ret : $crate::ffi::c_int = $e;
         if ret < 0 {
             return Err($crate::Error::from_raw_os_error(-ret));
         }
@@ -66,3 +76,6 @@ pub mod daemon;
 /// API for working with 128-bit ID values, which are a generalizastion of OSF UUIDs (see `man 3
 /// sd-id128` for details
 pub mod id128;
+
+#[cfg(feature = "bus")]
+pub mod bus;
