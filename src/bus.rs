@@ -390,6 +390,29 @@ impl Error {
     {
         transmute(p)
     }
+
+    pub fn new() -> Error {
+        Error { inner: ffi::bus::sd_bus_error {
+            name: ptr::null(),
+            message: ptr::null(),
+            need_free: 0
+        }}
+    }
+
+    pub fn set<T: AsRef<CStr>, S: AsRef<CStr>>(&mut self, name: &T, message: &S) -> super::Result<()>
+    {
+        unsafe { ffi::bus::sd_bus_error_free(&mut self.inner) }
+        sd_try!(ffi::bus::sd_bus_error_set(&mut self.inner, name.as_ref().as_ptr(), message.as_ref().as_ptr()));
+        Ok(())
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_error {
+        &mut self.inner
+    }
+
+    fn as_ptr(&self) -> *const ffi::bus::sd_bus_error {
+        &self.inner
+    }
 }
 
 impl Drop for Error {
@@ -404,6 +427,14 @@ impl Clone for Error {
         unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
         e
     }
+}
+
+#[test]
+fn t_error() {
+    use std::ffi::CString;
+    let name = CString::new("name").unwrap();
+    let message = CString::new("error").unwrap();
+    Error::new().set(&name, &message).err().unwrap();
 }
 
 //type MessageHandler<T> = fn(Message, &mut T, &mut Error) -> c_int;
@@ -427,12 +458,11 @@ impl Bus {
     unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
         Bus { raw: r }
     }
+    */
 
     unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
-        unsafe { ffi::bus::sd_bus_ref(r) };
-        Bus { raw: r }
+        Bus { raw: unsafe { ffi::bus::sd_bus_ref(r) } }
     }
-    */
 
     fn as_ptr(&mut self) -> *mut ffi::bus::sd_bus {
         self.raw
@@ -485,12 +515,14 @@ impl Bus {
     }
 
     /* TODO: consider using a guard object for name handling */
+    /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn request_name(&self, name: BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(self.raw,
                     &*name as *const _ as *const _, flags));
         Ok(())
     }
 
+    /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn release_name(&self, name: BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_release_name(self.raw,
                     &*name as *const _ as *const _));
@@ -522,12 +554,41 @@ impl Bus {
         })
     }
 
+    pub fn send_no_reply(&self, mut message: Message) -> super::Result<()> {
+        sd_try!(ffi::bus::sd_bus_send(self.raw, message.as_mut_ptr(), ptr::null_mut()));
+        Ok(())
+    }
+
     pub fn send_to(&self, mut message: Message, dest: BusName) -> super::Result<u64> {
         Ok(unsafe {
             let mut c = uninitialized();
             sd_try!(ffi::bus::sd_bus_send_to(self.raw, message.as_mut_ptr(), &*dest as *const _ as *const _, &mut c));
             c
         })
+    }
+
+    pub fn send_to_no_reply(&self, mut message: Message, dest: BusName) -> super::Result<()> {
+        sd_try!(ffi::bus::sd_bus_send_to(self.raw, message.as_mut_ptr(), &*dest as *const _ as *const _, ptr::null_mut()));
+        Ok(())
+    }
+
+    pub fn call(&self, mut message: Message, usec: u64, error: &mut Error) -> super::Result<Message>
+    {
+        Ok(unsafe {
+            let mut m = uninitialized();
+            sd_try!(ffi::bus::sd_bus_call(self.raw, message.as_mut_ptr(), usec, error.as_mut_ptr(), &mut m));
+            /* XXX: is refcounting on m correct? */
+            Message::from_ptr(m)
+        })
+    }
+
+    pub fn call_async<F: FnMut(Message, &mut Error) -> c_int>(
+        &self, mut message: Message, callback: &mut F, usec: u64) -> super::Result<()>
+    {
+        let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
+            raw_message_handler::<F>;
+        sd_try!(ffi::bus::sd_bus_call_async(self.raw, ptr::null_mut(), message.as_mut_ptr(), Some(f), callback as *mut _ as *mut _, usec));
+        Ok(())
     }
 
     pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()>
@@ -548,6 +609,15 @@ impl Bus {
         Ok(())
     }
     */
+
+    // emit_signal
+    // emit_properties_changed
+    // emit_object_added
+    // emit_object_removed
+    // emit_interfaces_added
+    // emit_interfaces_removed
+
+    // track
 }
 
 impl AsRawFd for Bus {
@@ -569,6 +639,28 @@ impl Clone for Bus {
 }
 
 /*
+extern "C" fn raw_track_handler<F: FnMut(Track) -> c_int>(
+    track: *mut ffi::bus::sd_bus_track, userdata: *mut c_void) -> c_int
+{
+    let m : &mut F = unsafe { transmute(userdata) };
+    m(Track::from_ptr(track))
+}
+
+pub struct Track {
+    raw: *mut ffi::bus::sd_bus_track
+}
+
+impl Track {
+    unsafe fn from_ptr(track: *mut ff::bus::sd_bus_track) {
+        Track { raw: unsafe { ffi::bus::sd_bus_tracK_ref(tracK) } }
+    }
+
+    fn new<F: FnMut(Track)>(bus: &mut Bus, handler: F) -> super::Result<Track> {
+    }
+}
+*/
+
+/*
  * TODO: determine if the lifetime of a message is tied to the lifetime of the bus used to create
  * it
  */
@@ -577,11 +669,17 @@ pub struct Message {
 }
 
 impl Message {
+    /**
+     * Construct a Message, taking over an already existing reference count on the provided pointer
+     */
     unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
     {
         Message { raw: p }
     }
 
+    /**
+     * Construct a Message, adding a new reference count on the provided pointer
+     */
     unsafe fn from_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
     {
         Message { raw: ffi::bus::sd_bus_message_ref(p) }
@@ -591,11 +689,48 @@ impl Message {
         unsafe {
             let mut m = uninitialized();
             sd_try!(ffi::bus::sd_bus_message_new_signal(bus.as_ptr(), &mut m,
-                path.as_ptr() as *const _, interface.as_ptr() as *const _,
+                path.as_ptr() as *const _,
+                interface.as_ptr() as *const _,
                 member.as_ptr() as *const _));
             Ok(Message::take_ptr(m))
         }
     }
+
+    pub fn new_method_call(bus: &mut Bus, dest: BusName, path: ObjectPath, interface: InterfaceName, member: MemberName)
+        -> super::Result<Message> {
+        unsafe {
+            let mut m = uninitialized();
+            sd_try!(ffi::bus::sd_bus_message_new_method_call(bus.as_ptr(), &mut m,
+                &*dest as *const _ as *const _,
+                &*path as *const _ as *const _,
+                &*interface as *const _ as *const _,
+                &*member as *const _ as *const _));
+            Ok(Message::take_ptr(m))
+        }
+    }
+
+    pub fn new_method_error(bus: &mut Bus, error: &Error)
+        -> super::Result<Message> {
+        unsafe {
+            let mut m = uninitialized();
+            sd_try!(ffi::bus::sd_bus_message_new_method_error(bus.as_ptr(), &mut m,
+                error.as_ptr()));
+            Ok(Message::take_ptr(m))
+        }
+    }
+
+
+    pub fn new_method_return(bus: &mut Bus) -> super::Result<Message> {
+        unsafe {
+            let mut m = uninitialized();
+            sd_try!(ffi::bus::sd_bus_message_new_method_return(bus.as_ptr(), &mut m));
+            Ok(Message::take_ptr(m))
+        }
+    }
+
+    // # constructors
+    // new_method_error
+    // new_method_errno
 
     pub fn set_destination(&self, dest: BusName) -> super::Result<()>
     {
@@ -616,6 +751,54 @@ impl Message {
         forget(self);
         r
     }
+
+    fn bus(&self) -> Bus
+    {
+        /* TODO: Should return a BusRef */
+        unsafe { Bus::from_ptr(ffi::bus::sd_bus_message_get_bus(self.raw)) }
+    }
+
+    // # properties
+    // type
+    // cookie
+    // reply_cookie
+    // priority
+    // expect_reply
+    // auto_start
+    // allow_interactive_authorization
+    // signature
+    // path
+    // interface
+    // member
+    // destination
+    // sender
+    // error
+    // errno
+    // monotonic_usec
+    // realtime_usec
+    // seqnum
+
+    // is_signal
+    // is_method_call
+    // is_method_error
+    // is_empty
+    // has_signature
+
+    pub fn send(self) -> super::Result<u64> {
+        self.bus().send(self)
+    }
+
+    pub fn send_no_reply(self) -> super::Result<()> {
+        self.bus().send_no_reply(self)
+    }
+
+    pub fn send_to(self, dest: BusName) -> super::Result<u64> {
+        self.bus().send_to(self, dest)
+    }
+
+    pub fn send_to_no_reply(self, dest: BusName) -> super::Result<()> {
+        self.bus().send_to_no_reply(self, dest)
+    }
 }
 
 impl Drop for Message {
@@ -629,7 +812,6 @@ impl Clone for Message {
         Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.raw) } }
     }
 }
-
 
 /*
 struct BusRef<'a> {
