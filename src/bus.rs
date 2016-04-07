@@ -784,20 +784,36 @@ impl Message {
     // is_empty
     // has_signature
 
-    pub fn send(self) -> super::Result<u64> {
-        self.bus().send(self)
+    pub fn send(&mut self) -> super::Result<u64> {
+        // self.bus().send(self)
+        unsafe {
+            let mut m = uninitialized();
+            sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), &mut m));
+            Ok(m)
+        }
     }
 
-    pub fn send_no_reply(self) -> super::Result<()> {
-        self.bus().send_no_reply(self)
+    pub fn send_no_reply(&mut self) -> super::Result<()> {
+        // self.bus().send_no_reply(self)
+        sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), ptr::null_mut()));
+        Ok(())
     }
 
-    pub fn send_to(self, dest: BusName) -> super::Result<u64> {
-        self.bus().send_to(self, dest)
+    pub fn send_to(&mut self, dest: BusName) -> super::Result<u64> {
+        // self.bus().send_to(self, dest)
+        unsafe {
+            let mut c = uninitialized();
+            sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
+                &*dest as *const _ as *const _, &mut c));
+            Ok(c)
+        }
     }
 
-    pub fn send_to_no_reply(self, dest: BusName) -> super::Result<()> {
-        self.bus().send_to_no_reply(self, dest)
+    pub fn send_to_no_reply(&mut self, dest: BusName) -> super::Result<()> {
+        // self.bus().send_to_no_reply(self, dest)
+        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
+            &*dest as *const _ as *const _, ptr::null_mut()));
+        Ok(())
     }
 }
 
