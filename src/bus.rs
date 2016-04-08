@@ -7,6 +7,15 @@ use std::ptr;
 use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
 use std::borrow::{Borrow,BorrowMut};
+use std::result;
+
+/**
+ * Result type for dbus calls that contains errors returned by remote services.
+ *
+ * Most often, this will be encapsulated in the systemd::Result type (a std::io::Result alias)
+ * which knows about other failure types
+ */
+pub type Result<T> = result::Result<T, Error>;
 
 /**
  * A wrapper which promises it always holds a valid dbus object path
@@ -31,7 +40,7 @@ impl<'a> ObjectPath<'a> {
      *  A trailing '/' character is not allowed unless the path is the root path
      * sd-bus additionally requires nul ('\0') termination of paths.
      */
-    pub fn from_bytes(b: &[u8]) -> Result<ObjectPath, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<ObjectPath, &'static str> {
 
 
         if b.len() < 1 {
@@ -119,7 +128,7 @@ impl<'a> InterfaceName<'a> {
      *  Interface names must not being with a '.' character
      * sd-bus additionally requires nul ('\0') termination of the interface name.
      */
-    pub fn from_bytes(b: &[u8]) -> Result<InterfaceName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<InterfaceName, &'static str> {
 
         if b.len() < 1 {
             return Err("Name must have more than 0 characters");
@@ -223,7 +232,7 @@ impl<'a> BusName<'a> {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> Result<BusName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<BusName, &'static str> {
 
         if b.len() < 1 {
             return Err("Name must have more than 0 characters");
@@ -327,7 +336,7 @@ impl<'a> MemberName<'a> {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> Result<MemberName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<MemberName, &'static str> {
 
         if b.len() < 2 {
             return Err("Name must have more than 0 characters");
@@ -408,6 +417,10 @@ impl Error {
         Ok(())
     }
 
+    pub fn is_set(&self) -> bool {
+        !self.inner.name.is_null()
+    }
+
     fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_error {
         &mut self.inner
     }
@@ -438,6 +451,19 @@ fn t_error() {
     let message = CString::new("error").unwrap();
     Error::new().set(&name, &message).err().unwrap();
 }
+
+trait ToSdBusMessage {
+    // type signature?
+    // function to do append?
+    // Do we need a ToOwned bit? Check ToSql
+    fn to_message(&self, m: &mut MessageRef) -> super::Result<()>;
+}
+
+trait FromSdBusMessage {
+    fn from_message(m: &mut MessageRef) -> super::Result<Self>
+        where Self: Sized;
+}
+
 
 //type MessageHandler<T> = fn(Message, &mut T, &mut Error) -> c_int;
 //type MessageHandler = FnMut(Message, Error) -> c_int;
@@ -644,28 +670,6 @@ impl BusRef {
                 ptr::null_mut(),
                 &*path as *const _ as *const _,
                 Some(f), cb as *mut _ as *mut _));
-        Ok(())
-    }
-
-    pub fn call(&self, message: &mut MessageRef, usec: u64, error: &mut Error) -> super::Result<Message>
-    {
-        Ok(unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_call(self.as_ptr(), message.as_mut_ptr(), usec, error.as_mut_ptr(), &mut m));
-            /* XXX: is refcounting on m correct? */
-            Message::take_ptr(m)
-        })
-    }
-
-    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
-        &self, message: &mut MessageRef, callback: &mut F, usec: u64) -> super::Result<()>
-    {
-        let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
-            raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_call_async(self.as_ptr(),
-            ptr::null_mut(),
-            message.as_mut_ptr(),
-            Some(f), callback as *mut _ as *mut _, usec));
         Ok(())
     }
 
@@ -886,6 +890,30 @@ impl MessageRef {
         // self.bus().send_to_no_reply(self, dest)
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
             &*dest as *const _ as *const _, ptr::null_mut()));
+        Ok(())
+    }
+
+    pub fn call(&mut self, usec: u64) -> super::Result<Result<Message>>
+    {
+        let mut r = unsafe { uninitialized() };
+        let mut e = Error::new();
+        sd_try!(ffi::bus::sd_bus_call(ptr::null_mut(), self.as_mut_ptr(),
+            usec, e.as_mut_ptr(), &mut r));
+
+        if e.is_set() {
+            Ok(Err(e))
+        } else {
+            Ok(Ok(unsafe { Message::take_ptr(r) }))
+        }
+    }
+
+    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
+        &mut self, callback: &mut F, usec: u64) -> super::Result<()>
+    {
+        let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
+            raw_message_handler::<F>;
+        sd_try!(ffi::bus::sd_bus_call_async(ptr::null_mut(), ptr::null_mut(),
+            self.as_mut_ptr(), Some(f), callback as *mut _ as *mut _, usec));
         Ok(())
     }
 }
