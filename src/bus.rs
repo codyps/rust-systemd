@@ -498,7 +498,7 @@ impl Bus {
 impl<'a> Borrow<BusRef<'a>> for Bus
     where Bus: 'a
 {
-    fn borrow<'b: 'a>(&'b self) -> &'b BusRef<'a> {
+    fn borrow(&self) -> &BusRef<'a> {
         unsafe { transmute(&self) }
     }
 }
@@ -524,9 +524,15 @@ pub struct BusRef<'a> {
 impl<'a> ToOwned for BusRef<'a> {
     type Owned = Bus;
     fn to_owned(&self) -> Self::Owned {
-        Bus::from_ptr(self.raw)
+        unsafe { Bus::from_ptr(self.raw) }
     }
 }
+
+/*
+impl<'a> Clone for BusRef<'a> {
+    fn clone(&self) -> 
+}
+*/
 
 impl<'a> BusRef<'a> {
     unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> BusRef<'a> {
