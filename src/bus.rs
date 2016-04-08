@@ -4,9 +4,9 @@ use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
 use std::mem::{uninitialized, transmute, forget};
 use std::ptr;
-use std::ops::Deref;
+use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
-use std::borrow::Borrow;
+use std::borrow::{Borrow,BorrowMut};
 
 /**
  * A wrapper which promises it always holds a valid dbus object path
@@ -388,7 +388,7 @@ pub struct Error {
 }
 
 impl Error {
-    unsafe fn from_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error
+    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error
     {
         transmute(p)
     }
@@ -442,13 +442,13 @@ fn t_error() {
 //type MessageHandler<T> = fn(Message, &mut T, &mut Error) -> c_int;
 //type MessageHandler = FnMut(Message, Error) -> c_int;
 
-extern "C" fn raw_message_handler<F: FnMut(Message, &mut Error) -> c_int>(
+extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,
     ret_error: *mut ffi::bus::sd_bus_error) -> c_int
 {
     let m : &mut F = unsafe { transmute(userdata) };
-    unsafe { m(Message::from_ptr(msg), Error::from_ptr(ret_error)) }
+    unsafe { m(MessageRef::from_mut_ptr(msg), Error::from_mut_ptr(ret_error)) }
 }
 
 pub struct Bus {
@@ -602,7 +602,6 @@ impl BusRef {
         }
     }
 
-
     pub fn new_method_return(&mut self) -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
@@ -610,6 +609,8 @@ impl BusRef {
             Ok(Message::take_ptr(m))
         }
     }
+
+    // new_method_errno
 
     /* TODO: consider using a guard object for name handling */
     /// This blocks. To get async behavior, use 'call_async' directly.
@@ -635,7 +636,7 @@ impl BusRef {
      *  - cb: &FnMut
      *  - cb: &CustomTrait
      */
-    pub fn add_object<F: FnMut(Message, &mut Error)->c_int>(&self, path: ObjectPath, cb: &mut F) -> super::Result<()>
+    pub fn add_object<F: FnMut(&mut MessageRef, &mut Error)->c_int>(&self, path: ObjectPath, cb: &mut F) -> super::Result<()>
     {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
             raw_message_handler::<F>;
@@ -646,18 +647,18 @@ impl BusRef {
         Ok(())
     }
 
-    pub fn call(&self, mut message: Message, usec: u64, error: &mut Error) -> super::Result<Message>
+    pub fn call(&self, message: &mut MessageRef, usec: u64, error: &mut Error) -> super::Result<Message>
     {
         Ok(unsafe {
             let mut m = uninitialized();
             sd_try!(ffi::bus::sd_bus_call(self.as_ptr(), message.as_mut_ptr(), usec, error.as_mut_ptr(), &mut m));
             /* XXX: is refcounting on m correct? */
-            Message::from_ptr(m)
+            Message::take_ptr(m)
         })
     }
 
-    pub fn call_async<F: FnMut(Message, &mut Error) -> c_int>(
-        &self, mut message: Message, callback: &mut F, usec: u64) -> super::Result<()>
+    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
+        &self, message: &mut MessageRef, callback: &mut F, usec: u64) -> super::Result<()>
     {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
             raw_message_handler::<F>;
@@ -733,55 +734,101 @@ pub struct Message {
     raw: *mut ffi::bus::sd_bus_message
 }
 
-pub struct MessageRef<'a> {
-    life: PhantomData<&'a Message>,
-    raw: *mut ffi::bus::sd_bus_message,
+pub struct MessageRef {
+    _empty: ()
 }
 
 impl Message {
     /**
      * Construct a Message, taking over an already existing reference count on the provided pointer
+     *
+     * To construct a Message from an un-owned pointer, use MessageRef::from_ptr(p).to_owned()
      */
     unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
     {
         Message { raw: p }
     }
 
-    /**
-     * Construct a Message, adding a new reference count on the provided pointer
-     */
-    unsafe fn from_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
-    {
-        Message { raw: ffi::bus::sd_bus_message_ref(p) }
-    }
-
-    // # constructors
-    // new_method_error
-    // new_method_errno
-
-    pub fn set_destination(&self, dest: BusName) -> super::Result<()>
-    {
-        sd_try!(ffi::bus::sd_bus_message_set_destination(self.raw, &*dest as *const _ as *const _));
-        Ok(())
-    }
-
-    fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
-        self.raw
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
-        self.raw
-    }
-
-    fn into_ptr(self) -> *mut ffi::bus::sd_bus_message {
-        let r = self.raw;
+    fn into_ptr(mut self) -> *mut ffi::bus::sd_bus_message {
+        let r = self.as_mut_ptr();
         forget(self);
         r
     }
+}
 
-    fn bus(&self) -> &BusRef
+impl Drop for Message {
+    fn drop(&mut self) {
+        unsafe { ffi::bus::sd_bus_message_unref(self.raw) };
+    }
+}
+
+impl Clone for Message {
+    fn clone(&self) -> Message {
+        Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.raw) } }
+    }
+}
+
+impl Deref for Message {
+    type Target = MessageRef;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { MessageRef::from_ptr(self.raw) }
+    }
+}
+
+impl DerefMut for Message {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { MessageRef::from_mut_ptr(self.raw) }
+    }
+}
+
+impl Borrow<MessageRef> for Message {
+    fn borrow(&self) -> &MessageRef {
+        self.deref()
+    }
+}
+
+impl BorrowMut<MessageRef> for Message {
+    fn borrow_mut(&mut self) -> &mut MessageRef {
+        self.deref_mut()
+    }
+}
+
+impl ToOwned for MessageRef {
+    type Owned = Message;
+    fn to_owned(&self) -> Self::Owned {
+        Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.as_ptr() as *mut _) } }
+    }
+}
+
+impl MessageRef {
+    unsafe fn from_ptr<'a>(p: *const ffi::bus::sd_bus_message) -> &'a MessageRef {
+        unsafe { transmute(p) }
+    }
+
+    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_message) -> &'a mut MessageRef {
+        unsafe { transmute(p) }
+    }
+
+    fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
+        unsafe { transmute(self) }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
+        unsafe { transmute(self) }
+    }
+
+    pub fn set_destination(&mut self, dest: BusName) -> super::Result<()>
     {
-        unsafe { BusRef::from_ptr(ffi::bus::sd_bus_message_get_bus(self.raw)) }
+        sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(), &*dest as *const _ as *const _));
+        Ok(())
+    }
+
+    /* FIXME: unclear that the mut handling is correct in all of this code (not just this function)
+     * */
+    pub fn bus(&self) -> &mut BusRef
+    {
+        unsafe { BusRef::from_mut_ptr(ffi::bus::sd_bus_message_get_bus(self.as_ptr() as *mut _)) }
     }
 
     // # properties
@@ -840,18 +887,6 @@ impl Message {
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
             &*dest as *const _ as *const _, ptr::null_mut()));
         Ok(())
-    }
-}
-
-impl Drop for Message {
-    fn drop(&mut self) {
-        unsafe { ffi::bus::sd_bus_message_unref(self.raw) };
-    }
-}
-
-impl Clone for Message {
-    fn clone(&self) -> Message {
-        Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.raw) } }
     }
 }
 
