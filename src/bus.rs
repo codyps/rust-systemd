@@ -484,10 +484,6 @@ impl Bus {
         Bus { raw: unsafe { ffi::bus::sd_bus_ref(r) } }
     }
 
-    pub fn borrow(&self) -> BusRef {
-        unsafe { transmute(self.raw) }
-    }
-
     /*
     unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
         Bus { raw: r }
@@ -495,11 +491,16 @@ impl Bus {
     */
 }
 
-impl<'a> Borrow<BusRef<'a>> for Bus
-    where Bus: 'a
-{
-    fn borrow(&self) -> &BusRef<'a> {
-        unsafe { transmute(&self) }
+impl Borrow<BusRef> for Bus {
+    fn borrow(&self) -> &BusRef {
+        unsafe { BusRef::from_ptr(self.as_ptr()) }
+    }
+}
+
+impl Deref for Bus {
+    type Target = BusRef;
+    fn deref(&self) -> &Self::Target {
+        self.borrow()
     }
 }
 
@@ -516,62 +517,60 @@ impl Clone for Bus {
 }
 
 #[derive(Debug)]
-pub struct BusRef<'a> {
-    raw: *mut ffi::bus::sd_bus,
-    life: PhantomData<&'a Bus>,
+pub struct BusRef {
+    _empty: ()
 }
 
-impl<'a> ToOwned for BusRef<'a> {
+impl ToOwned for BusRef {
     type Owned = Bus;
     fn to_owned(&self) -> Self::Owned {
-        unsafe { Bus::from_ptr(self.raw) }
+        unsafe { Bus::from_ptr(self.as_ptr()) }
     }
 }
 
-/*
-impl<'a> Clone for BusRef<'a> {
-    fn clone(&self) -> 
-}
-*/
-
-impl<'a> BusRef<'a> {
-    unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> BusRef<'a> {
-        BusRef {
-            life: PhantomData,
-            raw: r
-        }
+impl BusRef {
+    unsafe fn from_ptr<'a>(r: *const ffi::bus::sd_bus) -> &'a BusRef {
+        transmute(r)
     }
 
-    fn as_ptr(&mut self) -> *mut ffi::bus::sd_bus {
-        self.raw
+    unsafe fn from_mut_ptr<'a>(r: *mut ffi::bus::sd_bus) -> &'a mut BusRef {
+        transmute(r)
+    }
+
+    pub fn to_owned(&self) -> Bus {
+        unsafe { Bus::from_ptr(self.as_ptr()) }
+    }
+
+    fn as_ptr(&self) -> *mut ffi::bus::sd_bus {
+        unsafe { transmute(self) }
     }
 
     pub fn events(&self) -> super::Result<c_int> {
-        Ok(sd_try!(ffi::bus::sd_bus_get_events(self.raw)))
+        Ok(sd_try!(ffi::bus::sd_bus_get_events(self.as_ptr())))
     }
 
     pub fn timeout(&self) -> super::Result<u64> {
         Ok(unsafe {
             let mut b = uninitialized();
-            sd_try!(ffi::bus::sd_bus_get_timeout(self.raw, &mut b));
+            sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), &mut b));
             b
         })
     }
 
     pub fn fd(&self) -> super::Result<c_int> {
-        Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.raw)))
+        Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.as_ptr())))
     }
 
     pub fn unique_name(&self) -> super::Result<BusName> {
         let mut e = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_get_unique_name(self.raw, &mut e));
+        sd_try!(ffi::bus::sd_bus_get_unique_name(self.as_ptr(), &mut e));
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
     pub fn new_signal(&mut self, path: ObjectPath, interface: InterfaceName, member: MemberName) -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_signal(self.raw, &mut m,
+            sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(), &mut m,
                 path.as_ptr() as *const _,
                 interface.as_ptr() as *const _,
                 member.as_ptr() as *const _));
@@ -583,7 +582,7 @@ impl<'a> BusRef<'a> {
         -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_call(self.raw, &mut m,
+            sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(), &mut m,
                 &*dest as *const _ as *const _,
                 &*path as *const _ as *const _,
                 &*interface as *const _ as *const _,
@@ -597,7 +596,7 @@ impl<'a> BusRef<'a> {
         -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_error(self.raw, &mut m,
+            sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m,
                 error.as_ptr()));
             Ok(Message::take_ptr(m))
         }
@@ -607,7 +606,7 @@ impl<'a> BusRef<'a> {
     pub fn new_method_return(&mut self) -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_return(self.raw, &mut m));
+            sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), &mut m));
             Ok(Message::take_ptr(m))
         }
     }
@@ -615,14 +614,14 @@ impl<'a> BusRef<'a> {
     /* TODO: consider using a guard object for name handling */
     /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn request_name(&self, name: BusName, flags: u64) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_request_name(self.raw,
+        sd_try!(ffi::bus::sd_bus_request_name(self.as_ptr(),
                     &*name as *const _ as *const _, flags));
         Ok(())
     }
 
     /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn release_name(&self, name: BusName) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_release_name(self.raw,
+        sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(),
                     &*name as *const _ as *const _));
         Ok(())
     }
@@ -640,7 +639,10 @@ impl<'a> BusRef<'a> {
     {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
             raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_add_object(self.raw, ptr::null_mut(), &*path as *const _ as *const _, Some(f), cb as *mut _ as *mut _));
+        sd_try!(ffi::bus::sd_bus_add_object(self.as_ptr(),
+                ptr::null_mut(),
+                &*path as *const _ as *const _,
+                Some(f), cb as *mut _ as *mut _));
         Ok(())
     }
 
@@ -648,7 +650,7 @@ impl<'a> BusRef<'a> {
     {
         Ok(unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_call(self.raw, message.as_mut_ptr(), usec, error.as_mut_ptr(), &mut m));
+            sd_try!(ffi::bus::sd_bus_call(self.as_ptr(), message.as_mut_ptr(), usec, error.as_mut_ptr(), &mut m));
             /* XXX: is refcounting on m correct? */
             Message::from_ptr(m)
         })
@@ -659,13 +661,16 @@ impl<'a> BusRef<'a> {
     {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
             raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_call_async(self.raw, ptr::null_mut(), message.as_mut_ptr(), Some(f), callback as *mut _ as *mut _, usec));
+        sd_try!(ffi::bus::sd_bus_call_async(self.as_ptr(),
+            ptr::null_mut(),
+            message.as_mut_ptr(),
+            Some(f), callback as *mut _ as *mut _, usec));
         Ok(())
     }
 
     pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()>
     {
-        sd_try!(ffi::bus::sd_bus_add_object_manager(self.raw, ptr::null_mut(), &*path as *const _ as *const _));
+        sd_try!(ffi::bus::sd_bus_add_object_manager(self.as_ptr(), ptr::null_mut(), &*path as *const _ as *const _));
         Ok(())
     }
 
@@ -692,7 +697,7 @@ impl<'a> BusRef<'a> {
     // track
 }
 
-impl<'a> AsRawFd for BusRef<'a> {
+impl AsRawFd for BusRef {
     fn as_raw_fd(&self) -> c_int {
         self.fd().unwrap()
     }
@@ -774,7 +779,7 @@ impl Message {
         r
     }
 
-    fn bus(&self) -> BusRef
+    fn bus(&self) -> &BusRef
     {
         unsafe { BusRef::from_ptr(ffi::bus::sd_bus_message_get_bus(self.raw)) }
     }
