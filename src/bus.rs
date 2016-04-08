@@ -454,20 +454,6 @@ pub struct Bus {
 }
 
 impl Bus {
-    /*
-    unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
-        Bus { raw: r }
-    }
-    */
-
-    unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
-        Bus { raw: unsafe { ffi::bus::sd_bus_ref(r) } }
-    }
-
-    fn as_ptr(&mut self) -> *mut ffi::bus::sd_bus {
-        self.raw
-    }
-
     pub fn default() -> super::Result<Bus> {
         Ok(Bus { raw: unsafe {
             let mut b = uninitialized();
@@ -490,6 +476,35 @@ impl Bus {
             sd_try!(ffi::bus::sd_bus_default_system(&mut b));
             b
         } } )
+    }
+
+    unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
+        Bus { raw: unsafe { ffi::bus::sd_bus_ref(r) } }
+    }
+
+    /*
+    unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
+        Bus { raw: r }
+    }
+    */
+}
+
+pub struct BusRef<'a> {
+    life: PhantomData<&'a ()>,
+    raw: *mut ffi::bus::sd_bus,
+}
+
+impl<'a> BusRef<'a> {
+
+    unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> BusRef<'a> {
+        BusRef {
+            life: PhantomData,
+            raw: r
+        }
+    }
+
+    fn as_ptr(&mut self) -> *mut ffi::bus::sd_bus {
+        self.raw
     }
 
     pub fn events(&self) -> super::Result<c_int> {
@@ -668,6 +683,12 @@ pub struct Message {
     raw: *mut ffi::bus::sd_bus_message
 }
 
+pub struct MessageRef<'a> {
+    life: PhantomData<&'a ()>,
+    raw: *mut ffi::bus::sd_bus_message,
+}
+
+
 impl Message {
     /**
      * Construct a Message, taking over an already existing reference count on the provided pointer
@@ -704,7 +725,8 @@ impl Message {
                 &*dest as *const _ as *const _,
                 &*path as *const _ as *const _,
                 &*interface as *const _ as *const _,
-                &*member as *const _ as *const _));
+                &*member as *const _ as *const _
+            ));
             Ok(Message::take_ptr(m))
         }
     }
@@ -830,16 +852,6 @@ impl Clone for Message {
 }
 
 /*
-struct BusRef<'a> {
-    life: PhantomData<&'a ()>,
-    raw: *mut ffi::bus::sd_bus,
-}
-
-struct MessageRef<'a> {
-    life: PhantomData<&'a ()>,
-    raw: *mut ffi::bus::sd_bus_message,
-}
-
 struct Vtable;
 struct VtableBuilder<T> {
     Vec<ffi::bus::sd_bus_vtable>,
