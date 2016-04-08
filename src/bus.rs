@@ -5,6 +5,8 @@ use std::os::unix::io::AsRawFd;
 use std::mem::{uninitialized, transmute, forget};
 use std::ptr;
 use std::ops::Deref;
+use std::marker::PhantomData;
+use std::borrow::Borrow;
 
 /**
  * A wrapper which promises it always holds a valid dbus object path
@@ -493,9 +495,10 @@ impl Bus {
     */
 }
 
-impl Deref for Bus {
-    type Target = BusRef;
-    fn deref(&self) -> &BusRef {
+impl<'a> Borrow<BusRef<'a>> for Bus
+    where Bus: 'a
+{
+    fn borrow<'b: 'a>(&'b self) -> &'b BusRef<'a> {
         unsafe { transmute(&self) }
     }
 }
@@ -512,7 +515,7 @@ impl Clone for Bus {
     }
 }
 
-#[derive(Copy,Clone,Debug)]
+#[derive(Debug)]
 pub struct BusRef<'a> {
     raw: *mut ffi::bus::sd_bus,
     life: PhantomData<&'a Bus>,
@@ -522,12 +525,6 @@ impl<'a> ToOwned for BusRef<'a> {
     type Owned = Bus;
     fn to_owned(&self) -> Self::Owned {
         Bus::from_ptr(self.raw)
-    }
-}
-
-impl<'a> Borrow<BusRef<'a>> for Bus {
-    fn borrow(&'a self) -> &BusRef<'a> {
-        self.borrow()
     }
 }
 
@@ -594,7 +591,7 @@ impl<'a> BusRef<'a> {
         -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_error(bus.raw, &mut m,
+            sd_try!(ffi::bus::sd_bus_message_new_method_error(self.raw, &mut m,
                 error.as_ptr()));
             Ok(Message::take_ptr(m))
         }
@@ -604,7 +601,7 @@ impl<'a> BusRef<'a> {
     pub fn new_method_return(&mut self) -> super::Result<Message> {
         unsafe {
             let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_return(bus.raw, &mut m));
+            sd_try!(ffi::bus::sd_bus_message_new_method_return(self.raw, &mut m));
             Ok(Message::take_ptr(m))
         }
     }
@@ -689,7 +686,7 @@ impl<'a> BusRef<'a> {
     // track
 }
 
-impl AsRawFd for BusRef {
+impl<'a> AsRawFd for BusRef<'a> {
     fn as_raw_fd(&self) -> c_int {
         self.fd().unwrap()
     }
