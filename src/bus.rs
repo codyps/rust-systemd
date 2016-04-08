@@ -2,10 +2,10 @@ use ffi;
 use ffi::{c_int,c_char,c_void};
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
-use std::mem::{uninitialized, transmute, forget};
+use std::mem::{uninitialized, transmute};
 use std::ptr;
 use std::ops::{Deref,DerefMut};
-use std::marker::PhantomData;
+//use std::marker::PhantomData;
 use std::borrow::{Borrow,BorrowMut};
 use std::result;
 
@@ -491,23 +491,19 @@ impl Bus {
     }
 
     pub fn default_user() -> super::Result<Bus> {
-        Ok(Bus { raw: unsafe {
-            let mut b = uninitialized();
-            sd_try!(ffi::bus::sd_bus_default_user(&mut b));
-            b
-        } } )
+        let mut b = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_default_user(&mut b));
+        Ok(Bus { raw: b })
     }
 
     pub fn default_system() -> super::Result<Bus> {
-        Ok(Bus { raw: unsafe {
-            let mut b = uninitialized();
-            sd_try!(ffi::bus::sd_bus_default_system(&mut b));
-            b
-        } } )
+        let mut b = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_default_system(&mut b));
+        Ok(Bus { raw: b })
     }
 
     unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
-        Bus { raw: unsafe { ffi::bus::sd_bus_ref(r) } }
+        Bus { raw: ffi::bus::sd_bus_ref(r) }
     }
 
     /*
@@ -753,11 +749,13 @@ impl Message {
         Message { raw: p }
     }
 
+    /*
     fn into_ptr(mut self) -> *mut ffi::bus::sd_bus_message {
         let r = self.as_mut_ptr();
         forget(self);
         r
     }
+    */
 }
 
 impl Drop for Message {
@@ -807,11 +805,11 @@ impl ToOwned for MessageRef {
 
 impl MessageRef {
     unsafe fn from_ptr<'a>(p: *const ffi::bus::sd_bus_message) -> &'a MessageRef {
-        unsafe { transmute(p) }
+        transmute(p)
     }
 
     unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_message) -> &'a mut MessageRef {
-        unsafe { transmute(p) }
+        transmute(p)
     }
 
     fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
@@ -907,6 +905,8 @@ impl MessageRef {
         }
     }
 
+    /* XXX: we may need to move this, unclear we have the right lifetime here (we're being to
+     * strict) */
     pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
         &mut self, callback: &mut F, usec: u64) -> super::Result<()>
     {
