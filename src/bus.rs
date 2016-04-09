@@ -464,10 +464,6 @@ trait FromSdBusMessage {
         where Self: Sized;
 }
 
-
-//type MessageHandler<T> = fn(Message, &mut T, &mut Error) -> c_int;
-//type MessageHandler = FnMut(Message, Error) -> c_int;
-
 extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,

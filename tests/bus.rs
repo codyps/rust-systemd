@@ -1,3 +1,5 @@
+#![cfg(feature = "bus")]
+
 extern crate systemd;
 
 use systemd::bus;
