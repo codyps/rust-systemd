@@ -9,6 +9,8 @@ use std::ops::{Deref,DerefMut};
 use std::borrow::{Borrow,BorrowMut};
 use std::result;
 
+pub mod types;
+
 /**
  * Result type for dbus calls that contains errors returned by remote services.
  *
@@ -452,18 +454,6 @@ fn t_error() {
     Error::new().set(&name, &message).err().unwrap();
 }
 
-trait ToSdBusMessage {
-    // type signature?
-    // function to do append?
-    // Do we need a ToOwned bit? Check ToSql
-    fn to_message(&self, m: &mut MessageRef) -> super::Result<()>;
-}
-
-trait FromSdBusMessage {
-    fn from_message(m: &mut MessageRef) -> super::Result<Self>
-        where Self: Sized;
-}
-
 extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,
@@ -479,11 +469,9 @@ pub struct Bus {
 
 impl Bus {
     pub fn default() -> super::Result<Bus> {
-        Ok(Bus { raw: unsafe {
-            let mut b = uninitialized();
-            sd_try!(ffi::bus::sd_bus_default(&mut b));
-            b
-        } } )
+        let mut b = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_default(&mut b));
+        Ok(Bus { raw: b })
     }
 
     pub fn default_user() -> super::Result<Bus> {
@@ -792,6 +780,11 @@ impl BorrowMut<MessageRef> for Message {
     }
 }
 
+/*
+ * Warning: going from a &MessageRef to a Message bypasses some of the borrow checking (allows us
+ * to have multiple mutable references to the same data). This issue is all over the place in
+ * sd-bus.
+ */
 impl ToOwned for MessageRef {
     type Owned = Message;
     fn to_owned(&self) -> Self::Owned {
@@ -855,6 +848,12 @@ impl MessageRef {
     // is_empty
     // has_signature
 
+    /*
+     * send (and it's wrappers below) keeps a reference to the Message, and really wants to own it
+     * (it seals the message against further modification). Ideally we'd make it clearer in the API
+     * that this is the case to prevent folks from accidentally trying to modify a message after
+     * sending it
+     */
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
         unsafe {
