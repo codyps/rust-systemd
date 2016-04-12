@@ -15,5 +15,5 @@ fn call() {
         bus::MemberName::from_bytes(b"GetId\0").unwrap()
     ).unwrap();
 
-    m.call(0).unwrap();
+    m.call(0).unwrap().unwrap();
 }

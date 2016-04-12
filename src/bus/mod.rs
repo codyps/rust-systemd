@@ -1,5 +1,6 @@
 use ffi;
 use ffi::{c_int,c_char,c_void};
+use std::fmt;
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
 use std::mem::{uninitialized, transmute};
@@ -446,6 +447,12 @@ impl Clone for Error {
     }
 }
 
+impl fmt::Debug for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "Error {{ need_free: {:?} }}", self.inner.need_free)
+    }
+}
+
 #[test]
 fn t_error() {
     use std::ffi::CString;
@@ -495,6 +502,14 @@ impl Bus {
         Bus { raw: r }
     }
     */
+
+    fn as_ptr(&self) -> *const ffi::bus::sd_bus {
+        self.raw
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus {
+        self.raw
+    }
 }
 
 impl Borrow<BusRef> for Bus {
@@ -503,10 +518,22 @@ impl Borrow<BusRef> for Bus {
     }
 }
 
+impl BorrowMut<BusRef> for Bus {
+    fn borrow_mut(&mut self) -> &mut BusRef {
+        unsafe { BusRef::from_mut_ptr(self.as_mut_ptr()) }
+    }
+}
+
 impl Deref for Bus {
     type Target = BusRef;
     fn deref(&self) -> &Self::Target {
         self.borrow()
+    }
+}
+
+impl DerefMut for Bus {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.borrow_mut()
     }
 }
 
