@@ -1,3 +1,24 @@
+/**
+ * Define a mechanism for converting types to messages and messages to types
+ *
+ * A few existing models:
+ *
+ * - rust-postgres: defines ToSql and FromSql traits, and has their accessor and creator functions
+ *   take slices of trait objects. rust-postgress is not an ffi lib, so they read directly from a
+ *   Read and write to a Write. For them, each item is associated with a postgres type, so they
+ *   provide a mechanism in ToSql/FromSql to determine if a particular pg-type can decode to a
+ *   given rs-type. Essentially, they allow picking a decoding mechanism based on the pg-type.
+ *
+ * - dbus-rs: defines a MessageItem enum which maps dbus types to rust types. All types are owned
+ *   (so that they can be decoded into). This will result in higher overhead than allowing users to
+ *   perform more direct convertions
+ *
+ * - serde: we could think about our encoding like plain-old serialization/deserialization &
+ *   provide the serde/rustc-serialize interfaces into it. This is probably more work but is
+ *   potentially the most convenient.
+ */
+
+
 use super::MessageRef;
 use super::super::ffi;
 use std::mem::{uninitialized};
