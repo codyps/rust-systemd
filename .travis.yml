@@ -6,9 +6,15 @@ before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y intltool gperf libcap-dev libmount-dev libmount1 realpath
   - ./libsystemd-sys/build-systemd.sh
-env: SYSTEMD_BUILD=1
+
+env: TARGET_ARCH=x86_64 TARGET_VENDOR=-unknown TARGET_OS=linux-gnu FEATURES=bus
+rust:
+  - stable
+  - beta
+  - nightly
 
 script:
-  - cargo build --verbose
-  - cargo test --verbose
-  - cargo doc --verbose
+  - ci/script.sh
+
+after_success:
+  - ci/travis-doc-upload.sh
