@@ -63,11 +63,9 @@ fn build_systemd() {
                 .arg(&jobs)
                 .arg("install"));
 
-    println!("cargo:rustc-flags=-L {}/usr/lib -l systemd:dynamic", &dst.display());
+    println!("cargo:rustc-link-search=native={}/usr/lib", &dst.display());
+    println!("cargo:rustc-link-lib=dynamic=systemd");
     println!("cargo:root={}", &dst.display());
-
-    /* WTF do we need include paths for? */
-    println!("cargo:include={}/include", &dst.display());
 }
 
 fn run(cmd: &mut Command) {
