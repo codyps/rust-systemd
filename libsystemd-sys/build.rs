@@ -2,6 +2,8 @@ extern crate pkg_config;
 use std::{env,fs,ffi};
 use std::path::PathBuf;
 use std::process::{Command,Stdio};
+use std::fs::File;
+use std::io::Write;
 
 fn main() {
     match pkg_config::find_library("libsystemd") {
@@ -25,6 +27,17 @@ fn build_systemd() {
     /* XXX: will running this in src potentially in parallel with other builders cause issues? */
     run(Command::new(&src.join("systemd/autogen.sh"))
                 .current_dir(&src));
+
+    /* lto like breaking things on travis (which is the primary use of this build script), so we'll
+     * disable it using the config-cache
+     *
+     * Based on http://www.linuxfromscratch.org/lfs/view/systemd/chapter06/systemd.html
+     */
+    {
+        let mut cc = File::create(&build.join("config.cache")).unwrap();
+        write!(cc, "cc_cv_CFLAGS__flto=no\n").unwrap();
+    }
+
 
     /* libsystemd doesn't support being built as static, dynamic required */
     run(Command::new(&src.join("systemd/configure"))
