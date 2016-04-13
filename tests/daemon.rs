@@ -11,9 +11,6 @@ fn test_listen_fds() {
 fn test_booted() {
     let result = daemon::booted();
     assert!(result.is_ok());
-    // Assuming that anyone using this library is probably running systemd. Is
-    // that correct?
-    assert!(result.ok().unwrap());
 }
 
 #[test]
