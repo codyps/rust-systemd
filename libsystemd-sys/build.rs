@@ -42,6 +42,7 @@ fn build_systemd() {
     /* libsystemd doesn't support being built as static, dynamic required */
     run(Command::new(&src.join("systemd/configure"))
                 .current_dir(&build)
+                .arg("--config-cache")
                 .arg("--enable-kdbus")
                 .arg("--disable-tests")
                 .arg("--disable-ldconfig")
