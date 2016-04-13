@@ -33,6 +33,8 @@ fn build_systemd() {
                 .arg("--disable-tests")
                 .arg("--disable-ldconfig")
                 .arg("--without-python")
+                .arg("--disable-sysusers")
+                .arg("--disable-firstboot")
                 .arg("--disable-manpages"));
 
     let mut jobs : ffi::OsString = From::from("-j");
