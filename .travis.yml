@@ -1,4 +1,5 @@
 language: rust
+dist: trusty
 install:
   - sudo apt-get install intltool
 env: SYSTEMD_BUILD=1
