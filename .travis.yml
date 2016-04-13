@@ -4,7 +4,7 @@ sudo: required
 before_install:
   - sudo add-apt-repository ppa:pitti/systemd-semaphore -y
   - sudo apt-get -qq update
-  - sudo apt-get install -y intltool gperf libcap-dev libmount-dev libmount1
+  - sudo apt-get install -y intltool gperf libcap-dev libmount-dev libmount1 realpath
   - ./libsystemd-sys/build-systemd.sh
 env: SYSTEMD_BUILD=1
 
