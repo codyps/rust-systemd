@@ -66,7 +66,7 @@ fn build_systemd() {
     println!("cargo:rustc-link-search=native={}/usr/lib", &dst.display());
     println!("cargo:rustc-link-lib=dylib=systemd");
     println!("cargo:root={}", &dst.display());
-    println!("cargo:rustc-link-args=-Wl,-rpath-link={}", &dst.display());
+    println!("cargo:rustc-flags=-C rpath");
 }
 
 fn run(cmd: &mut Command) {
