@@ -2,7 +2,9 @@ language: rust
 dist: trusty
 sudo: required
 before_install:
+  - sudo add-apt-repository ppa:pitti/systemd-semaphore -y
   - sudo apt-get -qq update
+  - sudo apt-get upgrade -y
   - sudo apt-get install -y intltool gperf libcap-dev libmount-dev
 env: SYSTEMD_BUILD=1
 
