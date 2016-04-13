@@ -64,7 +64,7 @@ fn build_systemd() {
                 .arg("install"));
 
     println!("cargo:rustc-link-search=native={}/usr/lib", &dst.display());
-    println!("cargo:rustc-link-lib=dynamic=systemd");
+    println!("cargo:rustc-link-lib=dylib=systemd");
     println!("cargo:root={}", &dst.display());
 }
 
