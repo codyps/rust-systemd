@@ -3,7 +3,7 @@ dist: trusty
 sudo: required
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y intltool gperf libcap-dev
+  - sudo apt-get install -y intltool gperf libcap-dev libmount-dev
 env: SYSTEMD_BUILD=1
 
 script:
