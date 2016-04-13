@@ -15,7 +15,9 @@ cat >>systemd-build/config.cache <<EOF
 cc_cv_CFLAGS__flto=no
 EOF
 
-src="$(realpath --relative-to=./systemd-build "$D"/systemd)"
+# this is not always right, but it is always right for how travis invokes it,
+# which is good enough for now.
+src="../$D/systemd"
 
 cd systemd-build
 "$src/configure" \
