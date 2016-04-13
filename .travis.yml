@@ -1,8 +1,9 @@
 language: rust
 dist: trusty
-apt:
-  packages:
-    - intltool
+sudo: required
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y intltool
 env: SYSTEMD_BUILD=1
 
 script:
