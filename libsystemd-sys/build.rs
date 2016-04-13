@@ -32,7 +32,7 @@ fn build_systemd() {
                 .arg("--enable-kdbus")
                 .arg("--disable-tests")
                 .arg("--disable-ldconfig")
-                .arg("--disable-python")
+                .arg("--without-python")
                 .arg("--disable-manpages"));
 
     let mut jobs : ffi::OsString = From::from("-j");
