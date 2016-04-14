@@ -1,6 +1,11 @@
 rust-systemd
 ============
 
+[Documentation](http://codyps.com/docs/systemd/x86_64-unknown-linux-gnu/stable/systemd/bus/index.html)
+[![Crates.io](https://img.shields.io/crates/v/systemd.svg?maxAge=2592000)](https://crates.io/crates/systemd)
+[![Clippy Linting Result](https://clippy.bashy.io/github/jmesmon/systemd/master/badge.svg)](https://clippy.bashy.io/github/jmesmon/systemd/master/log)
+
+
 In `Cargo.toml`:
 ```toml
 [dependencies.systemd]
