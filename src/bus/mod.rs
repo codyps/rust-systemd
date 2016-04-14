@@ -583,11 +583,9 @@ impl BusRef {
     }
 
     pub fn timeout(&self) -> super::Result<u64> {
-        Ok(unsafe {
-            let mut b = uninitialized();
-            sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), &mut b));
-            b
-        })
+        let mut b = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), &mut b));
+        Ok(b)
     }
 
     pub fn fd(&self) -> super::Result<c_int> {
@@ -601,46 +599,38 @@ impl BusRef {
     }
 
     pub fn new_signal(&mut self, path: ObjectPath, interface: InterfaceName, member: MemberName) -> super::Result<Message> {
-        unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(), &mut m,
-                path.as_ptr() as *const _,
-                interface.as_ptr() as *const _,
-                member.as_ptr() as *const _));
-            Ok(Message::take_ptr(m))
-        }
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(), &mut m,
+            path.as_ptr() as *const _,
+            interface.as_ptr() as *const _,
+            member.as_ptr() as *const _));
+        Ok(unsafe { Message::take_ptr(m) })
     }
 
     pub fn new_method_call(&mut self, dest: BusName, path: ObjectPath, interface: InterfaceName, member: MemberName)
         -> super::Result<Message> {
-        unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(), &mut m,
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(), &mut m,
                 &*dest as *const _ as *const _,
                 &*path as *const _ as *const _,
                 &*interface as *const _ as *const _,
                 &*member as *const _ as *const _
-            ));
-            Ok(Message::take_ptr(m))
-        }
+                ));
+        Ok(unsafe { Message::take_ptr(m) })
     }
 
     pub fn new_method_error(&mut self, error: &Error)
         -> super::Result<Message> {
-        unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m,
-                error.as_ptr()));
-            Ok(Message::take_ptr(m))
-        }
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m,
+            error.as_ptr()));
+        Ok(unsafe { Message::take_ptr(m) })
     }
 
     pub fn new_method_return(&mut self) -> super::Result<Message> {
-        unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), &mut m));
-            Ok(Message::take_ptr(m))
-        }
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), &mut m));
+        Ok(unsafe { Message::take_ptr(m) })
     }
 
     // new_method_errno
@@ -883,11 +873,9 @@ impl MessageRef {
      */
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
-        unsafe {
-            let mut m = uninitialized();
-            sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), &mut m));
-            Ok(m)
-        }
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), &mut m));
+        Ok(m)
     }
 
     pub fn send_no_reply(&mut self) -> super::Result<()> {
@@ -898,12 +886,10 @@ impl MessageRef {
 
     pub fn send_to(&mut self, dest: BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
-        unsafe {
-            let mut c = uninitialized();
-            sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
-                &*dest as *const _ as *const _, &mut c));
-            Ok(c)
-        }
+        let mut c = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
+            &*dest as *const _ as *const _, &mut c));
+        Ok(c)
     }
 
     pub fn send_to_no_reply(&mut self, dest: BusName) -> super::Result<()> {
