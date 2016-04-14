@@ -77,6 +77,15 @@ pub mod daemon;
 /// sd-id128` for details
 pub mod id128;
 
-/// Systemd's interface for working with dbus. Allows both dbus servers and clients to be created
+/// An interface to work with the dbus message bus.
+///
+/// WARNING: this is not complete. Right now we're missing:
+///
+///  - message encoding/decoding
+///  - server support
+///  - async client support
+///
+/// In short, the only functional thing is issuing blocking dbus calls with pre-populated messages
+/// and writing custom ffi decoders of the message replies.
 #[cfg(feature = "bus")]
 pub mod bus;
