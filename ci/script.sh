@@ -10,9 +10,9 @@ export PKG_CONFIG_ALLOW_CROSS=1
 
 run_cargo() {
   if [ -n "$FEATURES" ]; then
-    "$@" --verbose --target="$TARGET" --features="$FEATURES"
+    cargo "$@" --verbose --target="$TARGET" --features="$FEATURES"
   else
-    "$@" --verbose --target="$TARGET"
+    cargo "$@" --verbose --target="$TARGET"
   fi
 }
 
