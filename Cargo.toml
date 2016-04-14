@@ -6,6 +6,7 @@ authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
 description = "A rust interface to libsystemd provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
+documentation = "http://codyps.com/docs/systemd/x86_64-unknown-linux-gnu/stable/systemd/index.html"
 include = ["Cargo.toml", "src/**/*.rs" ]
 
 [features]

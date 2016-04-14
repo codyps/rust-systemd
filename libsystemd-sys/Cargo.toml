@@ -7,6 +7,7 @@ license = "LGPL-2.1+"
 description = "FFI bindings to libsystemd"
 repository = "https://github.com/jmesmon/rust-systemd"
 include = ["Cargo.toml", "src/**/*.rs", "build.rs" ]
+documentation = "http://codyps.com/docs/systemd/x86_64-unknown-linux-gnu/stable/libsystemd_sys/index.html"
 
 # 'links' is purposefully omitted
 build = "build.rs"
