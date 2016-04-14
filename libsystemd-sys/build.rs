@@ -1,9 +1,5 @@
 extern crate pkg_config;
-use std::{env,fs,ffi};
-use std::path::PathBuf;
-use std::process::{Command,Stdio};
-use std::fs::File;
-use std::io::Write;
+use std::env;
 
 fn main() {
     match pkg_config::find_library("libsystemd") {
