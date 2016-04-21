@@ -1,25 +1,23 @@
-use libc::{c_int,size_t};
-use log::{self,Log,LogRecord,LogLocation,SetLoggerError};
-use std::{fmt,ptr,result};
+use log::{self, Log, LogRecord, LogLocation, SetLoggerError};
+use std::{fmt, ptr, result};
 use std::collections::BTreeMap;
 use ffi;
 use super::Result;
+use libc::{self, free, c_int, c_char, size_t};
+use std::ffi::{CString, CStr};
 
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
-pub fn send(args : &[&str]) -> c_int {
+pub fn send(args: &[&str]) -> c_int {
     let iovecs = ffi::array_to_iovecs(args);
     unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
 }
 
 /// Send a simple message to systemd.
-pub fn print(lvl : u32, s : &str) -> c_int {
-    send(&[
-         &format!("PRIORITY={}", lvl),
-         &format!("MESSAGE={}", s)
-    ])
+pub fn print(lvl: u32, s: &str) -> c_int {
+    send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
 
 /// Send a `log::LogRecord` to systemd.
@@ -31,14 +29,12 @@ pub fn log_record(record: &LogRecord) {
     log(lvl, record.location(), record.args());
 }
 
-pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments)
-{
+pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments) {
     send(&[&format!("PRIORITY={}", level),
-        &format!("MESSAGE={}", args),
-        &format!("CODE_LINE={}", loc.line()),
-        &format!("CODE_FILE={}", loc.file()),
-        &format!("CODE_FUNCTION={}", loc.module_path()),
-    ]);
+           &format!("MESSAGE={}", args),
+           &format!("CODE_LINE={}", loc.line()),
+           &format!("CODE_FILE={}", loc.file()),
+           &format!("CODE_FUNCTION={}", loc.module_path())]);
 }
 
 pub struct JournalLog;
@@ -54,9 +50,7 @@ impl Log for JournalLog {
 
 impl JournalLog {
     pub fn init() -> result::Result<(), SetLoggerError> {
-        log::set_logger(|_max_log_level| {
-            Box::new(JournalLog)
-        })
+        log::set_logger(|_max_log_level| Box::new(JournalLog))
     }
 }
 
@@ -66,7 +60,7 @@ pub type JournalRecord = BTreeMap<String, String>;
 ///
 /// Supports read, next, previous, and seek operations.
 pub struct Journal {
-    j: ffi::sd_journal
+    j: ffi::sd_journal,
 }
 
 /// Represents the set of journal files to read.
@@ -76,7 +70,7 @@ pub enum JournalFiles {
     /// The current user's journal.
     CurrentUser,
     /// Both the system-wide journal and the current user's journal.
-    All
+    All,
 }
 
 impl Journal {
@@ -103,7 +97,7 @@ impl Journal {
         flags |= match files {
             JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
             JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
-            JournalFiles::All => 0
+            JournalFiles::All => 0,
         };
 
         let journal = Journal { j: ptr::null_mut() };
@@ -128,7 +122,7 @@ impl Journal {
             unsafe {
                 let b = ::std::slice::from_raw_parts_mut(data, sz as usize);
                 let field = ::std::str::from_utf8_unchecked(b);
-                let mut name_value = field.splitn(1, '=');
+                let mut name_value = field.splitn(2, '=');
                 let name = name_value.next().unwrap();
                 let value = name_value.next().unwrap();
                 ret.insert(From::from(name), From::from(value));
@@ -136,6 +130,32 @@ impl Journal {
         }
 
         Ok(Some(ret))
+    }
+
+    pub fn cursor(&self) -> Result<String> {
+        let mut c_cursor: *mut c_char = ptr::null_mut();
+        let mut cursor: String = "".to_string();
+        if sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor)) == 0 {
+            unsafe {
+                // Cstr should be used for memory allocated by C
+                cursor = CStr::from_ptr(c_cursor as *const _)
+                             .to_string_lossy()
+                             .into_owned();
+
+                free(c_cursor as *mut libc::c_void);
+            }
+        }
+        Ok(cursor)
+    }
+
+    pub fn seek<S>(&self, cursor: S) -> Result<()>
+        where S: Into<String>
+    {
+        let c_position = CString::new(cursor.into());
+        // If no entry matching the specified cursor is found the call will seek to
+        // the next closest entry (in terms of time) instead
+        sd_try!(ffi::sd_journal_seek_cursor(self.j, c_position.unwrap().as_ptr() as *const _));
+        Ok(())
     }
 }
 
@@ -148,4 +168,3 @@ impl Drop for Journal {
         }
     }
 }
-
