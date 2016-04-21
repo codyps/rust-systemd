@@ -1,7 +1,7 @@
-use std::{ptr,collections};
+use std::{ptr, collections};
 use std::os::unix::io::RawFd as Fd;
 use libc::{c_char, c_uint};
-use super::ffi::{c_int,size_t,pid_t};
+use super::ffi::{c_int, size_t, pid_t};
 use libc::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use std::net::TcpListener;
 use ffi::daemon as ffi;
@@ -14,7 +14,7 @@ use std::os::unix::io::FromRawFd;
 pub enum SocketType {
     Stream,
     Datagram,
-    Raw
+    Raw,
 }
 
 /// Options for checking whether a socket is in listening mode
@@ -24,7 +24,7 @@ pub enum Listening {
     /// Verify that socket is not in listening mode
     IsNotListening,
     /// Don't check whether socket is listening
-    NoListeningCheck
+    NoListeningCheck,
 }
 
 /// Number of the first passed file descriptor
@@ -76,7 +76,7 @@ fn get_c_socktype(socktype: Option<SocketType>) -> c_int {
         Some(SocketType::Stream) => SOCK_STREAM,
         Some(SocketType::Datagram) => SOCK_DGRAM,
         Some(SocketType::Raw) => SOCK_RAW,
-        None => 0
+        None => 0,
     }
 }
 
@@ -86,14 +86,18 @@ fn get_c_listening(listening: Listening) -> c_int {
     match listening {
         Listening::IsListening => 1,
         Listening::IsNotListening => 0,
-        Listening::NoListeningCheck => -1
+        Listening::NoListeningCheck => -1,
     }
 }
 
 /// Identifies whether the passed file descriptor is a socket. If family and
 /// type are supplied, they must match as well. See `Listening` for listening
 /// check parameters.
-pub fn is_socket(fd: Fd, family: Option<c_uint>, socktype: Option<SocketType>, listening: Listening) -> Result<bool> {
+pub fn is_socket(fd: Fd,
+                 family: Option<c_uint>,
+                 socktype: Option<SocketType>,
+                 listening: Listening)
+                 -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -105,7 +109,12 @@ pub fn is_socket(fd: Fd, family: Option<c_uint>, socktype: Option<SocketType>, l
 /// Identifies whether the passed file descriptor is an Internet socket. If
 /// family, type, and/or port are supplied, they must match as well. See
 /// `Listening` for listening check parameters.
-pub fn is_socket_inet(fd: Fd, family: Option<c_uint>, socktype: Option<SocketType>, listening: Listening, port: Option<u16>) -> Result<bool> {
+pub fn is_socket_inet(fd: Fd,
+                      family: Option<c_uint>,
+                      socktype: Option<SocketType>,
+                      listening: Listening,
+                      port: Option<u16>)
+                      -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -116,7 +125,11 @@ pub fn is_socket_inet(fd: Fd, family: Option<c_uint>, socktype: Option<SocketTyp
 }
 
 pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
-    if ! try!(is_socket_inet(fd, None, Some(SocketType::Stream), Listening::IsListening, None)) {
+    if !try!(is_socket_inet(fd,
+                            None,
+                            Some(SocketType::Stream),
+                            Listening::IsListening,
+                            None)) {
         Err(Error::new(ErrorKind::InvalidInput, "Socket type was not as expected"))
     } else {
         Ok(unsafe { TcpListener::from_raw_fd(fd) })
@@ -127,7 +140,11 @@ pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
 /// are supplied, it must match as well. For normal sockets, leave the path set
 /// to None; otherwise, pass in the full socket path.  See `Listening` for
 /// listening check parameters.
-pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening, path: Option<&str>) -> Result<bool> {
+pub fn is_socket_unix(fd: Fd,
+                      socktype: Option<SocketType>,
+                      listening: Listening,
+                      path: Option<&str>)
+                      -> Result<bool> {
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_path: *const c_char;
@@ -137,7 +154,7 @@ pub fn is_socket_unix(fd: Fd, socktype: Option<SocketType>, listening: Listening
             let path_cstr = ::std::ffi::CString::new(p.as_bytes()).unwrap();
             c_length = path_cstr.as_bytes().len() as size_t;
             c_path = path_cstr.as_ptr() as *const c_char;
-        },
+        }
         None => {
             c_path = ptr::null();
             c_length = 0;
@@ -177,7 +194,10 @@ pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) 
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify(pid: pid_t, unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
+pub fn pid_notify(pid: pid_t,
+                  unset_environment: bool,
+                  state: collections::HashMap<&str, &str>)
+                  -> Result<bool> {
     let c_state = state_to_c_string(state).as_ptr() as *const c_char;
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state));
     Ok(result != 0)

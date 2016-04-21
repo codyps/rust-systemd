@@ -1,5 +1,6 @@
 extern crate libc;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate libsystemd_sys as ffi;
 pub use std::io::{Result, Error};
 
@@ -39,7 +40,8 @@ macro_rules! sd_try_unsafe {
 #[macro_export]
 macro_rules! char_or_null {
     ($e:expr) => (match $e {
-        Some(p) => ::std::ffi::CString::new(p.as_bytes()).unwrap().as_ptr() as *const ::libc::c_char,
+        Some(p) => ::std::ffi::CString::new(p.as_bytes()).unwrap()
+                                                         .as_ptr() as *const ::libc::c_char,
         None => ptr::null() as *const ::libc::c_char
     })
 }

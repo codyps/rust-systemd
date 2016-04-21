@@ -1,13 +1,13 @@
 use ffi;
-use ffi::{c_int,c_char,c_void};
+use ffi::{c_int, c_char, c_void};
 use std::fmt;
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
 use std::mem::{uninitialized, transmute};
 use std::ptr;
-use std::ops::{Deref,DerefMut};
-//use std::marker::PhantomData;
-use std::borrow::{Borrow,BorrowMut};
+use std::ops::{Deref, DerefMut};
+// use std::marker::PhantomData;
+use std::borrow::{Borrow, BorrowMut};
 use std::result;
 
 pub mod types;
@@ -59,20 +59,24 @@ impl<'a> ObjectPath<'a> {
             let c = w[1];
 
             match c {
-                b'/' => { if prev == b'/' {
-                    return Err("Path must not have 2 '/' next to each other");
-                }},
-                b'A'...b'Z'|b'a'...b'z'|b'0'...b'9'|b'_' => { /* Ok */ }
+                b'/' => {
+                    if prev == b'/' {
+                        return Err("Path must not have 2 '/' next to each other");
+                    }
+                }
+                b'A'...b'Z' | b'a'...b'z' | b'0'...b'9' | b'_' => {
+                    // Ok
+                }
                 b'\0' => {
                     if prev == b'/' && b.len() != 2 {
                         return Err("Path must not end in '/' unless it is the root path");
                     }
 
-                    return Ok(unsafe{ObjectPath::from_bytes_unchecked(b)})
-                },
+                    return Ok(unsafe { ObjectPath::from_bytes_unchecked(b) });
+                }
                 _ => {
                     return Err("Invalid character in path, only '[A-Z][a-z][0-9]_/' allowed");
-                },
+                }
             }
         }
 
@@ -112,7 +116,7 @@ fn t_path() {
  */
 #[derive(Debug,Clone,Copy)]
 pub struct InterfaceName<'a> {
-    inner: &'a [u8]
+    inner: &'a [u8],
 }
 
 impl<'a> InterfaceName<'a> {
@@ -139,8 +143,10 @@ impl<'a> InterfaceName<'a> {
 
         match b[0] {
             b'.' => return Err("Name must not begin with '.'"),
-            b'A'...b'Z'|b'a'...b'z'|b'_' => { /* Ok */ },
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'")
+            b'A'...b'Z' | b'a'...b'z' | b'_' => {
+                // Ok
+            }
+            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
         }
 
 
@@ -155,13 +161,15 @@ impl<'a> InterfaceName<'a> {
                     }
 
                     periods += 1;
-                },
-                b'A'...b'Z'|b'a'...b'z'|b'_' => { /* Ok */ }
+                }
+                b'A'...b'Z' | b'a'...b'z' | b'_' => {
+                    // Ok
+                }
                 b'0'...b'9' => {
                     if prev == b'.' {
                         return Err("Name element must not start with '[0-9]'");
                     }
-                    /* otherwise, Ok */
+                    // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
@@ -171,11 +179,12 @@ impl<'a> InterfaceName<'a> {
                     if periods < 1 {
                         return Err("Name must have at least 2 elements");
                     }
-                    return Ok(InterfaceName { inner: b })
-                },
+                    return Ok(InterfaceName { inner: b });
+                }
                 _ => {
-                    return Err("Invalid character in interface name, only '[A-Z][a-z][0-9]_\\.' allowed");
-                },
+                    return Err("Invalid character in interface name, only '[A-Z][a-z][0-9]_\\.' \
+                                allowed");
+                }
             }
         }
 
@@ -248,9 +257,13 @@ impl<'a> BusName<'a> {
         let mut is_unique = false;
         match b[0] {
             b'.' => return Err("Name must not begin with '.'"),
-            b'A'...b'Z'|b'a'...b'z'|b'_'|b'-' => { /* Ok */ },
-            b':' => { is_unique = true; /* Ok */ },
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'")
+            b'A'...b'Z' | b'a'...b'z' | b'_' | b'-' => {
+                // Ok
+            }
+            b':' => {
+                is_unique = true; /* Ok */
+            }
+            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
         }
 
         let mut periods = 0;
@@ -264,13 +277,15 @@ impl<'a> BusName<'a> {
                     }
 
                     periods += 1;
-                },
-                b'A'...b'Z'|b'a'...b'z'|b'_'|b'-' => { /* Ok */ }
+                }
+                b'A'...b'Z' | b'a'...b'z' | b'_' | b'-' => {
+                    // Ok
+                }
                 b'0'...b'9' => {
                     if prev == b'.' && !is_unique {
                         return Err("Name element must not start with '[0-9]'");
                     }
-                    /* otherwise, Ok */
+                    // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
@@ -280,11 +295,11 @@ impl<'a> BusName<'a> {
                     if periods < 1 {
                         return Err("Name must have at least 2 elements");
                     }
-                    return Ok(unsafe{BusName::from_bytes_unchecked(b)})
-                },
+                    return Ok(unsafe { BusName::from_bytes_unchecked(b) });
+                }
                 _ => {
                     return Err("Invalid character in bus name, only '[A-Z][a-z][0-9]_\\.' allowed");
-                },
+                }
             }
         }
 
@@ -350,19 +365,21 @@ impl<'a> MemberName<'a> {
         }
 
         match b[0] {
-            b'A'...b'Z'|b'a'...b'z'|b'_' => { /* Ok */ },
-            _ => return Err("Must begin with '[A-Z][a-z]_'")
+            b'A'...b'Z' | b'a'...b'z' | b'_' => {
+                // Ok
+            }
+            _ => return Err("Must begin with '[A-Z][a-z]_'"),
         }
 
         for c in b {
             match *c {
-                b'A'...b'Z'|b'a'...b'z'|b'0'...b'9'|b'_' => { /* Ok */ }
-                b'\0' => {
-                    return Ok(unsafe{MemberName::from_bytes_unchecked(b)})
-                },
+                b'A'...b'Z' | b'a'...b'z' | b'0'...b'9' | b'_' => {
+                    // Ok
+                }
+                b'\0' => return Ok(unsafe { MemberName::from_bytes_unchecked(b) }),
                 _ => {
                     return Err("Invalid character in member name, only '[A-Z][a-z][0-9]_' allowed");
-                },
+                }
             }
         }
 
@@ -400,23 +417,28 @@ pub struct Error {
 }
 
 impl Error {
-    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error
-    {
+    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error {
         transmute(p)
     }
 
     pub fn new() -> Error {
-        Error { inner: ffi::bus::sd_bus_error {
-            name: ptr::null(),
-            message: ptr::null(),
-            need_free: 0
-        }}
+        Error {
+            inner: ffi::bus::sd_bus_error {
+                name: ptr::null(),
+                message: ptr::null(),
+                need_free: 0,
+            },
+        }
     }
 
-    pub fn set<T: AsRef<CStr>, S: AsRef<CStr>>(&mut self, name: &T, message: &S) -> super::Result<()>
-    {
+    pub fn set<T: AsRef<CStr>, S: AsRef<CStr>>(&mut self,
+                                               name: &T,
+                                               message: &S)
+                                               -> super::Result<()> {
         unsafe { ffi::bus::sd_bus_error_free(&mut self.inner) }
-        sd_try!(ffi::bus::sd_bus_error_set(&mut self.inner, name.as_ref().as_ptr(), message.as_ref().as_ptr()));
+        sd_try!(ffi::bus::sd_bus_error_set(&mut self.inner,
+                                           name.as_ref().as_ptr(),
+                                           message.as_ref().as_ptr()));
         Ok(())
     }
 
@@ -466,8 +488,11 @@ extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef, &mut Error) -> c_int
     userdata: *mut c_void,
     ret_error: *mut ffi::bus::sd_bus_error) -> c_int
 {
-    let m : &mut F = unsafe { transmute(userdata) };
-    unsafe { m(MessageRef::from_mut_ptr(msg), Error::from_mut_ptr(ret_error)) }
+    let m: &mut F = unsafe { transmute(userdata) };
+    unsafe {
+        m(MessageRef::from_mut_ptr(msg),
+          Error::from_mut_ptr(ret_error))
+    }
 }
 
 pub struct Bus {
@@ -497,11 +522,10 @@ impl Bus {
         Bus { raw: ffi::bus::sd_bus_ref(r) }
     }
 
-    /*
-    unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
-        Bus { raw: r }
-    }
-    */
+    // unsafe fn take_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
+    // Bus { raw: r }
+    // }
+    //
 
     fn as_ptr(&self) -> *const ffi::bus::sd_bus {
         self.raw
@@ -551,7 +575,7 @@ impl Clone for Bus {
 
 #[derive(Debug)]
 pub struct BusRef {
-    _empty: ()
+    _empty: (),
 }
 
 impl ToOwned for BusRef {
@@ -598,32 +622,39 @@ impl BusRef {
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
-    pub fn new_signal(&mut self, path: ObjectPath, interface: InterfaceName, member: MemberName) -> super::Result<Message> {
+    pub fn new_signal(&mut self,
+                      path: ObjectPath,
+                      interface: InterfaceName,
+                      member: MemberName)
+                      -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(), &mut m,
-            path.as_ptr() as *const _,
-            interface.as_ptr() as *const _,
-            member.as_ptr() as *const _));
+        sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(),
+                                                    &mut m,
+                                                    path.as_ptr() as *const _,
+                                                    interface.as_ptr() as *const _,
+                                                    member.as_ptr() as *const _));
         Ok(unsafe { Message::take_ptr(m) })
     }
 
-    pub fn new_method_call(&mut self, dest: BusName, path: ObjectPath, interface: InterfaceName, member: MemberName)
-        -> super::Result<Message> {
+    pub fn new_method_call(&mut self,
+                           dest: BusName,
+                           path: ObjectPath,
+                           interface: InterfaceName,
+                           member: MemberName)
+                           -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(), &mut m,
-                &*dest as *const _ as *const _,
-                &*path as *const _ as *const _,
-                &*interface as *const _ as *const _,
-                &*member as *const _ as *const _
-                ));
+        sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(),
+                                                         &mut m,
+                                                         &*dest as *const _ as *const _,
+                                                         &*path as *const _ as *const _,
+                                                         &*interface as *const _ as *const _,
+                                                         &*member as *const _ as *const _));
         Ok(unsafe { Message::take_ptr(m) })
     }
 
-    pub fn new_method_error(&mut self, error: &Error)
-        -> super::Result<Message> {
+    pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m,
-            error.as_ptr()));
+        sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m, error.as_ptr()));
         Ok(unsafe { Message::take_ptr(m) })
     }
 
@@ -635,59 +666,69 @@ impl BusRef {
 
     // new_method_errno
 
-    /* TODO: consider using a guard object for name handling */
+    // TODO: consider using a guard object for name handling
     /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn request_name(&self, name: BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(self.as_ptr(),
-                    &*name as *const _ as *const _, flags));
+                                              &*name as *const _ as *const _,
+                                              flags));
         Ok(())
     }
 
     /// This blocks. To get async behavior, use 'call_async' directly.
     pub fn release_name(&self, name: BusName) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(),
-                    &*name as *const _ as *const _));
+        sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(), &*name as *const _ as *const _));
         Ok(())
     }
 
-    /* XXX: alternates for (userdata: T):
-     *  - userdata: T, and automatically box as needed. Allows a useful external control.
-     *  - userdata: Box<T>, allows users to supply a box directly if they already have one
-     *  - userdata: &mut T, allows users to manage lifetime of passed in values direcly
-     *  - userdata: SizeMatches<*const _>, allows users to use things without a pointer indirection
-     *    (such as integer types). Not clear this is possible in rust today (1.9).
-     *  - cb: &FnMut
-     *  - cb: &CustomTrait
-     */
-    pub fn add_object<F: FnMut(&mut MessageRef, &mut Error)->c_int>(&self, path: ObjectPath, cb: &mut F) -> super::Result<()>
-    {
-        let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
-            raw_message_handler::<F>;
+    // XXX: alternates for (userdata: T):
+    //  - userdata: T, and automatically box as needed. Allows a useful external control.
+    //  - userdata: Box<T>, allows users to supply a box directly if they already have one
+    //  - userdata: &mut T, allows users to manage lifetime of passed in values direcly
+    //  - userdata: SizeMatches<*const _>, allows users to use things without a pointer indirection
+    //    (such as integer types). Not clear this is possible in rust today (1.9).
+    //  - cb: &FnMut
+    //  - cb: &CustomTrait
+    //
+    pub fn add_object<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&self,
+                                                                      path: ObjectPath,
+                                                                      cb: &mut F)
+                                                                      -> super::Result<()> {
+        let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
+                             *mut c_void,
+                             *mut ffi::bus::sd_bus_error)
+                             -> c_int = raw_message_handler::<F>;
         sd_try!(ffi::bus::sd_bus_add_object(self.as_ptr(),
-                ptr::null_mut(),
-                &*path as *const _ as *const _,
-                Some(f), cb as *mut _ as *mut _));
+                                            ptr::null_mut(),
+                                            &*path as *const _ as *const _,
+                                            Some(f),
+                                            cb as *mut _ as *mut _));
         Ok(())
     }
 
-    pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()>
-    {
-        sd_try!(ffi::bus::sd_bus_add_object_manager(self.as_ptr(), ptr::null_mut(), &*path as *const _ as *const _));
+    pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()> {
+        sd_try!(ffi::bus::sd_bus_add_object_manager(self.as_ptr(),
+                                                    ptr::null_mut(),
+                                                    &*path as *const _ as *const _));
         Ok(())
     }
 
-    /*
-    pub fn add_object_vtable<T: Any + 'static>(&self, path: ObjectPath, interface: InterfaceName, vtable: Vtable<T>, userdata: T) -> super::Result<()>
-    {
-        let u = Box::into_raw(Box::new(userdata));
-        sd_try!(ffi::bus::sd_bus_add_object_vtable(self.raw, ptr::null_mut(),
-                path.as_ptr() as *const _, interface.as_ptr() as *const _,
-                vtable.as_ptr(), Box::into_raw(Box::new(T))
-            )
-        );
-        Ok(())
-    }
-    */
+    // pub fn add_object_vtable<T: Any + 'static>(&self,
+    //                                           path: ObjectPath,
+    //                                           interface: InterfaceName,
+    //                                           vtable: Vtable<T>,
+    //                                           userdata: T)
+    //                                           -> super::Result<()> {
+    //    let u = Box::into_raw(Box::new(userdata));
+    //    sd_try!(ffi::bus::sd_bus_add_object_vtable(self.raw,
+    //                                               ptr::null_mut(),
+    //                                               path.as_ptr() as *const _,
+    //                                               interface.as_ptr() as *const _,
+    //                                               vtable.as_ptr(),
+    //                                               Box::into_raw(Box::new(T))));
+    //    Ok(())
+    // }
+
 
     // emit_signal
     // emit_properties_changed
@@ -705,38 +746,36 @@ impl AsRawFd for BusRef {
     }
 }
 
-/*
-extern "C" fn raw_track_handler<F: FnMut(Track) -> c_int>(
-    track: *mut ffi::bus::sd_bus_track, userdata: *mut c_void) -> c_int
-{
-    let m : &mut F = unsafe { transmute(userdata) };
-    m(Track::from_ptr(track))
-}
+// extern "C" fn raw_track_handler<F: FnMut(Track) -> c_int>(
+// track: *mut ffi::bus::sd_bus_track, userdata: *mut c_void) -> c_int
+// {
+// let m : &mut F = unsafe { transmute(userdata) };
+// m(Track::from_ptr(track))
+// }
+//
+// pub struct Track {
+// raw: *mut ffi::bus::sd_bus_track
+// }
+//
+// impl Track {
+// unsafe fn from_ptr(track: *mut ff::bus::sd_bus_track) {
+// Track { raw: unsafe { ffi::bus::sd_bus_tracK_ref(tracK) } }
+// }
+//
+// fn new<F: FnMut(Track)>(bus: &mut Bus, handler: F) -> super::Result<Track> {
+// }
+// }
+//
 
-pub struct Track {
-    raw: *mut ffi::bus::sd_bus_track
-}
-
-impl Track {
-    unsafe fn from_ptr(track: *mut ff::bus::sd_bus_track) {
-        Track { raw: unsafe { ffi::bus::sd_bus_tracK_ref(tracK) } }
-    }
-
-    fn new<F: FnMut(Track)>(bus: &mut Bus, handler: F) -> super::Result<Track> {
-    }
-}
-*/
-
-/*
- * TODO: determine if the lifetime of a message is tied to the lifetime of the bus used to create
- * it
- */
+// TODO: determine if the lifetime of a message is tied to the lifetime of the bus used to create
+// it
+//
 pub struct Message {
-    raw: *mut ffi::bus::sd_bus_message
+    raw: *mut ffi::bus::sd_bus_message,
 }
 
 pub struct MessageRef {
-    _empty: ()
+    _empty: (),
 }
 
 impl Message {
@@ -745,18 +784,16 @@ impl Message {
      *
      * To construct a Message from an un-owned pointer, use MessageRef::from_ptr(p).to_owned()
      */
-    unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
-    {
+    unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message {
         Message { raw: p }
     }
 
-    /*
-    fn into_ptr(mut self) -> *mut ffi::bus::sd_bus_message {
-        let r = self.as_mut_ptr();
-        forget(self);
-        r
-    }
-    */
+    // fn into_ptr(mut self) -> *mut ffi::bus::sd_bus_message {
+    // let r = self.as_mut_ptr();
+    // forget(self);
+    // r
+    // }
+    //
 }
 
 impl Drop for Message {
@@ -797,11 +834,10 @@ impl BorrowMut<MessageRef> for Message {
     }
 }
 
-/*
- * Warning: going from a &MessageRef to a Message bypasses some of the borrow checking (allows us
- * to have multiple mutable references to the same data). This issue is all over the place in
- * sd-bus.
- */
+// Warning: going from a &MessageRef to a Message bypasses some of the borrow checking (allows us
+// to have multiple mutable references to the same data). This issue is all over the place in
+// sd-bus.
+//
 impl ToOwned for MessageRef {
     type Owned = Message;
     fn to_owned(&self) -> Self::Owned {
@@ -826,16 +862,15 @@ impl MessageRef {
         unsafe { transmute(self) }
     }
 
-    pub fn set_destination(&mut self, dest: BusName) -> super::Result<()>
-    {
-        sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(), &*dest as *const _ as *const _));
+    pub fn set_destination(&mut self, dest: BusName) -> super::Result<()> {
+        sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(),
+                                                         &*dest as *const _ as *const _));
         Ok(())
     }
 
-    /* FIXME: unclear that the mut handling is correct in all of this code (not just this function)
-     * */
-    pub fn bus(&self) -> &mut BusRef
-    {
+    // FIXME: unclear that the mut handling is correct in all of this code (not just this function)
+    //
+    pub fn bus(&self) -> &mut BusRef {
         unsafe { BusRef::from_mut_ptr(ffi::bus::sd_bus_message_get_bus(self.as_ptr() as *mut _)) }
     }
 
@@ -865,12 +900,11 @@ impl MessageRef {
     // is_empty
     // has_signature
 
-    /*
-     * send (and it's wrappers below) keeps a reference to the Message, and really wants to own it
-     * (it seals the message against further modification). Ideally we'd make it clearer in the API
-     * that this is the case to prevent folks from accidentally trying to modify a message after
-     * sending it
-     */
+    // send (and it's wrappers below) keeps a reference to the Message, and really wants to own it
+    // (it seals the message against further modification). Ideally we'd make it clearer in the API
+    // that this is the case to prevent folks from accidentally trying to modify a message after
+    // sending it
+    //
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
         let mut m = unsafe { uninitialized() };
@@ -887,24 +921,30 @@ impl MessageRef {
     pub fn send_to(&mut self, dest: BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
         let mut c = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
-            &*dest as *const _ as *const _, &mut c));
+        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
+                                         self.as_mut_ptr(),
+                                         &*dest as *const _ as *const _,
+                                         &mut c));
         Ok(c)
     }
 
     pub fn send_to_no_reply(&mut self, dest: BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
-        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(), self.as_mut_ptr(),
-            &*dest as *const _ as *const _, ptr::null_mut()));
+        sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
+                                         self.as_mut_ptr(),
+                                         &*dest as *const _ as *const _,
+                                         ptr::null_mut()));
         Ok(())
     }
 
-    pub fn call(&mut self, usec: u64) -> super::Result<Result<Message>>
-    {
+    pub fn call(&mut self, usec: u64) -> super::Result<Result<Message>> {
         let mut r = unsafe { uninitialized() };
         let mut e = Error::new();
-        sd_try!(ffi::bus::sd_bus_call(ptr::null_mut(), self.as_mut_ptr(),
-            usec, e.as_mut_ptr(), &mut r));
+        sd_try!(ffi::bus::sd_bus_call(ptr::null_mut(),
+                                      self.as_mut_ptr(),
+                                      usec,
+                                      e.as_mut_ptr(),
+                                      &mut r));
 
         if e.is_set() {
             Ok(Err(e))
@@ -913,49 +953,69 @@ impl MessageRef {
         }
     }
 
-    /* XXX: we may need to move this, unclear we have the right lifetime here (we're being to
-     * strict) */
-    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
-        &mut self, callback: &mut F, usec: u64) -> super::Result<()>
-    {
-        let f: extern "C" fn(*mut ffi::bus::sd_bus_message, *mut c_void, *mut ffi::bus::sd_bus_error) -> c_int =
-            raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_call_async(ptr::null_mut(), ptr::null_mut(),
-            self.as_mut_ptr(), Some(f), callback as *mut _ as *mut _, usec));
+    // XXX: we may need to move this, unclear we have the right lifetime here (we're being to
+    // strict)
+    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&mut self,
+                                                                      callback: &mut F,
+                                                                      usec: u64)
+                                                                      -> super::Result<()> {
+        let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
+                             *mut c_void,
+                             *mut ffi::bus::sd_bus_error)
+                             -> c_int = raw_message_handler::<F>;
+        sd_try!(ffi::bus::sd_bus_call_async(ptr::null_mut(),
+                                            ptr::null_mut(),
+                                            self.as_mut_ptr(),
+                                            Some(f),
+                                            callback as *mut _ as *mut _,
+                                            usec));
         Ok(())
     }
 }
 
-/*
-struct Vtable;
-struct VtableBuilder<T> {
-    Vec<ffi::bus::sd_bus_vtable>,
-}
-
-type PropertyGet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-type PropertySet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-
-
-impl VtableBuilder {
-    fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
-        /* verify */
-        /* track */
-    }
-
-    fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
-
-    }
-
-    fn property_writable(mut self, member: &str, signature: &str, get: PropertyGet, set: PropertySet) {
-
-    }
-
-    fn signal(mut self, member: &str, signature: &str) {
-
-    }
-
-    fn create(mut self) -> Vtable {
-
-    }
-}
-*/
+// struct Vtable;
+// struct VtableBuilder<T> {
+// Vec<ffi::bus::sd_bus_vtable>,
+// }
+//
+// type PropertyGet<T> = fn(Bus,
+//                          ObjectPath,
+//                          InterfaceName,
+//                          MessageRef,
+//                          &mut T,
+//                          &mut Error) -> c_int;
+// type PropertySet<T> = fn(Bus,
+//                          ObjectPath,
+//                          InterfaceName,
+//                          MessageRef,
+//                          &mut T,
+//                          &mut Error) -> c_int;
+//
+//
+// impl VtableBuilder {
+// fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
+// verify */
+// track */
+// }
+//
+// fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
+//
+// }
+//
+// fn property_writable(mut self,
+//                      member: &str,
+//                      signature: &str,
+//                      get: PropertyGet,
+//                      set: PropertySet) {
+//
+// }
+//
+// fn signal(mut self, member: &str, signature: &str) {
+//
+// }
+//
+// fn create(mut self) -> Vtable {
+//
+// }
+// }
+//
