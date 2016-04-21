@@ -5,7 +5,7 @@ use std::ffi::CStr;
 use super::Result;
 
 pub struct Id128 {
-    inner: ffi::id128::sd_id128_t
+    inner: ffi::id128::sd_id128_t,
 }
 
 impl fmt::Display for Id128 {
@@ -42,7 +42,7 @@ impl Id128 {
         Ok(r)
     }
 
-    pub fn as_bytes(&self) -> &[u8;16] {
+    pub fn as_bytes(&self) -> &[u8; 16] {
         &self.inner.bytes
     }
 }
