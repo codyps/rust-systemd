@@ -18,7 +18,7 @@ extern "C" {
     // There are a bunch of other send methods, but for rust it doesn't make sense to call them
     // (we don't need to do c-style format strings)
 
-    pub fn sd_journal_open(ret: *const sd_journal, flags: c_int) -> c_int;
+    pub fn sd_journal_open(ret: *mut sd_journal, flags: c_int) -> c_int;
     pub fn sd_journal_close(j: sd_journal) -> ();
 
     pub fn sd_journal_previous(j: sd_journal) -> c_int;
