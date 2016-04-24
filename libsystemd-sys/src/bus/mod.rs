@@ -6,17 +6,23 @@ use super::event::sd_event;
 pub mod vtable;
 pub use self::vtable::sd_bus_vtable;
 
-pub type sd_bus = c_void;
-pub type sd_bus_message = c_void;
-pub type sd_bus_slot = c_void;
-pub type sd_bus_creds = c_void;
-pub type sd_bus_track = c_void;
+#[allow(non_camel_case_types)]
+pub enum sd_bus {}
+#[allow(non_camel_case_types)]
+pub enum sd_bus_message {}
+#[allow(non_camel_case_types)]
+pub enum sd_bus_slot {}
+#[allow(non_camel_case_types)]
+pub enum sd_bus_creds {}
+#[allow(non_camel_case_types)]
+pub enum sd_bus_track {}
 
-
+#[allow(non_camel_case_types)]
 pub type sd_bus_message_handler_t = Option<unsafe extern "C" fn(m: *mut sd_bus_message,
                                                                 userdata: *mut c_void,
                                                                 ret_error: *mut sd_bus_error)
                                                                 -> c_int>;
+#[allow(non_camel_case_types)]
 pub type sd_bus_property_get_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                              path: *const c_char,
                                                              interface: *const c_char,
@@ -25,6 +31,7 @@ pub type sd_bus_property_get_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                              userdata: *mut c_void,
                                                              ret_error: *mut sd_bus_error)
                                                              -> c_int>;
+#[allow(non_camel_case_types)]
 pub type sd_bus_property_set_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                              path: *const c_char,
                                                              interface: *const c_char,
@@ -33,6 +40,7 @@ pub type sd_bus_property_set_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                              userdata: *mut c_void,
                                                              ret_error: *mut sd_bus_error)
                                                              -> c_int>;
+#[allow(non_camel_case_types)]
 pub type sd_bus_object_find_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                             path: *const c_char,
                                                             interface: *const c_char,
@@ -40,14 +48,14 @@ pub type sd_bus_object_find_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                             ret_found: *mut *mut c_void,
                                                             ret_error: *mut sd_bus_error)
                                                             -> c_int>;
-
+#[allow(non_camel_case_types)]
 pub type sd_bus_node_enumerator_t = Option<unsafe extern "C" fn(bus: *mut sd_bus,
                                                                 prefix: *const c_char,
                                                                 userdata: *mut c_void,
                                                                 ret_nodes: *mut *mut *mut c_char,
                                                                 ret_error: *mut sd_bus_error)
                                                                 -> c_int>;
-
+#[allow(non_camel_case_types)]
 pub type sd_bus_track_handler_t = Option<unsafe extern "C" fn(track: *mut sd_bus_track,
                                                               userdata: *mut c_void)
                                                               -> c_int>;
