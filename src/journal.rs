@@ -60,7 +60,7 @@ pub type JournalRecord = BTreeMap<String, String>;
 ///
 /// Supports read, next, previous, and seek operations.
 pub struct Journal {
-    j: ffi::sd_journal,
+    j: *mut ffi::sd_journal,
 }
 
 /// Represents the set of journal files to read.
