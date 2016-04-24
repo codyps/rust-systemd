@@ -14,9 +14,7 @@ pub use std::os::raw::{c_char, c_int, c_void, c_uint};
 pub mod id128;
 pub mod event;
 pub mod daemon;
-pub use daemon::*;
 pub mod journal;
-pub use journal::*;
 
 #[repr(C)]
 pub struct iovec {
