@@ -1,13 +1,15 @@
+extern crate utf8_cstr;
+
 use ffi;
 use ffi::{c_int, c_char, c_void};
 use std::fmt;
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
-use std::mem::{uninitialized, transmute};
+use std::mem::{uninitialized, transmute, forget};
 use std::ptr;
-use std::ops::{Deref, DerefMut};
-// use std::marker::PhantomData;
-use std::borrow::{Borrow, BorrowMut};
+use std::ops::{Deref,DerefMut};
+use std::marker::PhantomData;
+use std::borrow::{Borrow,BorrowMut};
 use std::result;
 
 pub mod types;
@@ -23,12 +25,12 @@ pub type Result<T> = result::Result<T, Error>;
 /**
  * A wrapper which promises it always holds a valid dbus object path
  */
-#[derive(Debug,Clone,Copy)]
-pub struct ObjectPath<'a> {
-    inner: &'a [u8],
+#[derive(Debug)]
+pub struct ObjectPath {
+    inner: [u8],
 }
 
-impl<'a> ObjectPath<'a> {
+impl ObjectPath {
     /**
      * Create a path reference from a u8 slice.
      *
@@ -43,7 +45,7 @@ impl<'a> ObjectPath<'a> {
      *  A trailing '/' character is not allowed unless the path is the root path
      * sd-bus additionally requires nul ('\0') termination of paths.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<ObjectPath, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
 
 
         if b.len() < 1 {
@@ -83,19 +85,22 @@ impl<'a> ObjectPath<'a> {
         return Err("Path must be terminated in a '\\0' byte (for use by sd-bus)");
     }
 
-    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> ObjectPath {
-        ObjectPath { inner: b }
+    #[inline]
+    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &ObjectPath {
+        transmute(b)
     }
 
-    pub unsafe fn from_ptr_unchecked<'b>(b: *const c_char) -> ObjectPath<'b> {
-        ObjectPath { inner: CStr::from_ptr(b).to_bytes() }
+    #[inline]
+    pub unsafe fn from_ptr_unchecked<'b>(b: *const c_char) -> &'b ObjectPath {
+       Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
     }
 }
 
-impl<'a> Deref for ObjectPath<'a> {
+impl Deref for ObjectPath {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        unsafe { transmute(self) }
     }
 }
 
@@ -778,36 +783,52 @@ impl AsRawFd for BusRef {
     }
 }
 
-// extern "C" fn raw_track_handler<F: FnMut(Track) -> c_int>(
-// track: *mut ffi::bus::sd_bus_track, userdata: *mut c_void) -> c_int
-// {
-// let m : &mut F = unsafe { transmute(userdata) };
-// m(Track::from_ptr(track))
-// }
-//
-// pub struct Track {
-// raw: *mut ffi::bus::sd_bus_track
-// }
-//
-// impl Track {
-// unsafe fn from_ptr(track: *mut ff::bus::sd_bus_track) {
-// Track { raw: unsafe { ffi::bus::sd_bus_tracK_ref(tracK) } }
-// }
-//
-// fn new<F: FnMut(Track)>(bus: &mut Bus, handler: F) -> super::Result<Track> {
-// }
-// }
-//
+/*
+extern "C" fn raw_track_handler<F: FnMut(Track) -> c_int>(
+    track: *mut ffi::bus::sd_bus_track, userdata: *mut c_void) -> c_int
+{
+    let m : &mut F = unsafe { transmute(userdata) };
+    m(Track::from_ptr(track))
+}
 
-// TODO: determine if the lifetime of a message is tied to the lifetime of the bus used to create
-// it
-//
+pub struct Track {
+    raw: *mut ffi::bus::sd_bus_track
+}
+
+impl Track {
+    unsafe fn from_ptr(track: *mut ff::bus::sd_bus_track) {
+        Track { raw: unsafe { ffi::bus::sd_bus_tracK_ref(tracK) } }
+    }
+
+    fn new<F: FnMut(Track)>(bus: &mut Bus, handler: F) -> super::Result<Track> {
+    }
+}
+*/
+
+/*
+ * TODO: determine if the lifetime of a message is tied to the lifetime of the bus used to create
+ * it
+ */
+
+/// A message to be sent or that was recieved over dbus
+///
+/// This is reference counted, clone does not copy the type
 pub struct Message {
     raw: *mut ffi::bus::sd_bus_message,
 }
 
+/// A reference to a `Message`
 pub struct MessageRef {
     _empty: (),
+}
+
+/// An iterator over the elements of a `Message`, use this to read data out of a message.
+///
+/// Note: we're using a concrete type here instead of a reference to allow us to handle lifetimes
+/// properly.
+pub struct MessageIter<'a> {
+    raw: *mut ffi::bus::sd_bus_message,
+    life: PhantomData<&'a MessageRef>
 }
 
 impl Message {
@@ -940,7 +961,8 @@ impl MessageRef {
     /// covers some details about the auto start mechanism, but not all of it is specified.
     #[inline]
     pub fn set_auto_start(&mut self, yes: bool) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_set_auto_start(self.as_mut_ptr(), yes as c_int));
+        sd_try!(ffi::bus::sd_bus_message_set_auto_start(self.as_mut_ptr(), yes as c_int));
+        Ok(())
     }
 
     // # properties
@@ -1063,62 +1085,114 @@ impl MessageRef {
         Ok(())
     }
 
+    #[inline]
     pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_mut_ptr(), &mut m, error.as_ptr()));
         Ok(unsafe { Message::take_ptr(m) })
     }
 
+    #[inline]
     pub fn new_method_return(&mut self) -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_mut_ptr(), &mut m));
         Ok(unsafe { Message::take_ptr(m) })
     }
+
+    /// Raw access to append data to this message
+    // XXX: unclear if this should operate directly on the message or be split out to the iterator
+    // mechanism
+    #[inline]
+    pub unsafe fn append_basic_raw(&mut self, dbus_type: u8, v: *const c_void) -> ::Result<()> {
+        try!(::ffi_result(ffi::bus::sd_bus_message_append_basic(self.as_mut_ptr(), dbus_type as c_char, v)));
+        Ok(())
+    }
+
+    /// Get an iterator over the message. This iterator really exists with in the `Message` itself,
+    /// so we can only hand out one at a time.
+    ///
+    /// Ideally, handing this iterator out wouldn't prevent the use of other non-iterator
+    /// accessors, but right now it does (unless you bypass `borrowck` using `unsafe{}`)
+    ///
+    /// Requires that message is sealed.
+    #[inline]
+    pub fn iter<'a>(&'a mut self) -> ::Result<MessageIter<'a>> {
+        /* probe the `Message` to check if we can iterate on it */
+        sd_try!(ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), ptr::null_mut(), ptr::null_mut()));
+        Ok(MessageIter { raw: self.as_ptr(), life: PhantomData })
+    }
+
 }
 
-// struct Vtable;
-// struct VtableBuilder<T> {
-// Vec<ffi::bus::sd_bus_vtable>,
-// }
-//
-// type PropertyGet<T> = fn(Bus,
-//                          ObjectPath,
-//                          InterfaceName,
-//                          MessageRef,
-//                          &mut T,
-//                          &mut Error) -> c_int;
-// type PropertySet<T> = fn(Bus,
-//                          ObjectPath,
-//                          InterfaceName,
-//                          MessageRef,
-//                          &mut T,
-//                          &mut Error) -> c_int;
-//
-//
-// impl VtableBuilder {
-// fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
-// verify */
-// track */
-// }
-//
-// fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
-//
-// }
-//
-// fn property_writable(mut self,
-//                      member: &str,
-//                      signature: &str,
-//                      get: PropertyGet,
-//                      set: PropertySet) {
-//
-// }
-//
-// fn signal(mut self, member: &str, signature: &str) {
-//
-// }
-//
-// fn create(mut self) -> Vtable {
-//
-// }
-// }
-//
+impl<'a> MessageIter<'a> {
+    /*
+     * XXX: 'T' may reference the parent `Message`, and should be tied to the lifetime of the
+     * `MessageIter` (to ensure they don't change out from underneath us) but shouldn't be tied to
+     * the lifetime of the &mut self of this call
+     */
+    /// Read an element from the message and advance the internal cursor
+    /// References returned by this function are valid until the iterator itself is dropped (just
+    /// to garuntee they don't change).
+    ///
+    /// XXX: really, they are valid until the message is un-sealed: reading from the message can
+    /// only occur while the message is sealed. Unclear if we can track lifetimes against message
+    /// sealing.
+    #[inline]
+    pub unsafe fn read_basic_raw<R, T, F: FnOnce(R) -> T>(&mut self, dbus_type: u8, cons: F)
+            -> ::Result<T>
+        where T: 'a
+    {
+        let mut v: R = uninitialized();
+        match ::ffi_result(ffi::bus::sd_bus_message_read_basic(self.as_mut_ptr(), dbus_type as c_char, &mut v as *mut _ as *mut _)) {
+            Ok(_) => Ok(cons(v)),
+            Err(e) => {
+                forget(v);
+                Err(e)
+            }
+        }
+    }
+
+    // &str lasts until next call of sd_bus_message_peek_type
+    // XXX: confirm that lifetimes here match that!
+    #[inline]
+    pub fn peek_type(&mut self) -> ::Result<(c_char, &str)>
+    {
+        let mut t: c_char = unsafe { uninitialized() };
+        let mut cont: *const c_char = unsafe { uninitialized() };
+        try!(::ffi_result(unsafe { ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), &mut t, &mut cont) }));
+
+        Ok((t, str::from_utf8_unchecked(CStr::from_ptr(cont))))
+    }
+
+    // XXX: handle containers
+}
+
+/*
+struct Vtable;
+struct VtableBuilder<T> {
+    Vec<ffi::bus::sd_bus_vtable>,
+}
+
+type PropertyGet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
+type PropertySet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
+
+
+impl VtableBuilder {
+    fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
+        /* verify */
+        /* track */
+    }
+
+    fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
+    }
+
+    fn property_writable(mut self, member: &str, signature: &str, get: PropertyGet, set: PropertySet) {
+    }
+
+    fn signal(mut self, member: &str, signature: &str) {
+    }
+
+    fn create(mut self) -> Vtable {
+    }
+}
+*/

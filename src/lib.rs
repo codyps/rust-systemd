@@ -4,6 +4,16 @@ extern crate log;
 extern crate libsystemd_sys as ffi;
 pub use std::io::{Result, Error};
 
+/// Convert a systemd ffi return value into a Result
+pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
+{
+    if ret < 0 {
+        Err(Error::from_raw_os_error(-ret))
+    } else {
+        Ok(ret)
+    }
+}
+
 /// An analogue of `try!()` for systemd FFI calls.
 ///
 /// The parameter should be a call to a systemd FFI fn with an c_int return
@@ -14,24 +24,7 @@ pub use std::io::{Result, Error};
 #[macro_export]
 macro_rules! sd_try {
     ($e:expr) => ({
-        let ret : $crate::ffi::c_int = unsafe { $e };
-        if ret < 0 {
-            return Err($crate::Error::from_raw_os_error(-ret));
-        }
-        ret
-    })
-}
-
-/// An analogue of `try!()` for systemd FFI calls.
-///
-/// This is a variant of `sd_try!()` with the internal unsafe{} usage removed
-macro_rules! sd_try_unsafe {
-    ($e:expr) => ({
-        let ret : $crate::ffi::c_int = $e;
-        if ret < 0 {
-            return Err($crate::Error::from_raw_os_error(-ret));
-        }
-        ret
+        try!($crate::ffi_result(unsafe{ $e}))
     })
 }
 

@@ -1,4 +1,4 @@
-/**
+/*!
  * Define a mechanism for converting types to messages and messages to types
  *
  * A few existing models:
@@ -18,43 +18,59 @@
  *   potentially the most convenient.
  */
 
-
-use super::MessageRef;
+use super::utf8_cstr::Utf8CStr;
+use super::{MessageRef, MessageIter};
 use super::super::ffi;
 use std::mem::uninitialized;
 use ffi::{c_int, c_char};
 
-unsafe trait SdBusMessageDirect {
+/**
+ * When impled for a Type, promises that a reference to the type cast to a pointer can be encoded
+ * using the given `dbus_type()` using `sd_bus_message_append_basic` and decoded similarly using
+ * `sd_bus_message_read_basic`
+ *
+ * It is unlikely that this is something you want to impliment, all the basic types are already
+ * implimented internally.
+ *
+ * NOTE: Ideally, we'd use an associated const here. When those land on stable this may change to
+ * that.
+ */
+pub unsafe trait SdBusMessageDirect {
     fn dbus_type() -> u8;
 }
 
-trait ToSdBusMessage {
+/**
+ * Allows types to provide a convertion to a dbus message
+ */
+pub trait ToSdBusMessage {
     // type signature?
     // function to do append?
     // Do we need a ToOwned bit? Check ToSql
     fn to_message(&self, m: &mut MessageRef) -> ::Result<()>;
 }
 
-trait FromSdBusMessage {
-    fn from_message(m: &mut MessageRef) -> ::Result<Self> where Self: Sized;
+/**
+ * Allows types to provide a convertion from a dbus message
+ *
+ * NOTE: the restriction of `Self: Sized` may cause us to have less than ideal impls sometimes. We
+ * may need to add a `from_message_to()` that takes a reference, much like `Clone`.
+ */
+pub trait FromSdBusMessage {
+    fn from_message<'a>(m: &mut MessageIter<'a>) -> ::Result<Self>
+        where Self: Sized;
 }
 
 impl<T: SdBusMessageDirect> ToSdBusMessage for T {
     fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
-        sd_try!(ffi::bus::sd_bus_message_append_basic(m.as_mut_ptr(),
-                                                      T::dbus_type() as c_char,
-                                                      self as *const _ as *const _));
-        Ok(())
+        unsafe { m.append_basic_raw(Self::dbus_type(), self as *const _ as *const _) }
     }
 }
 
 impl<T: SdBusMessageDirect> FromSdBusMessage for T {
-    fn from_message(m: &mut MessageRef) -> ::Result<Self> {
-        let mut v: Self = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_read_basic(m.as_mut_ptr(),
-                                                    T::dbus_type() as c_char,
-                                                    &mut v as *mut _ as *mut _));
-        Ok(v)
+    fn from_message<'a>(m: &mut MessageIter<'a>) -> ::Result<Self>
+        where Self: Sized
+    {
+        unsafe { m.read_basic_raw(Self::dbus_type(), |x| x)}
     }
 }
 
@@ -111,55 +127,45 @@ msg_basic!{
 
 impl ToSdBusMessage for bool {
     fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
-        let i: c_int = if *self {
-            1
-        } else {
-            0
-        };
-        sd_try!(ffi::bus::sd_bus_message_append_basic(m.as_mut_ptr(),
-                                                      b'b' as c_char,
-                                                      &i as *const _ as *const _));
+        let i : c_int = if *self { 1 } else { 0 };
+        try!(unsafe { m.append_basic_raw(b'b', &i as *const _ as *const _) });
         Ok(())
     }
 }
 
 impl FromSdBusMessage for bool {
-    fn from_message(m: &mut MessageRef) -> ::Result<Self> {
-        let mut i: c_int = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_read_basic(m.as_mut_ptr(),
-                                                    b'b' as c_char,
-                                                    &mut i as *mut _ as *mut _));
-        Ok(i != 0)
+    fn from_message<'a>(m: &mut MessageIter<'a>) -> ::Result<Self>
+        where Self: Sized
+    {
+        unsafe { m.read_basic_raw(b'b', |x: c_int| x != 0) }
     }
 }
 
+/**
+ * A basic wrapper that simply ensures we send a Fd via the dbus file descriptor mechanisms rather
+ * than as a integer
+ */
 pub struct UnixFd(pub c_int);
 
 impl ToSdBusMessage for UnixFd {
     fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
-        let i: c_int = self.0;
-        sd_try!(ffi::bus::sd_bus_message_append_basic(m.as_mut_ptr(),
-                                                      b'h' as c_char,
-                                                      &i as *const _ as *const _));
+        let i : c_int = self.0;
+        try!(unsafe { m.append_basic_raw(b'h', &i as *const _ as *const _)});
         Ok(())
     }
 }
 
 impl FromSdBusMessage for UnixFd {
-    fn from_message(m: &mut MessageRef) -> ::Result<Self> {
-        let mut i: c_int = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_read_basic(m.as_mut_ptr(),
-                                                    b'h' as c_char,
-                                                    &mut i as *mut _ as *mut _));
-        Ok(UnixFd(i))
+    fn from_message<'a>(m: &mut MessageIter<'a>) -> ::Result<Self>
+        where Self: Sized
+    {
+        unsafe { m.read_basic_raw(b'h', |x: c_int| UnixFd(x)) }
     }
 }
 
-impl<'a> ToSdBusMessage for super::ObjectPath<'a> {
+impl ToSdBusMessage for super::ObjectPath {
     fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
-        sd_try!(ffi::bus::sd_bus_message_append_basic(m.as_mut_ptr(),
-                                                      b'o' as c_char,
-                                                      self.as_ptr() as *const _));
+        try!(unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _)});
         Ok(())
     }
 }
@@ -169,16 +175,19 @@ impl<'a> ToSdBusMessage for super::ObjectPath<'a> {
 // without copying.
 //
 // If we could use &MessageRef instead this could be useful.
-impl<'a> FromSdBusMessage for super::ObjectPath<'a> {
-    fn from_message(m: &mut MessageRef) -> ::Result<Self> {
-        let mut i: *const c_char = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_read_basic(m.as_mut_ptr(),
-                                                    b'o' as c_char,
-                                                    &mut i as *mut _ as *mut _));
-        Ok(unsafe { super::ObjectPath::from_ptr_unchecked(i) })
+impl<'a> FromSdBusMessage for &'a super::ObjectPath {
+    fn from_message<'b>(m: &mut MessageIter<'b>) -> ::Result<Self>
+        where Self: Sized,
+    {
+        unsafe {m.read_basic_raw(b'o', |x: *const c_char| super::ObjectPath::from_ptr_unchecked(x))}
     }
 }
 
+impl ToSdBusMessage for Utf8CStr {
+    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
+        unsafe { m.append_basic_raw(b's', self.as_ptr() as *const _) }
+    }
+}
 
 // TODO:
 //  string-likes (string, object path, signature)
