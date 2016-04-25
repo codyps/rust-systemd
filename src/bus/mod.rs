@@ -652,18 +652,6 @@ impl BusRef {
         Ok(unsafe { Message::take_ptr(m) })
     }
 
-    pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), &mut m, error.as_ptr()));
-        Ok(unsafe { Message::take_ptr(m) })
-    }
-
-    pub fn new_method_return(&mut self) -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), &mut m));
-        Ok(unsafe { Message::take_ptr(m) })
-    }
-
     // new_method_errno
 
     // TODO: consider using a guard object for name handling
@@ -970,6 +958,18 @@ impl MessageRef {
                                             callback as *mut _ as *mut _,
                                             usec));
         Ok(())
+    }
+
+    pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_mut_ptr(), &mut m, error.as_ptr()));
+        Ok(unsafe { Message::take_ptr(m) })
+    }
+
+    pub fn new_method_return(&mut self) -> super::Result<Message> {
+        let mut m = unsafe { uninitialized() };
+        sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_mut_ptr(), &mut m));
+        Ok(unsafe { Message::take_ptr(m) })
     }
 }
 
