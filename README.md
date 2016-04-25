@@ -48,9 +48,3 @@ the process by systemd on socket activation. Since raw filehandles are not well
 supported in Rust, it's likely these functions will mostly be helpful in
 managing program flow; actual socket code will have to use the libc crate.
 
-TODO
-----
-
- - [ ] rustdoc
- - [ ] other systemd apis
- - [ ] pass travis automated tests
