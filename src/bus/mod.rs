@@ -191,10 +191,12 @@ impl<'a> InterfaceName<'a> {
         return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
     }
 
+    #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> InterfaceName {
         InterfaceName { inner: b }
     }
 
+    #[inline]
     pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
         InterfaceName { inner: CStr::from_ptr(b).to_bytes() }
     }
@@ -202,6 +204,7 @@ impl<'a> InterfaceName<'a> {
 
 impl<'a> Deref for InterfaceName<'a> {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -306,10 +309,12 @@ impl<'a> BusName<'a> {
         return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
     }
 
+    #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> BusName {
         BusName { inner: b }
     }
 
+    #[inline]
     pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
         BusName { inner: CStr::from_ptr(b).to_bytes() }
     }
@@ -317,6 +322,7 @@ impl<'a> BusName<'a> {
 
 impl<'a> Deref for BusName<'a> {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -386,10 +392,12 @@ impl<'a> MemberName<'a> {
         return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
     }
 
+    #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> MemberName {
         MemberName { inner: b }
     }
 
+    #[inline]
     pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
         MemberName { inner: CStr::from_ptr(b).to_bytes() }
     }
@@ -397,6 +405,7 @@ impl<'a> MemberName<'a> {
 
 impl<'a> Deref for MemberName<'a> {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -417,10 +426,12 @@ pub struct Error {
 }
 
 impl Error {
+    #[inline]
     unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error {
         transmute(p)
     }
 
+    #[inline]
     pub fn new() -> Error {
         Error {
             inner: ffi::bus::sd_bus_error {
@@ -431,6 +442,7 @@ impl Error {
         }
     }
 
+    #[inline]
     pub fn set<T: AsRef<CStr>, S: AsRef<CStr>>(&mut self,
                                                name: &T,
                                                message: &S)
@@ -442,26 +454,31 @@ impl Error {
         Ok(())
     }
 
+    #[inline]
     pub fn is_set(&self) -> bool {
         !self.inner.name.is_null()
     }
 
+    #[inline]
     fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_error {
         &mut self.inner
     }
 
+    #[inline]
     fn as_ptr(&self) -> *const ffi::bus::sd_bus_error {
         &self.inner
     }
 }
 
 impl Drop for Error {
+    #[inline]
     fn drop(&mut self) {
         unsafe { ffi::bus::sd_bus_error_free(&mut self.inner) };
     }
 }
 
 impl Clone for Error {
+    #[inline]
     fn clone(&self) -> Error {
         let mut e = unsafe { Error { inner: uninitialized() } };
         unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
@@ -500,24 +517,28 @@ pub struct Bus {
 }
 
 impl Bus {
+    #[inline]
     pub fn default() -> super::Result<Bus> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_default(&mut b));
         Ok(Bus { raw: b })
     }
 
+    #[inline]
     pub fn default_user() -> super::Result<Bus> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_default_user(&mut b));
         Ok(Bus { raw: b })
     }
 
+    #[inline]
     pub fn default_system() -> super::Result<Bus> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_default_system(&mut b));
         Ok(Bus { raw: b })
     }
 
+    #[inline]
     unsafe fn from_ptr(r: *mut ffi::bus::sd_bus) -> Bus {
         Bus { raw: ffi::bus::sd_bus_ref(r) }
     }
@@ -527,22 +548,26 @@ impl Bus {
     // }
     //
 
+    #[inline]
     fn as_ptr(&self) -> *const ffi::bus::sd_bus {
         self.raw
     }
 
+    #[inline]
     fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus {
         self.raw
     }
 }
 
 impl Borrow<BusRef> for Bus {
+    #[inline]
     fn borrow(&self) -> &BusRef {
         unsafe { BusRef::from_ptr(self.as_ptr()) }
     }
 }
 
 impl BorrowMut<BusRef> for Bus {
+    #[inline]
     fn borrow_mut(&mut self) -> &mut BusRef {
         unsafe { BusRef::from_mut_ptr(self.as_mut_ptr()) }
     }
@@ -550,24 +575,28 @@ impl BorrowMut<BusRef> for Bus {
 
 impl Deref for Bus {
     type Target = BusRef;
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.borrow()
     }
 }
 
 impl DerefMut for Bus {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.borrow_mut()
     }
 }
 
 impl Drop for Bus {
+    #[inline]
     fn drop(&mut self) {
         unsafe { ffi::bus::sd_bus_unref(self.raw) };
     }
 }
 
 impl Clone for Bus {
+    #[inline]
     fn clone(&self) -> Bus {
         Bus { raw: unsafe { ffi::bus::sd_bus_ref(self.raw) } }
     }
@@ -580,48 +609,58 @@ pub struct BusRef {
 
 impl ToOwned for BusRef {
     type Owned = Bus;
+    #[inline]
     fn to_owned(&self) -> Self::Owned {
         unsafe { Bus::from_ptr(self.as_ptr()) }
     }
 }
 
 impl BusRef {
+    #[inline]
     unsafe fn from_ptr<'a>(r: *const ffi::bus::sd_bus) -> &'a BusRef {
         transmute(r)
     }
 
+    #[inline]
     unsafe fn from_mut_ptr<'a>(r: *mut ffi::bus::sd_bus) -> &'a mut BusRef {
         transmute(r)
     }
 
+    #[inline]
     pub fn to_owned(&self) -> Bus {
         unsafe { Bus::from_ptr(self.as_ptr()) }
     }
 
+    #[inline]
     fn as_ptr(&self) -> *mut ffi::bus::sd_bus {
         unsafe { transmute(self) }
     }
 
+    #[inline]
     pub fn events(&self) -> super::Result<c_int> {
         Ok(sd_try!(ffi::bus::sd_bus_get_events(self.as_ptr())))
     }
 
+    #[inline]
     pub fn timeout(&self) -> super::Result<u64> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), &mut b));
         Ok(b)
     }
 
+    #[inline]
     pub fn fd(&self) -> super::Result<c_int> {
         Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.as_ptr())))
     }
 
+    #[inline]
     pub fn unique_name(&self) -> super::Result<BusName> {
         let mut e = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_get_unique_name(self.as_ptr(), &mut e));
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
+    #[inline]
     pub fn new_signal(&mut self,
                       path: ObjectPath,
                       interface: InterfaceName,
@@ -636,6 +675,7 @@ impl BusRef {
         Ok(unsafe { Message::take_ptr(m) })
     }
 
+    #[inline]
     pub fn new_method_call(&mut self,
                            dest: BusName,
                            path: ObjectPath,
@@ -656,6 +696,7 @@ impl BusRef {
 
     // TODO: consider using a guard object for name handling
     /// This blocks. To get async behavior, use 'call_async' directly.
+    #[inline]
     pub fn request_name(&self, name: BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(self.as_ptr(),
                                               &*name as *const _ as *const _,
@@ -664,6 +705,7 @@ impl BusRef {
     }
 
     /// This blocks. To get async behavior, use 'call_async' directly.
+    #[inline]
     pub fn release_name(&self, name: BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(), &*name as *const _ as *const _));
         Ok(())
@@ -677,7 +719,7 @@ impl BusRef {
     //    (such as integer types). Not clear this is possible in rust today (1.9).
     //  - cb: &FnMut
     //  - cb: &CustomTrait
-    //
+    #[inline]
     pub fn add_object<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&self,
                                                                       path: ObjectPath,
                                                                       cb: &mut F)
@@ -694,6 +736,7 @@ impl BusRef {
         Ok(())
     }
 
+    #[inline]
     pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_add_object_manager(self.as_ptr(),
                                                     ptr::null_mut(),
@@ -729,6 +772,7 @@ impl BusRef {
 }
 
 impl AsRawFd for BusRef {
+    #[inline]
     fn as_raw_fd(&self) -> c_int {
         self.fd().unwrap()
     }
@@ -772,6 +816,7 @@ impl Message {
      *
      * To construct a Message from an un-owned pointer, use MessageRef::from_ptr(p).to_owned()
      */
+    #[inline]
     unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message {
         Message { raw: p }
     }
@@ -785,12 +830,14 @@ impl Message {
 }
 
 impl Drop for Message {
+    #[inline]
     fn drop(&mut self) {
         unsafe { ffi::bus::sd_bus_message_unref(self.raw) };
     }
 }
 
 impl Clone for Message {
+    #[inline]
     fn clone(&self) -> Message {
         Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.raw) } }
     }
@@ -799,24 +846,28 @@ impl Clone for Message {
 impl Deref for Message {
     type Target = MessageRef;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe { MessageRef::from_ptr(self.raw) }
     }
 }
 
 impl DerefMut for Message {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { MessageRef::from_mut_ptr(self.raw) }
     }
 }
 
 impl Borrow<MessageRef> for Message {
+    #[inline]
     fn borrow(&self) -> &MessageRef {
         self.deref()
     }
 }
 
 impl BorrowMut<MessageRef> for Message {
+    #[inline]
     fn borrow_mut(&mut self) -> &mut MessageRef {
         self.deref_mut()
     }
@@ -828,38 +879,68 @@ impl BorrowMut<MessageRef> for Message {
 //
 impl ToOwned for MessageRef {
     type Owned = Message;
+    #[inline]
     fn to_owned(&self) -> Self::Owned {
         Message { raw: unsafe { ffi::bus::sd_bus_message_ref(self.as_ptr() as *mut _) } }
     }
 }
 
 impl MessageRef {
+    #[inline]
     unsafe fn from_ptr<'a>(p: *const ffi::bus::sd_bus_message) -> &'a MessageRef {
         transmute(p)
     }
 
+    #[inline]
     unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_message) -> &'a mut MessageRef {
         transmute(p)
     }
 
+    #[inline]
     fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
         unsafe { transmute(self) }
     }
 
+    #[inline]
     fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
         unsafe { transmute(self) }
     }
 
+    /* FIXME: unclear that the mut handling is correct in all of this code (not just this function)
+     * */
+    #[inline]
+    pub fn bus(&self) -> &BusRef {
+        unsafe { BusRef::from_mut_ptr(ffi::bus::sd_bus_message_get_bus(self.as_ptr() as *mut _)) }
+    }
+
+    /// Set the message destination, the name of the bus client we want to send this message to.
+    ///
+    /// XXX: describe broadcast
+    ///
+    /// Fails if the message is sealed
+    #[inline]
     pub fn set_destination(&mut self, dest: BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(),
-                                                         &*dest as *const _ as *const _));
+                    &*dest as *const _ as *const _));
         Ok(())
     }
 
-    // FIXME: unclear that the mut handling is correct in all of this code (not just this function)
-    //
-    pub fn bus(&self) -> &mut BusRef {
-        unsafe { BusRef::from_mut_ptr(ffi::bus::sd_bus_message_get_bus(self.as_ptr() as *mut _)) }
+    /// Set to true to allow the bus to launch an owner for the destination name.
+    ///
+    /// Set to false to prevent the bus from launching an owner for the destination name.
+    ///
+    /// Fails if the message is sealed
+    ///
+    /// ---
+    ///
+    /// This controls the NO_AUTO_START dbus header flag.
+    ///
+    /// The
+    /// [specification](https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-starting-services)
+    /// covers some details about the auto start mechanism, but not all of it is specified.
+    #[inline]
+    pub fn set_auto_start(&mut self, yes: bool) -> super::Result<()> {
+        sd_try!(ffi::bus::sd_bus_set_auto_start(self.as_mut_ptr(), yes as c_int));
     }
 
     // # properties
@@ -888,11 +969,15 @@ impl MessageRef {
     // is_empty
     // has_signature
 
-    // send (and it's wrappers below) keeps a reference to the Message, and really wants to own it
-    // (it seals the message against further modification). Ideally we'd make it clearer in the API
-    // that this is the case to prevent folks from accidentally trying to modify a message after
-    // sending it
-    //
+    /*
+     * send (and it's wrappers below) keeps a reference to the Message, and really wants to own it
+     * (it seals the message against further modification). Ideally we'd make it clearer in the API
+     * that this is the case to prevent folks from accidentally trying to modify a message after
+     * sending it
+     */
+
+    /// Send expecting a reply. Returns the reply cookie.
+    #[inline]
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
         let mut m = unsafe { uninitialized() };
@@ -900,12 +985,18 @@ impl MessageRef {
         Ok(m)
     }
 
+    /// Send without expecting any reply
+    #[inline]
     pub fn send_no_reply(&mut self) -> super::Result<()> {
         // self.bus().send_no_reply(self)
         sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), ptr::null_mut()));
         Ok(())
     }
 
+    /// Send this message to a destination.
+    ///
+    /// Internally, this is the same as `.set_destination()` + `.send()`
+    #[inline]
     pub fn send_to(&mut self, dest: BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
         let mut c = unsafe { uninitialized() };
@@ -916,6 +1007,8 @@ impl MessageRef {
         Ok(c)
     }
 
+    /// Same as `self.send_to()`, but don't expect a reply.
+    #[inline]
     pub fn send_to_no_reply(&mut self, dest: BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
@@ -925,6 +1018,11 @@ impl MessageRef {
         Ok(())
     }
 
+    /// Use this message to call a dbus method. Blocks until a reply is recieved or `usec`
+    /// microseconds elapse (ie: this times out)
+    ///
+    /// XXX: document blocking forever
+    #[inline]
     pub fn call(&mut self, usec: u64) -> super::Result<Result<Message>> {
         let mut r = unsafe { uninitialized() };
         let mut e = Error::new();
@@ -941,8 +1039,13 @@ impl MessageRef {
         }
     }
 
-    // XXX: we may need to move this, unclear we have the right lifetime here (we're being to
+    /// Use this message to call a dbus method. Returns immediately and will call the callback when
+    /// a reply is recieved.
+    ///
+    /// XXX: document how timeout affects this
+    // XXX: we may need to move this, unclear we have the right lifetime here (we're being too
     // strict)
+    #[inline]
     pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&mut self,
                                                                       callback: &mut F,
                                                                       usec: u64)
