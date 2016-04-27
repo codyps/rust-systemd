@@ -2,7 +2,7 @@ extern crate utf8_cstr;
 
 use ffi;
 use ffi::{c_int, c_char, c_void};
-use std::fmt;
+use std::{fmt,str};
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
 use std::mem::{uninitialized, transmute, forget};
@@ -119,12 +119,12 @@ fn t_path() {
 /**
  * A wrapper which promises it always holds a validated dbus interface name
  */
-#[derive(Debug,Clone,Copy)]
-pub struct InterfaceName<'a> {
-    inner: &'a [u8],
+#[derive(Debug)]
+pub struct InterfaceName {
+    inner: [u8],
 }
 
-impl<'a> InterfaceName<'a> {
+impl InterfaceName {
     /**
      * Create a interface name reference from a u8 slice.
      *
@@ -140,7 +140,7 @@ impl<'a> InterfaceName<'a> {
      *  Interface names must not being with a '.' character
      * sd-bus additionally requires nul ('\0') termination of the interface name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<InterfaceName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
 
         if b.len() < 1 {
             return Err("Name must have more than 0 characters");
@@ -184,7 +184,7 @@ impl<'a> InterfaceName<'a> {
                     if periods < 1 {
                         return Err("Name must have at least 2 elements");
                     }
-                    return Ok(InterfaceName { inner: b });
+                    return Ok(unsafe { InterfaceName::from_bytes_unchecked(b) });
                 }
                 _ => {
                     return Err("Invalid character in interface name, only '[A-Z][a-z][0-9]_\\.' \
@@ -196,22 +196,31 @@ impl<'a> InterfaceName<'a> {
         return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
     }
 
+    /// Unsafety:
+    ///
+    ///  - `b` must be a nul terminated string
+    ///  - `b` must contain a valid interface
     #[inline]
-    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> InterfaceName {
-        InterfaceName { inner: b }
+    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &InterfaceName {
+        transmute(b)
     }
 
+    /// Unsafety:
+    ///
+    ///  - lifetime `'a` must be valid
+    ///  - `b` must be a nul terminated string
+    ///  - `b` must contain a valid interface
     #[inline]
-    pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
-        InterfaceName { inner: CStr::from_ptr(b).to_bytes() }
+    pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
     }
 }
 
-impl<'a> Deref for InterfaceName<'a> {
+impl Deref for InterfaceName {
     type Target = [u8];
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        unsafe { transmute(self) }
     }
 }
 
@@ -227,12 +236,12 @@ fn t_interface() {
     InterfaceName::from_bytes(b"a.b.c?\0").err().unwrap();
 }
 
-#[derive(Debug,Clone,Copy)]
-pub struct BusName<'a> {
-    inner: &'a [u8],
+#[derive(Debug)]
+pub struct BusName {
+    inner: [u8],
 }
 
-impl<'a> BusName<'a> {
+impl BusName {
     /**
      * Create a bus name reference from a u8 slice.
      *
@@ -252,7 +261,7 @@ impl<'a> BusName<'a> {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<BusName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
 
         if b.len() < 1 {
             return Err("Name must have more than 0 characters");
@@ -315,21 +324,21 @@ impl<'a> BusName<'a> {
     }
 
     #[inline]
-    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> BusName {
-        BusName { inner: b }
+    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
+        transmute(b)
     }
 
     #[inline]
-    pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
-        BusName { inner: CStr::from_ptr(b).to_bytes() }
+    pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
     }
 }
 
-impl<'a> Deref for BusName<'a> {
+impl Deref for BusName {
     type Target = [u8];
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        unsafe { transmute(self) }
     }
 }
 
@@ -345,12 +354,12 @@ fn t_busname() {
     BusName::from_bytes(b":a.b-c.1\0").unwrap();
 }
 
-#[derive(Debug,Clone,Copy)]
-pub struct MemberName<'a> {
-    inner: &'a [u8],
+#[derive(Debug)]
+pub struct MemberName {
+    inner: [u8],
 }
 
-impl<'a> MemberName<'a> {
+impl MemberName {
     /**
      * Create a member name reference from a u8 slice.
      *
@@ -365,7 +374,7 @@ impl<'a> MemberName<'a> {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<MemberName, &'static str> {
+    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
 
         if b.len() < 2 {
             return Err("Name must have more than 0 characters");
@@ -387,7 +396,7 @@ impl<'a> MemberName<'a> {
                 b'A'...b'Z' | b'a'...b'z' | b'0'...b'9' | b'_' => {
                     // Ok
                 }
-                b'\0' => return Ok(unsafe { MemberName::from_bytes_unchecked(b) }),
+                b'\0' => return Ok(unsafe { Self::from_bytes_unchecked(b) }),
                 _ => {
                     return Err("Invalid character in member name, only '[A-Z][a-z][0-9]_' allowed");
                 }
@@ -398,21 +407,21 @@ impl<'a> MemberName<'a> {
     }
 
     #[inline]
-    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> MemberName {
-        MemberName { inner: b }
+    pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
+        transmute(b)
     }
 
     #[inline]
-    pub unsafe fn from_ptr_unchecked(b: *const c_char) -> Self {
-        MemberName { inner: CStr::from_ptr(b).to_bytes() }
+    pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
     }
 }
 
-impl<'a> Deref for MemberName<'a> {
+impl Deref for MemberName {
     type Target = [u8];
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        unsafe { transmute(self) }
     }
 }
 
@@ -607,9 +616,14 @@ impl Clone for Bus {
     }
 }
 
-#[derive(Debug)]
 pub struct BusRef {
-    _empty: (),
+    _inner: ffi::bus::sd_bus,
+}
+
+impl fmt::Debug for BusRef {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("BusRef").finish()
+    }
 }
 
 impl ToOwned for BusRef {
@@ -659,7 +673,7 @@ impl BusRef {
     }
 
     #[inline]
-    pub fn unique_name(&self) -> super::Result<BusName> {
+    pub fn unique_name(&self) -> super::Result<&BusName> {
         let mut e = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_get_unique_name(self.as_ptr(), &mut e));
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
@@ -667,9 +681,9 @@ impl BusRef {
 
     #[inline]
     pub fn new_signal(&mut self,
-                      path: ObjectPath,
-                      interface: InterfaceName,
-                      member: MemberName)
+                      path: &ObjectPath,
+                      interface: &InterfaceName,
+                      member: &MemberName)
                       -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(),
@@ -682,10 +696,10 @@ impl BusRef {
 
     #[inline]
     pub fn new_method_call(&mut self,
-                           dest: BusName,
-                           path: ObjectPath,
-                           interface: InterfaceName,
-                           member: MemberName)
+                           dest: &BusName,
+                           path: &ObjectPath,
+                           interface: &InterfaceName,
+                           member: &MemberName)
                            -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(),
@@ -702,7 +716,7 @@ impl BusRef {
     // TODO: consider using a guard object for name handling
     /// This blocks. To get async behavior, use 'call_async' directly.
     #[inline]
-    pub fn request_name(&self, name: BusName, flags: u64) -> super::Result<()> {
+    pub fn request_name(&self, name: &BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(self.as_ptr(),
                                               &*name as *const _ as *const _,
                                               flags));
@@ -711,7 +725,7 @@ impl BusRef {
 
     /// This blocks. To get async behavior, use 'call_async' directly.
     #[inline]
-    pub fn release_name(&self, name: BusName) -> super::Result<()> {
+    pub fn release_name(&self, name: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(), &*name as *const _ as *const _));
         Ok(())
     }
@@ -726,7 +740,7 @@ impl BusRef {
     //  - cb: &CustomTrait
     #[inline]
     pub fn add_object<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&self,
-                                                                      path: ObjectPath,
+                                                                      path: &ObjectPath,
                                                                       cb: &mut F)
                                                                       -> super::Result<()> {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
@@ -742,7 +756,7 @@ impl BusRef {
     }
 
     #[inline]
-    pub fn add_object_manager(&self, path: ObjectPath) -> super::Result<()> {
+    pub fn add_object_manager(&self, path: &ObjectPath) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_add_object_manager(self.as_ptr(),
                                                     ptr::null_mut(),
                                                     &*path as *const _ as *const _));
@@ -819,7 +833,7 @@ pub struct Message {
 
 /// A reference to a `Message`
 pub struct MessageRef {
-    _empty: (),
+    _inner: ffi::bus::sd_bus_message
 }
 
 /// An iterator over the elements of a `Message`, use this to read data out of a message.
@@ -940,7 +954,7 @@ impl MessageRef {
     ///
     /// Fails if the message is sealed
     #[inline]
-    pub fn set_destination(&mut self, dest: BusName) -> super::Result<()> {
+    pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(),
                     &*dest as *const _ as *const _));
         Ok(())
@@ -1019,7 +1033,7 @@ impl MessageRef {
     ///
     /// Internally, this is the same as `.set_destination()` + `.send()`
     #[inline]
-    pub fn send_to(&mut self, dest: BusName) -> super::Result<u64> {
+    pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
         let mut c = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
@@ -1031,7 +1045,7 @@ impl MessageRef {
 
     /// Same as `self.send_to()`, but don't expect a reply.
     #[inline]
-    pub fn send_to_no_reply(&mut self, dest: BusName) -> super::Result<()> {
+    pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
                                          self.as_mut_ptr(),
@@ -1100,12 +1114,19 @@ impl MessageRef {
     }
 
     /// Raw access to append data to this message
+    /// Will fail if the message is sealed
     // XXX: unclear if this should operate directly on the message or be split out to the iterator
     // mechanism
     #[inline]
     pub unsafe fn append_basic_raw(&mut self, dbus_type: u8, v: *const c_void) -> ::Result<()> {
         try!(::ffi_result(ffi::bus::sd_bus_message_append_basic(self.as_mut_ptr(), dbus_type as c_char, v)));
         Ok(())
+    }
+
+    /// Append a value to the message
+    #[inline]
+    pub fn append<V: types::ToSdBusMessage>(&mut self, v: V) -> ::Result<()> {
+        v.to_message(self)
     }
 
     /// Get an iterator over the message. This iterator really exists with in the `Message` itself,
@@ -1119,12 +1140,17 @@ impl MessageRef {
     pub fn iter<'a>(&'a mut self) -> ::Result<MessageIter<'a>> {
         /* probe the `Message` to check if we can iterate on it */
         sd_try!(ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), ptr::null_mut(), ptr::null_mut()));
-        Ok(MessageIter { raw: self.as_ptr(), life: PhantomData })
+        Ok(MessageIter { raw: self.as_mut_ptr(), life: PhantomData })
     }
 
 }
 
 impl<'a> MessageIter<'a> {
+    #[inline]
+    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
+        self.raw
+    }
+
     /*
      * XXX: 'T' may reference the parent `Message`, and should be tied to the lifetime of the
      * `MessageIter` (to ensure they don't change out from underneath us) but shouldn't be tied to
@@ -1139,12 +1165,16 @@ impl<'a> MessageIter<'a> {
     /// sealing.
     #[inline]
     pub unsafe fn read_basic_raw<R, T, F: FnOnce(R) -> T>(&mut self, dbus_type: u8, cons: F)
-            -> ::Result<T>
+            -> ::Result<Option<T>>
         where T: 'a
     {
         let mut v: R = uninitialized();
         match ::ffi_result(ffi::bus::sd_bus_message_read_basic(self.as_mut_ptr(), dbus_type as c_char, &mut v as *mut _ as *mut _)) {
-            Ok(_) => Ok(cons(v)),
+            Ok(1) => Ok(Some(cons(v))),
+            Ok(_) => {
+                forget(v);
+                Ok(None)
+            },
             Err(e) => {
                 forget(v);
                 Err(e)
@@ -1152,6 +1182,11 @@ impl<'a> MessageIter<'a> {
         }
     }
 
+    /// This needs to be `&mut` as the `&str` will be invalid after either of:
+    ///  - self is dropped
+    ///  - sd_bus_message_peek_type is called a second time
+    ///
+    /// Using &mut allows us to prevent #2.
     // &str lasts until next call of sd_bus_message_peek_type
     // XXX: confirm that lifetimes here match that!
     #[inline]
@@ -1161,10 +1196,22 @@ impl<'a> MessageIter<'a> {
         let mut cont: *const c_char = unsafe { uninitialized() };
         try!(::ffi_result(unsafe { ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), &mut t, &mut cont) }));
 
-        Ok((t, str::from_utf8_unchecked(CStr::from_ptr(cont))))
+        let s = if cont.is_null() {
+            /* XXX: we may need to adjust here and return an option, but it isn't yet clear if
+             * there will be confusion between NULL and "" here */
+            ""
+        } else {
+            unsafe {str::from_utf8_unchecked(CStr::from_ptr(cont).to_bytes())}
+        };
+        Ok((t, s))
     }
 
     // XXX: handle containers
+
+    pub fn next<V: types::FromSdBusMessage<'a>>(&'a mut self) -> ::Result<Option<V>>
+    {
+        V::from_message(self)
+    }
 }
 
 /*
