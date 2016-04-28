@@ -11,19 +11,33 @@ use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
 use std::borrow::{Borrow,BorrowMut};
 use std::result;
+use self::utf8_cstr::Utf8CStr;
 
 pub mod types;
 
 /**
  * Result type for dbus calls that contains errors returned by remote services.
  *
- * Most often, this will be encapsulated in the systemd::Result type (a std::io::Result alias)
- * which knows about other failure types
+ * For functions that can pass over dbus, sd-bus provides detailed error information for all
+ * failures, including those cause by bus failures (not necessarily errors sent by the called
+ * method).
+ *
+ * To clairfy: getting this error does not necessarily mean it comes from a remote service. It
+ * might be a local failure (resource exaustion, programmer error, service unreachable) as well.
  */
 pub type Result<T> = result::Result<T, Error>;
 
 /**
  * A wrapper which promises it always holds a valid dbus object path
+ *
+ * Requirements (from dbus spec 0.26):
+ *
+ * - path must begin with ASCII '/' and consist of elements separated by slash characters
+ * - each element must only contain the ASCII characters '[A-Z][a-z][0-9]_'
+ * - No element may be the empty string
+ * - Multiple '/' characters may not occur in sequence
+ * - A trailing '/' character is not allowed unless the path is the root path
+ * - Further, sd-bus additionally requires nul ('\0') termination of paths.
  */
 #[derive(Debug)]
 pub struct ObjectPath {
@@ -32,22 +46,10 @@ pub struct ObjectPath {
 
 impl ObjectPath {
     /**
-     * Create a path reference from a u8 slice.
-     *
-     * Users should be careful to ensure all the following
-     * requirements are met:
-     *
-     * dbus spec 0.26 requires:
-     *  path must begin with ASCII '/' and consist of elements separated by slash characters
-     *  each element must only contain the ASCII characters '[A-Z][a-z][0-9]_'
-     *  No element may be the empty string
-     *  Multiple '/' characters may not occur in sequence
-     *  A trailing '/' character is not allowed unless the path is the root path
-     * sd-bus additionally requires nul ('\0') termination of paths.
+     * Create a path reference from a u8 slice. Performs all checking needed to ensure requirements
+     * are met.
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
-
-
         if b.len() < 1 {
             return Err("Path must have at least 1 character ('/')");
         }
@@ -435,8 +437,24 @@ fn t_member_name() {
     MemberName::from_bytes(b"a\0").unwrap();
 }
 
+// TODO: consider providing a duplicate of this that promises it contains an error
+// We need this more general one for writing more direct interfaces into sd-bus, but most user code
+// will only encounter an error that is correctly populated by sd-bus itself.
 pub struct Error {
     inner: ffi::bus::sd_bus_error,
+}
+
+impl Default for Error {
+    #[inline]
+    fn default() -> Self {
+        Error {
+            inner: ffi::bus::sd_bus_error {
+                name: ptr::null(),
+                message: ptr::null(),
+                need_free: 0,
+            },
+        }
+    }
 }
 
 impl Error {
@@ -447,13 +465,7 @@ impl Error {
 
     #[inline]
     pub fn new() -> Error {
-        Error {
-            inner: ffi::bus::sd_bus_error {
-                name: ptr::null(),
-                message: ptr::null(),
-                need_free: 0,
-            },
-        }
+        Default::default()
     }
 
     #[inline]
@@ -482,6 +494,37 @@ impl Error {
     fn as_ptr(&self) -> *const ffi::bus::sd_bus_error {
         &self.inner
     }
+
+    // XXX: watch out! this method is doing strlen() on every single call to properly construct the
+    // reference. Consider caching length info somewhere.
+    #[inline]
+    pub fn name(&self) -> Option<&InterfaceName> {
+        if self.is_set() {
+            Some(unsafe{InterfaceName::from_ptr_unchecked(self.inner.name)})
+        } else {
+            None
+        }
+    }
+
+    // XXX: watch out! this method is doing strlen() on every single call to properly construct the
+    // reference. Consider caching length info somewhere.
+    #[inline]
+    pub fn message(&self) -> Option<&Utf8CStr> {
+        if self.is_set() {
+            Some(unsafe{Utf8CStr::from_ptr_unchecked(self.inner.name)})
+        } else {
+            None
+        }
+    }
+
+    // TODO: check if the ffi function can fail, and if so in what way
+    pub fn errno(&self) -> Option<c_int> {
+        if self.is_set() {
+            Some(unsafe { ffi::bus::sd_bus_error_get_errno(self.as_ptr()) })
+        } else {
+            None
+        }
+    }
 }
 
 impl Drop for Error {
@@ -502,7 +545,28 @@ impl Clone for Error {
 
 impl fmt::Debug for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "Error {{ need_free: {:?} }}", self.inner.need_free)
+        fmt.debug_struct("Error")
+            .field("name", &self.name())
+            .field("message", &self.message())
+            .field("need_free", &self.inner.need_free)
+            .finish()
+    }
+}
+
+// TODO: make this display nicer
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Error")
+            .field("name", &self.name())
+            .field("message", &self.message())
+            .field("need_free", &self.inner.need_free)
+            .finish()
+    }
+}
+
+impl ::std::error::Error for Error {
+    fn description(&self) -> &str {
+        self.message().map_or("", |x| x.as_ref())
     }
 }
 
@@ -1059,19 +1123,20 @@ impl MessageRef {
     ///
     /// XXX: document blocking forever
     #[inline]
-    pub fn call(&mut self, usec: u64) -> super::Result<Result<Message>> {
+    pub fn call(&mut self, usec: u64) -> Result<Message> {
         let mut r = unsafe { uninitialized() };
         let mut e = Error::new();
-        sd_try!(ffi::bus::sd_bus_call(ptr::null_mut(),
-                                      self.as_mut_ptr(),
-                                      usec,
-                                      e.as_mut_ptr(),
-                                      &mut r));
-
+        unsafe {
+            ffi::bus::sd_bus_call(ptr::null_mut(),
+                    self.as_mut_ptr(),
+                    usec,
+                    e.as_mut_ptr(),
+                    &mut r);
+        }
         if e.is_set() {
-            Ok(Err(e))
+            Err(e)
         } else {
-            Ok(Ok(unsafe { Message::take_ptr(r) }))
+            Ok(unsafe { Message::take_ptr(r) })
         }
     }
 
