@@ -41,7 +41,7 @@ pub type Result<T> = result::Result<T, Error>;
  */
 #[derive(Debug)]
 pub struct ObjectPath {
-    inner: [u8],
+    inner: CStr,
 }
 
 impl ObjectPath {
@@ -99,10 +99,10 @@ impl ObjectPath {
 }
 
 impl Deref for ObjectPath {
-    type Target = [u8];
+    type Target = CStr;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { transmute(self) }
+        &self.inner
     }
 }
 
@@ -123,7 +123,7 @@ fn t_path() {
  */
 #[derive(Debug)]
 pub struct InterfaceName {
-    inner: [u8],
+    inner: CStr,
 }
 
 impl InterfaceName {
@@ -219,10 +219,10 @@ impl InterfaceName {
 }
 
 impl Deref for InterfaceName {
-    type Target = [u8];
+    type Target = CStr;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { transmute(self) }
+        &self.inner
     }
 }
 
@@ -240,7 +240,7 @@ fn t_interface() {
 
 #[derive(Debug)]
 pub struct BusName {
-    inner: [u8],
+    inner: CStr,
 }
 
 impl BusName {
@@ -337,10 +337,10 @@ impl BusName {
 }
 
 impl Deref for BusName {
-    type Target = [u8];
+    type Target = CStr;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { transmute(self) }
+        &self.inner
     }
 }
 
@@ -358,7 +358,7 @@ fn t_busname() {
 
 #[derive(Debug)]
 pub struct MemberName {
-    inner: [u8],
+    inner: CStr,
 }
 
 impl MemberName {
@@ -420,10 +420,10 @@ impl MemberName {
 }
 
 impl Deref for MemberName {
-    type Target = [u8];
+    type Target = CStr;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { transmute(self) }
+        &self.inner
     }
 }
 
