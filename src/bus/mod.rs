@@ -16,7 +16,8 @@ use self::utf8_cstr::Utf8CStr;
 pub mod types;
 
 /**
- * Result type for dbus calls that contains errors returned by remote services.
+ * Result type for dbus calls that contains errors returned by remote services (and local errors as
+ * well).
  *
  * For functions that can pass over dbus, sd-bus provides detailed error information for all
  * failures, including those cause by bus failures (not necessarily errors sent by the called
@@ -440,14 +441,102 @@ fn t_member_name() {
 // TODO: consider providing a duplicate of this that promises it contains an error
 // We need this more general one for writing more direct interfaces into sd-bus, but most user code
 // will only encounter an error that is correctly populated by sd-bus itself.
-pub struct Error {
+struct RawError {
     inner: ffi::bus::sd_bus_error,
 }
 
-impl Default for Error {
+pub struct Error {
+    raw: RawError,
+    name_len: usize,
+    message_len: usize,
+}
+
+impl Error {
+    /// Unsafety:
+    ///
+    /// - `raw` must be set.
+    unsafe fn from_raw(raw: RawError) -> Error {
+        let n = CStr::from_ptr(raw.inner.name).to_bytes_with_nul().len();
+        let m = if raw.inner.message.is_null() {
+            0
+        } else {
+            CStr::from_ptr(raw.inner.message).to_bytes_with_nul().len()
+        };
+
+        Error {
+            raw: raw,
+            name_len: n,
+            message_len: m
+        }
+    }
+
+    pub fn new(name: &Utf8CStr, message: Option<&Utf8CStr>) -> Error {
+        let v = RawError::with(name, message);
+
+        Error {
+            raw: v,
+            name_len: name.len() + 1,
+            message_len: message.map_or(0, |x| x.len() + 1)
+        }
+    }
+
+    pub fn name(&self) -> &Utf8CStr {
+        unsafe { Utf8CStr::from_raw_parts(self.raw.inner.name, self.name_len) }
+    }
+
+    pub fn message(&self) -> Option<&Utf8CStr> {
+        let p = self.raw.inner.message;
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { Utf8CStr::from_raw_parts(self.raw.inner.message, self.message_len) })
+        }
+    }
+
+    fn as_ptr(&self) -> *const ffi::bus::sd_bus_error {
+        self.raw.as_ptr()
+    }
+
+    unsafe fn move_into(self, dest: *mut ffi::bus::sd_bus_error) {
+        let x = ::std::ptr::read(&self.raw.inner);
+        forget(self);
+        *dest = x;
+    }
+}
+
+impl ::std::error::Error for Error {
+    fn description(&self) -> &str {
+        match self.message() {
+            Some(m) => m.as_ref(),
+            None => self.name().as_ref(),
+        }
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Error")
+            .field("name", &self.name())
+            .field("message", &self.message())
+            .field("need_free", &self.raw.inner.need_free)
+            .finish()
+    }
+}
+
+// TODO: make this display nicer
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.message() {
+            Some(m) => write!(fmt, "Dbus Error: {}: {}", self.name(), m),
+            None => write!(fmt, "Dbus Error: {}", self.name())
+        }
+    }
+}
+
+impl Default for RawError {
     #[inline]
     fn default() -> Self {
-        Error {
+        RawError {
             inner: ffi::bus::sd_bus_error {
                 name: ptr::null(),
                 message: ptr::null(),
@@ -457,31 +546,40 @@ impl Default for Error {
     }
 }
 
-impl Error {
+impl RawError {
     #[inline]
-    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_error) -> &'a mut Error {
-        transmute(p)
-    }
-
-    #[inline]
-    pub fn new() -> Error {
+    fn new() -> Self {
         Default::default()
     }
 
-    #[inline]
-    pub fn set<T: AsRef<CStr>, S: AsRef<CStr>>(&mut self,
-                                               name: &T,
-                                               message: &S)
-                                               -> super::Result<()> {
-        unsafe { ffi::bus::sd_bus_error_free(&mut self.inner) }
-        sd_try!(ffi::bus::sd_bus_error_set(&mut self.inner,
-                                           name.as_ref().as_ptr(),
-                                           message.as_ref().as_ptr()));
-        Ok(())
+    fn into_result(self) -> Result<()> {
+        if self.is_set() {
+            Err(unsafe { Error::from_raw(self) })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn with(name: &Utf8CStr, message: Option<&Utf8CStr>) -> Self {
+        let mut v : Self = Default::default();
+        v.set(name, message);
+        v
+    }
+
+    // XXX: if error is already set, this will not update the error
+    // WARNING: using error_set causes strlen() usage even though we already have the lengths
+    fn set(&mut self, name: &Utf8CStr, message: Option<&Utf8CStr>) {
+        /* return value of sd_bus_error_set is calculated based on name, which we don't care about
+         * */
+        unsafe {
+            ffi::bus::sd_bus_error_set(&mut self.inner,
+                                   name.as_ptr(),
+                                   message.map_or(ptr::null(), |x| x.as_ptr()));
+        }
     }
 
     #[inline]
-    pub fn is_set(&self) -> bool {
+    fn is_set(&self) -> bool {
         !self.inner.name.is_null()
     }
 
@@ -518,6 +616,8 @@ impl Error {
     }
 
     // TODO: check if the ffi function can fail, and if so in what way
+    #[allow(dead_code)]
+    #[inline]
     pub fn errno(&self) -> Option<c_int> {
         if self.is_set() {
             Some(unsafe { ffi::bus::sd_bus_error_get_errno(self.as_ptr()) })
@@ -527,25 +627,25 @@ impl Error {
     }
 }
 
-impl Drop for Error {
+impl Drop for RawError {
     #[inline]
     fn drop(&mut self) {
         unsafe { ffi::bus::sd_bus_error_free(&mut self.inner) };
     }
 }
 
-impl Clone for Error {
+impl Clone for RawError {
     #[inline]
-    fn clone(&self) -> Error {
-        let mut e = unsafe { Error { inner: uninitialized() } };
+    fn clone(&self) -> RawError {
+        let mut e = unsafe { RawError { inner: uninitialized() } };
         unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
         e
     }
 }
 
-impl fmt::Debug for Error {
+impl fmt::Debug for RawError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Error")
+        fmt.debug_struct("RawError")
             .field("name", &self.name())
             .field("message", &self.message())
             .field("need_free", &self.inner.need_free)
@@ -554,9 +654,9 @@ impl fmt::Debug for Error {
 }
 
 // TODO: make this display nicer
-impl fmt::Display for Error {
+impl fmt::Display for RawError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Error")
+        fmt.debug_struct("RawError")
             .field("name", &self.name())
             .field("message", &self.message())
             .field("need_free", &self.inner.need_free)
@@ -564,29 +664,35 @@ impl fmt::Display for Error {
     }
 }
 
-impl ::std::error::Error for Error {
-    fn description(&self) -> &str {
-        self.message().map_or("", |x| x.as_ref())
-    }
-}
-
 #[test]
-fn t_error() {
-    use std::ffi::CString;
-    let name = CString::new("name").unwrap();
-    let message = CString::new("error").unwrap();
-    Error::new().set(&name, &message).err().unwrap();
+fn t_raw_error() {
+    let name = Utf8CStr::from_bytes(b"name\0").unwrap();
+    let message = Utf8CStr::from_bytes(b"error\0").unwrap();
+    let _raw = RawError::new().set(name, Some(message));
 }
 
-extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(
+/* XXX: fixme: return code does have meaning! */
+extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef) -> Result<()>>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,
     ret_error: *mut ffi::bus::sd_bus_error) -> c_int
 {
     let m: &mut F = unsafe { transmute(userdata) };
-    unsafe {
-        m(MessageRef::from_mut_ptr(msg),
-          Error::from_mut_ptr(ret_error))
+    let e = m(unsafe { MessageRef::from_mut_ptr(msg)});
+
+    match e {
+        Err(e) => {
+            /* XXX: this relies on ret_error not being allocated data, otherwise we'll leak. */
+            unsafe { e.move_into(ret_error) }
+            /* If negative, sd_bus_reply_method_errno() is used, which should also work, but this
+             * is more direct */
+            0
+        },
+        Ok(_) => {
+            /* FIXME: 0 vs positive return codes have different meaning. need to expose/chose
+             * properly here */
+            0
+        }
     }
 }
 
@@ -803,7 +909,7 @@ impl BusRef {
     //  - cb: &FnMut
     //  - cb: &CustomTrait
     #[inline]
-    pub fn add_object<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&self,
+    pub fn add_object<F: FnMut(&mut MessageRef) -> Result<()>>(&self,
                                                                       path: &ObjectPath,
                                                                       cb: &mut F)
                                                                       -> super::Result<()> {
@@ -1077,6 +1183,8 @@ impl MessageRef {
      */
 
     /// Send expecting a reply. Returns the reply cookie.
+    ///
+    /// Seals `self`.
     #[inline]
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
@@ -1086,6 +1194,7 @@ impl MessageRef {
     }
 
     /// Send without expecting any reply
+    /// Seals `self`.
     #[inline]
     pub fn send_no_reply(&mut self) -> super::Result<()> {
         // self.bus().send_no_reply(self)
@@ -1096,6 +1205,7 @@ impl MessageRef {
     /// Send this message to a destination.
     ///
     /// Internally, this is the same as `.set_destination()` + `.send()`
+    /// Seals `self`.
     #[inline]
     pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
@@ -1108,6 +1218,7 @@ impl MessageRef {
     }
 
     /// Same as `self.send_to()`, but don't expect a reply.
+    /// Seals `self`.
     #[inline]
     pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
@@ -1122,10 +1233,11 @@ impl MessageRef {
     /// microseconds elapse (ie: this times out)
     ///
     /// XXX: document blocking forever
+    /// Seals `self`.
     #[inline]
     pub fn call(&mut self, usec: u64) -> Result<Message> {
         let mut r = unsafe { uninitialized() };
-        let mut e = Error::new();
+        let mut e = RawError::new();
         unsafe {
             ffi::bus::sd_bus_call(ptr::null_mut(),
                     self.as_mut_ptr(),
@@ -1133,21 +1245,18 @@ impl MessageRef {
                     e.as_mut_ptr(),
                     &mut r);
         }
-        if e.is_set() {
-            Err(e)
-        } else {
-            Ok(unsafe { Message::take_ptr(r) })
-        }
+        e.into_result().map(|_| unsafe { Message::take_ptr(r)})
     }
 
     /// Use this message to call a dbus method. Returns immediately and will call the callback when
     /// a reply is recieved.
     ///
     /// XXX: document how timeout affects this
+    /// Seals `self`.
     // XXX: we may need to move this, unclear we have the right lifetime here (we're being too
     // strict)
     #[inline]
-    pub fn call_async<F: FnMut(&mut MessageRef, &mut Error) -> c_int>(&mut self,
+    pub fn call_async<F: FnMut(&mut MessageRef) -> Result<()>>(&mut self,
                                                                       callback: &mut F,
                                                                       usec: u64)
                                                                       -> super::Result<()> {
@@ -1228,6 +1337,11 @@ impl<'a> MessageIter<'a> {
     /// XXX: really, they are valid until the message is un-sealed: reading from the message can
     /// only occur while the message is sealed. Unclear if we can track lifetimes against message
     /// sealing.
+    ///
+    /// Unsafety:
+    ///
+    ///  - `dbus_type` when given to `sd_bus_message_read_basic()` must result in something that
+    ///    can be reinterpreted as `R`.
     #[inline]
     pub unsafe fn read_basic_raw<R, T, F: FnOnce(R) -> T>(&mut self, dbus_type: u8, cons: F)
             -> ::Result<Option<T>>
