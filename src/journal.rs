@@ -1,5 +1,5 @@
 use libc::{c_int, size_t};
-use log::{self, Log, LogRecord, LogLocation, SetLoggerError};
+use log::{self, Log, LogRecord, LogLocation, LogLevelFilter, SetLoggerError};
 use std::{fmt, ptr, result};
 use std::collections::BTreeMap;
 use ffi::array_to_iovecs;
@@ -50,7 +50,14 @@ impl Log for JournalLog {
 
 impl JournalLog {
     pub fn init() -> result::Result<(), SetLoggerError> {
-        log::set_logger(|_max_log_level| Box::new(JournalLog))
+        Self::init_with_level(LogLevelFilter::Info)
+    }
+
+    pub fn init_with_level(level: LogLevelFilter) -> result::Result<(), SetLoggerError> {
+        log::set_logger(|max_log_level| {
+            max_log_level.set(level);
+            Box::new(JournalLog)
+        })
     }
 }
 
