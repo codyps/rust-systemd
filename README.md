@@ -35,7 +35,7 @@ fn main() {
    journal::print(1, &format!("Rust can talk to the journal: {:?}",
                              4));
    journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
-   journal::JournalLogger::init().unwrap();
+   journal::JournalLog::init().unwrap();
    warn!("HI");
    sd_journal_log!(4, "HI {:?}", 2);
 }
