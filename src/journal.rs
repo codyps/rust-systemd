@@ -15,12 +15,12 @@ pub fn send(args: &[&str]) -> c_int {
     unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
 }
 
-/// Send a simple message to systemd.
+/// Send a simple message to systemd-journald.
 pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
 
-/// Send a `log::LogRecord` to systemd.
+/// Send a `log::LogRecord` to systemd-journald.
 pub fn log_record(record: &LogRecord) {
     let lvl: usize = unsafe {
         use std::mem;
@@ -29,6 +29,7 @@ pub fn log_record(record: &LogRecord) {
     log(lvl, record.location(), record.args());
 }
 
+/// Record a log entry, with custom priority and location.
 pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments) {
     send(&[&format!("PRIORITY={}", level),
            &format!("MESSAGE={}", args),
@@ -37,6 +38,7 @@ pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments) {
            &format!("CODE_FUNCTION={}", loc.module_path())]);
 }
 
+/// Logger implementation over systemd-journald.
 pub struct JournalLog;
 impl Log for JournalLog {
     fn enabled(&self, _metadata: &log::LogMetadata) -> bool {
@@ -61,9 +63,10 @@ impl JournalLog {
     }
 }
 
+// A single log entry from journal.
 pub type JournalRecord = BTreeMap<String, String>;
 
-/// A cursor into the systemd journal.
+/// A reader for systemd journal.
 ///
 /// Supports read, next, previous, and seek operations.
 pub struct Journal {
@@ -113,7 +116,7 @@ impl Journal {
         Ok(journal)
     }
 
-    /// Read the next record from the journal. Returns `io::EndOfFile` if there
+    /// Read the next record from the journal. Returns `Ok(None)` if there
     /// are no more records to read.
     pub fn next_record(&self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
