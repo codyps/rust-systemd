@@ -203,6 +203,13 @@ impl Journal {
         let cursor = unsafe { CString::from_raw(c_cursor) };
         cursor.into_string().or(Err(io::Error::new(InvalidData, "invalid cursor")))
     }
+
+    /// Returns timestamp at which current journal is recorded
+    pub fn get_realtime_us(&self) -> Result<u64> {
+        let mut timestamp_us: u64 = 0;
+        sd_try!(ffi::sd_journal_get_realtime_usec(self.j, &mut timestamp_us));
+        Ok(timestamp_us)
+    }
 }
 
 impl Drop for Journal {
