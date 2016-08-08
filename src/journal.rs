@@ -193,6 +193,16 @@ impl Journal {
         let cs = unsafe { CString::from_raw(c) };
         cs.into_string().or(Err(io::Error::new(InvalidData, "invalid cursor")))
     }
+
+    /// Returns the cursor of current journal entry
+    pub fn cursor(&self) -> Result<String> {
+        let mut c_cursor: *mut c_char = ptr::null_mut();
+
+        sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor));
+
+        let cursor = unsafe { CString::from_raw(c_cursor) };
+        cursor.into_string().or(Err(io::Error::new(InvalidData, "invalid cursor")))
+    }
 }
 
 impl Drop for Journal {
