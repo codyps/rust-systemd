@@ -1366,6 +1366,11 @@ impl<'a> MessageIter<'a> {
     ///  - sd_bus_message_peek_type is called a second time
     ///
     /// Using &mut allows us to prevent #2.
+    ///
+    /// FIXME/WARNING: Message might have been cloned, in which case we can't rely on the lifetime of
+    /// &str! As `Message` isn't `Send` or `Sync`, we can garuntee we're not racing with someone
+    /// else to free it though. Probably need to allocate space for it here rather than return a
+    /// ref.
     // &str lasts until next call of sd_bus_message_peek_type
     // XXX: confirm that lifetimes here match that!
     #[inline]
