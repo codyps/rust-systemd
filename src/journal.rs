@@ -8,6 +8,7 @@ use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
 use id128::Id128;
 use super::Result;
+use std::time;
 use mbox::MString;
 
 /// Send preformatted fields to systemd.
@@ -65,6 +66,18 @@ impl JournalLog {
             Box::new(JournalLog)
         })
     }
+}
+
+fn duration_from_usec(usec: u64) -> time::Duration {
+    let secs = usec / 1_000_000;
+    let sub_usec = (usec % 1_000_000) as u32;
+    let sub_nsec = sub_usec * 1000;
+    time::Duration::new(secs, sub_nsec)
+}
+
+fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
+    let d = duration_from_usec(usec);
+    time::UNIX_EPOCH + d
 }
 
 // A single log entry from journal.
@@ -207,10 +220,10 @@ impl Journal {
     }
 
     /// Returns timestamp at which current journal is recorded
-    pub fn get_realtime_us(&self) -> Result<u64> {
+    pub fn timestamp(&self) -> Result<time::SystemTime> {
         let mut timestamp_us: u64 = 0;
         sd_try!(ffi::sd_journal_get_realtime_usec(self.j, &mut timestamp_us));
-        Ok(timestamp_us)
+        Ok(system_time_from_realtime_usec(timestamp_us))
     }
 }
 

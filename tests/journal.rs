@@ -50,7 +50,7 @@ fn ts() {
     let j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::LogLevel::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
-    let _s = j.get_realtime_us().unwrap();
+    let _s = j.timestamp().unwrap();
 }
 
 
