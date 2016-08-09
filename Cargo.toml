@@ -16,6 +16,7 @@ bus = ["libsystemd-sys/bus"]
 log = "0.*"
 libc = "0.*"
 utf8-cstr = "0.*"
+mbox = "0.*"
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"

@@ -2,13 +2,13 @@ use libc::{c_char, c_int, size_t};
 use log::{self, Log, LogRecord, LogLocation, LogLevelFilter, SetLoggerError};
 use std::{fmt, io, ptr, result};
 use std::collections::BTreeMap;
-use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
 use id128::Id128;
 use super::Result;
+use mbox::MString;
 
 /// Send preformatted fields to systemd.
 ///
@@ -190,8 +190,9 @@ impl Journal {
             sd_try!(ffi::sd_journal_next(self.j));
             sd_try!(ffi::sd_journal_get_cursor(self.j, &c));
         }
-        let cs = unsafe { CString::from_raw(c) };
-        cs.into_string().or(Err(io::Error::new(InvalidData, "invalid cursor")))
+        let cs = unsafe { MString::from_raw(c) };
+        let cs = try!(cs.or(Err(io::Error::new(InvalidData, "invalid cursor"))));
+        Ok(cs.to_string())
     }
 
     /// Returns the cursor of current journal entry
@@ -200,8 +201,9 @@ impl Journal {
 
         sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor));
 
-        let cursor = unsafe { CString::from_raw(c_cursor) };
-        cursor.into_string().or(Err(io::Error::new(InvalidData, "invalid cursor")))
+        let cursor = unsafe { MString::from_raw(c_cursor) };
+        let cursor = try!(cursor.or(Err(io::Error::new(InvalidData, "invalid cursor"))));
+        Ok(cursor.to_string())
     }
 
     /// Returns timestamp at which current journal is recorded

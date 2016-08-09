@@ -2,6 +2,7 @@ extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate libsystemd_sys as ffi;
+extern crate mbox;
 pub use std::io::{Result, Error};
 
 /// Convert a systemd ffi return value into a Result
