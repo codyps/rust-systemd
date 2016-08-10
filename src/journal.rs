@@ -3,6 +3,7 @@ use log::{self, Log, LogRecord, LogLocation, LogLevelFilter, SetLoggerError};
 use std::{fmt, io, ptr, result};
 use std::collections::BTreeMap;
 use std::io::ErrorKind::InvalidData;
+use std::os::raw::c_void;
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
@@ -224,6 +225,38 @@ impl Journal {
         let mut timestamp_us: u64 = 0;
         sd_try!(ffi::sd_journal_get_realtime_usec(self.j, &mut timestamp_us));
         Ok(system_time_from_realtime_usec(timestamp_us))
+    }
+
+    /// Adds a match by which to filter the entries of the journal.
+    /// If a match is applied, only entries with this field set will be iterated.
+    pub fn match_add<T: Into<Vec<u8>>>(&mut self, key: &str, val: T) -> Result<&mut Journal> {
+        let mut filter = Vec::<u8>::from(key);
+        filter.push('=' as u8);
+        filter.extend(val.into());
+        let data = filter.as_ptr() as *const c_void;
+        let datalen = filter.len() as size_t;
+        sd_try!(ffi::sd_journal_add_match(self.j, data, datalen));
+        Ok(self)
+    }
+
+    /// Inserts a disjunction (i.e. logical OR) in the match list.
+    pub fn match_or(&mut self) -> Result<&mut Journal> {
+        sd_try!(ffi::sd_journal_add_disjunction(self.j));
+        Ok(self)
+    }
+
+    /// Inserts a conjunction (i.e. logical AND) in the match list.
+    pub fn match_and(&mut self) -> Result<&mut Journal> {
+        sd_try!(ffi::sd_journal_add_conjunction(self.j));
+        Ok(self)
+    }
+
+    /// Flushes all matches, disjunction and conjunction terms.
+    /// After this call all filtering is removed and all entries in
+    /// the journal will be iterated again.
+    pub fn match_flush(&mut self) -> Result<&mut Journal> {
+        unsafe { ffi::sd_journal_flush_matches(self.j) };
+        Ok(self)
     }
 }
 

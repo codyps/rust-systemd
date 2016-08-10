@@ -71,3 +71,31 @@ fn test_seek() {
     assert!(j.seek(journal::JournalSeek::Tail).is_ok());
     assert!(j.next_record().is_ok());
 }
+
+#[test]
+fn test_simple_match() {
+    if ! have_journal() {
+        return;
+    }
+    let key = "RUST_TEST_MARKER";
+    let value = "RUST_SYSTEMD_SIMPLE_MATCH";
+    let msg = "MESSAGE=rust-systemd test_match";
+    let filter = format!("{}={}", key, value);
+    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+
+    // check for positive matches
+    assert!(j.seek(journal::JournalSeek::Tail).is_ok());
+    journal::send(&[&filter, &msg]);
+    assert!(j.match_flush().unwrap().match_add(key, value).is_ok());
+    let r = j.next_record().unwrap();
+    assert!(r.is_some());
+    let entry = r.unwrap();
+    let entryval = entry.get(key);
+    assert!(entryval.is_some());
+    assert_eq!(entryval.unwrap(), value);
+
+    // check for negative matches
+    assert!(j.seek(journal::JournalSeek::Tail).is_ok());
+    journal::send(&[&msg]);
+    assert!(j.next_record().unwrap().is_none());
+}
