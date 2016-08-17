@@ -73,6 +73,9 @@ pub mod daemon;
 /// sd-id128` for details
 pub mod id128;
 
+/// Interface to introspect on seats, sessions and users.
+pub mod login;
+
 /// An interface to work with the dbus message bus.
 ///
 /// WARNING: this is not complete. Right now we're missing:

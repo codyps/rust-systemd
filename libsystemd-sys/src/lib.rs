@@ -16,6 +16,7 @@ pub mod id128;
 pub mod event;
 pub mod daemon;
 pub mod journal;
+pub mod login;
 
 #[repr(C)]
 pub struct iovec {
