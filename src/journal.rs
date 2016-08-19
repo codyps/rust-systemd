@@ -153,7 +153,7 @@ impl Journal {
 
     /// Read the next record from the journal. Returns `Ok(None)` if there
     /// are no more records to read.
-    pub fn next_record(&self) -> Result<Option<JournalRecord>> {
+    pub fn next_record(&mut self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
             return Ok(None);
         }
@@ -179,7 +179,7 @@ impl Journal {
 
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
-    pub fn seek(&self, seek: JournalSeek) -> Result<String> {
+    pub fn seek(&mut self, seek: JournalSeek) -> Result<String> {
         match seek {
             JournalSeek::Head => sd_try!(ffi::sd_journal_seek_head(self.j)),
             JournalSeek::Current => 0,

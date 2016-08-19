@@ -35,7 +35,7 @@ fn cursor() {
         return;
     }
 
-    let j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::LogLevel::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
     let _s = j.cursor().unwrap();
@@ -47,7 +47,7 @@ fn ts() {
         return;
     }
 
-    let j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::LogLevel::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
     let _s = j.timestamp().unwrap();
@@ -56,7 +56,7 @@ fn ts() {
 
 #[test]
 fn test_seek() {
-    let j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     if ! have_journal() {
         return;
     }
