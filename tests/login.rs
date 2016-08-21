@@ -44,3 +44,16 @@ fn test_get_machine_name() {
         true => { },
     };
 }
+
+#[test]
+fn test_get_cgroup() {
+    let cg = login::get_cgroup(None);
+    let has_systemd = booted();
+    assert!(has_systemd.is_ok());
+    match has_systemd.unwrap() {
+        // Running under systemd, inside a slice somewhere
+        true => { assert!(cg.is_ok()) },
+        // Nothing meaningful to check here
+        false => { },
+    };
+}

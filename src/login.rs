@@ -57,3 +57,19 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
     let machine_id = unsafe { MString::from_raw(c_machine_name) };
     Ok(machine_id.unwrap().to_string())
 }
+
+/// Determines the control group path of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve the control group path of a specific
+/// process, relative to the root of the hierarchy. It returns the path without
+/// trailing slash, except for processes located in the root control group,
+/// where "/" is returned.
+pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
+    let mut c_cgroup: *mut c_char = ptr::null_mut();
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_cgroup(p, &mut c_cgroup));
+    let cg = unsafe { MString::from_raw(c_cgroup) };
+    Ok(cg.unwrap().to_string())
+}
