@@ -43,3 +43,17 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
     let slice_id = unsafe { MString::from_raw(c_slice_name) };
     Ok(slice_id.unwrap().to_string())
 }
+
+/// Determines the machine name of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve the machine name of processes running
+/// inside a VM or a container.
+pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
+    let mut c_machine_name: *mut c_char = ptr::null_mut();
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_machine_name(p, &mut c_machine_name));
+    let machine_id = unsafe { MString::from_raw(c_machine_name) };
+    Ok(machine_id.unwrap().to_string())
+}

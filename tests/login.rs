@@ -31,3 +31,16 @@ fn test_get_slice() {
         true => { assert!(ss.is_ok() || us.is_ok()); },
     };
 }
+
+#[test]
+fn test_get_machine_name() {
+    let mname = login::get_machine_name(None);
+    let has_systemd = booted();
+    assert!(has_systemd.is_ok());
+    match has_systemd.unwrap() {
+        // No machined registration
+        false => { assert!(mname.is_err()); },
+        // This is unpredictable, based on testing environment
+        true => { },
+    };
+}
