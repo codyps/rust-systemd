@@ -2,6 +2,7 @@ use libc::{c_char, c_int, size_t};
 use log::{self, Log, LogRecord, LogLocation, LogLevelFilter, SetLoggerError};
 use std::{fmt, io, ptr, result};
 use std::collections::BTreeMap;
+use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::os::raw::c_void;
 use ffi::array_to_iovecs;
@@ -195,7 +196,8 @@ impl Journal {
                 sd_try!(ffi::sd_journal_seek_realtime_usec(self.j, usec))
             }
             JournalSeek::Cursor { cursor } => {
-                sd_try!(ffi::sd_journal_seek_cursor(self.j, cursor.as_ptr() as *const c_char))
+                let c = try!(CString::new(cursor));
+                sd_try!(ffi::sd_journal_seek_cursor(self.j, c.as_ptr()))
             }
         };
         let c: *mut c_char = ptr::null_mut();
