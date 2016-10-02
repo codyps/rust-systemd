@@ -70,6 +70,11 @@ fn test_seek() {
     assert_eq!(c1.unwrap(), c2.unwrap());
     assert!(j.seek(journal::JournalSeek::Tail).is_ok());
     assert!(j.next_record().is_ok());
+    let c3 = j.cursor().unwrap();
+    let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
+    assert!(j.seek(valid_cursor).is_ok());
+    let invalid_cursor = journal::JournalSeek::Cursor { cursor: "".to_string() };
+    assert!(j.seek(invalid_cursor).is_err());
 }
 
 #[test]
@@ -96,6 +101,7 @@ fn test_simple_match() {
 
     // check for negative matches
     assert!(j.seek(journal::JournalSeek::Tail).is_ok());
+    assert!(j.match_flush().unwrap().match_add("NOKEY", "NOVALUE").is_ok());
     journal::send(&[&msg]);
     assert!(j.next_record().unwrap().is_none());
 }
