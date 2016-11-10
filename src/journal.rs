@@ -1,5 +1,5 @@
 use libc::{c_char, c_int, size_t};
-use log::{self, Log, LogRecord, LogLocation, LogLevelFilter, SetLoggerError};
+use log::{self, Log, LogRecord, LogLocation, LogLevel, LogLevelFilter, SetLoggerError};
 use std::{fmt, io, ptr, result};
 use std::collections::BTreeMap;
 use std::ffi::CString;
@@ -27,12 +27,26 @@ pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
 
+enum SyslogLevel {
+    // Emerg = 0,
+    // Alert = 1,
+    // Crit = 2,
+    Err = 3,
+    Warning = 4,
+    // Notice = 5,
+    Info = 6,
+    Debug = 7,
+}
+
 /// Send a `log::LogRecord` to systemd-journald.
 pub fn log_record(record: &LogRecord) {
-    let lvl: usize = unsafe {
-        use std::mem;
-        mem::transmute(record.level())
-    };
+    let lvl = match record.level() {
+        LogLevel::Error => SyslogLevel::Err,
+        LogLevel::Warn => SyslogLevel::Warning,
+        LogLevel::Info => SyslogLevel::Info,
+        LogLevel::Debug |
+        LogLevel::Trace => SyslogLevel::Debug,
+    } as usize;
     log(lvl, record.location(), record.args());
 }
 
