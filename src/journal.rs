@@ -47,13 +47,23 @@ pub fn log_record(record: &LogRecord) {
         LogLevel::Debug |
         LogLevel::Trace => SyslogLevel::Debug,
     } as usize;
-    log(lvl, record.location(), record.args());
+    log_target(lvl, record.location(), record.args(), record.target());
 }
 
 /// Record a log entry, with custom priority and location.
 pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments) {
     send(&[&format!("PRIORITY={}", level),
            &format!("MESSAGE={}", args),
+           &format!("CODE_LINE={}", loc.line()),
+           &format!("CODE_FILE={}", loc.file()),
+           &format!("CODE_FUNCTION={}", loc.module_path())]);
+}
+
+/// Record a log entry, with custom priority, location and target.
+pub fn log_target(level: usize, loc: &LogLocation, args: &fmt::Arguments, target: &str) {
+    send(&[&format!("PRIORITY={}", level),
+           &format!("MESSAGE={}", args),
+           &format!("TARGET={}", target),
            &format!("CODE_LINE={}", loc.line()),
            &format!("CODE_FILE={}", loc.file()),
            &format!("CODE_FUNCTION={}", loc.module_path())]);
