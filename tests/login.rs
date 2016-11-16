@@ -10,9 +10,9 @@ fn test_get_unit() {
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     match has_systemd.unwrap() {
-        // This is not running in an unit at all
+        // This is not running in a unit at all
         false => { assert!(uu.is_err()); assert!(su.is_err()); },
-        // This is either running in a system or in an user unit
+        // This is either running in a system or in a user unit
         true => { assert_eq!(uu.is_err(), su.is_ok()); },
     };
 }
