@@ -187,8 +187,8 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
 pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
-    let c_state = state_to_c_string(state).as_ptr() as *const c_char;
-    let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state));
+    let c_state = state_to_c_string(state);
+    let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state.as_ptr()));
     Ok(result != 0)
 }
 
@@ -198,8 +198,8 @@ pub fn pid_notify(pid: pid_t,
                   unset_environment: bool,
                   state: collections::HashMap<&str, &str>)
                   -> Result<bool> {
-    let c_state = state_to_c_string(state).as_ptr() as *const c_char;
-    let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state));
+    let c_state = state_to_c_string(state);
+    let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr()));
     Ok(result != 0)
 }
 
