@@ -176,7 +176,7 @@ impl Journal {
         Ok(journal)
     }
 
-    /// Get the currently selected entry from the journal
+    /// Get and parse the currently journal record from the journal
     fn get_record(&mut self) -> Result<Option<JournalRecord>> {
         unsafe { ffi::sd_journal_restart_data(self.j) }
 
