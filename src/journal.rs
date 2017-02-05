@@ -176,12 +176,8 @@ impl Journal {
         Ok(journal)
     }
 
-    /// Read the next record from the journal. Returns `Ok(None)` if there
-    /// are no more records to read.
-    pub fn next_record(&mut self) -> Result<Option<JournalRecord>> {
-        if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
-            return Ok(None);
-        }
+    /// Get the currently selected entry from the journal
+    fn get_record(&mut self) -> Result<Option<JournalRecord>> {
         unsafe { ffi::sd_journal_restart_data(self.j) }
 
         let mut ret: JournalRecord = BTreeMap::new();
@@ -200,6 +196,25 @@ impl Journal {
         }
 
         Ok(Some(ret))
+    }
+
+    /// Read the next record from the journal. Returns `Ok(None)` if there
+    /// are no more records to read.
+    pub fn next_record(&mut self) -> Result<Option<JournalRecord>> {
+        if sd_try!(ffi::sd_journal_next(self.j)) == 0 {
+            return Ok(None);
+        }
+
+        self.get_record()
+        
+    }
+
+    pub fn previous_record(&mut self) -> Result<Option<JournalRecord>> {
+        if sd_try!(ffi::sd_journal_previous(self.j)) == 0 {
+            return Ok(None);
+        }
+        
+        self.get_record()
     }
 
     /// Seek to a specific position in journal. On success, returns a cursor
