@@ -73,3 +73,28 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
     let cg = unsafe { MString::from_raw(c_cgroup) };
     Ok(cg.unwrap().to_string())
 }
+
+/// Determines the session identifier of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve a session identifier.
+pub fn get_session(pid: Option<pid_t>) -> Result<String> {
+    let mut c_session: *mut c_char = ptr::null_mut();
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_session(p, &mut c_session));
+    let cg = unsafe { MString::from_raw(c_session) };
+    Ok(cg.unwrap().to_string())
+}
+
+/// Determines the owner uid of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve an owner uid.
+pub fn get_owner_uid(pid: Option<pid_t>) -> Result<pid_t> {
+    let mut c_owner_uid: u32 = 0u32;
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid));
+    Ok(c_owner_uid as pid_t)
+}

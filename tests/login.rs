@@ -57,3 +57,29 @@ fn test_get_cgroup() {
         false => { },
     };
 }
+
+#[test]
+fn test_get_session() {
+    let ss = login::get_session(None);
+    let has_systemd = booted();
+    assert!(has_systemd.is_ok());
+    match has_systemd.unwrap() {
+        // Running under systemd, inside a slice somewhere
+        true => { assert!(ss.is_ok()) },
+        // Nothing meaningful to check here
+        false => { },
+    };
+}
+
+#[test]
+fn test_get_owner_uid() {
+    let ou = login::get_owner_uid(None);
+    let has_systemd = booted();
+    assert!(has_systemd.is_ok());
+    match has_systemd.unwrap() {
+        // Running under systemd, inside a slice somewhere
+        true => { assert!(ou.is_ok()) },
+        // Nothing meaningful to check here
+        false => { },
+    };
+}
