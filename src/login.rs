@@ -1,4 +1,6 @@
 use std::ptr;
+use std::io;
+use std::io::ErrorKind::InvalidData;
 use super::ffi::{c_char, pid_t};
 use ffi::login as ffi;
 use super::Result;
@@ -25,7 +27,8 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name))
     };
     let unit_name = unsafe { MString::from_raw(c_unit_name) };
-    Ok(unit_name.unwrap().to_string())
+    let unit_name = try!(unit_name.or(Err(io::Error::new(InvalidData, "Invalid unit name"))));
+    Ok(unit_name.to_string())
 }
 
 /// Determines the slice (either in system or user session) of a process.
@@ -41,7 +44,8 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name))
     };
     let slice_id = unsafe { MString::from_raw(c_slice_name) };
-    Ok(slice_id.unwrap().to_string())
+    let slice_id = try!(slice_id.or(Err(io::Error::new(InvalidData, "Invalid slice id"))));
+    Ok(slice_id.to_string())
 }
 
 /// Determines the machine name of a process.
@@ -55,7 +59,8 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_machine_name(p, &mut c_machine_name));
     let machine_id = unsafe { MString::from_raw(c_machine_name) };
-    Ok(machine_id.unwrap().to_string())
+    let machine_id = try!(machine_id.or(Err(io::Error::new(InvalidData, "Invalid machine id"))));
+    Ok(machine_id.to_string())
 }
 
 /// Determines the control group path of a process.
@@ -71,5 +76,32 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_cgroup(p, &mut c_cgroup));
     let cg = unsafe { MString::from_raw(c_cgroup) };
-    Ok(cg.unwrap().to_string())
+    let cg = try!(cg.or(Err(io::Error::new(InvalidData, "Invalid cgroup"))));
+    Ok(cg.to_string())
+}
+
+/// Determines the session identifier of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve a session identifier.
+pub fn get_session(pid: Option<pid_t>) -> Result<String> {
+    let mut c_session: *mut c_char = ptr::null_mut();
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_session(p, &mut c_session));
+    let ss = unsafe { MString::from_raw(c_session) };
+    let ss = try!(ss.or(Err(io::Error::new(InvalidData, "Invalid session"))));
+    Ok(ss.to_string())
+}
+
+/// Determines the owner uid of a process.
+///
+/// Specific processes can be optionally targeted via their PID. When no PID is
+/// specified, operation is executed for the calling process.
+/// This method can be used to retrieve an owner uid.
+pub fn get_owner_uid(pid: Option<pid_t>) -> Result<pid_t> {
+    let mut c_owner_uid: u32 = 0u32;
+    let p: pid_t = pid.unwrap_or(0);
+    sd_try!(ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid));
+    Ok(c_owner_uid as pid_t)
 }
