@@ -1,5 +1,4 @@
 extern crate libc;
-#[macro_use]
 extern crate log;
 extern crate libsystemd_sys as ffi;
 extern crate mbox;
