@@ -1,13 +1,13 @@
 [package]
 
 name = "libsystemd-sys"
-version = "0.0.10"
+version = "0.1.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
 description = "FFI bindings to libsystemd"
 repository = "https://github.com/jmesmon/rust-systemd"
-include = ["Cargo.toml", "src/**/*.rs", "build.rs" ]
-documentation = "http://codyps.com/docs/systemd/x86_64-unknown-linux-gnu/stable/libsystemd_sys/index.html"
+include = ["Cargo.toml", "**/*.rs", "build.rs" ]
+documentation = "https://docs.rs/libsystemd-sys"
 
 # 'links' is purposefully omitted
 build = "build.rs"
