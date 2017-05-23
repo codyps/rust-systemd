@@ -206,14 +206,14 @@ impl Journal {
         }
 
         self.get_record()
-        
+
     }
 
     pub fn previous_record(&mut self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_previous(self.j)) == 0 {
             return Ok(None);
         }
-        
+
         self.get_record()
     }
 
@@ -297,6 +297,14 @@ impl Journal {
     /// the journal will be iterated again.
     pub fn match_flush(&mut self) -> Result<&mut Journal> {
         unsafe { ffi::sd_journal_flush_matches(self.j) };
+        Ok(self)
+    }
+
+    /// Waits until the journal gets changed.
+    /// The maximum time this call sleeps may
+    /// be controlled with the timeout_usec parameter.
+    pub fn wait(&mut self, timeout_usec: u64) -> Result<&mut Journal> {
+        sd_try!(ffi::sd_journal_wait(self.j, timeout_usec));
         Ok(self)
     }
 }
