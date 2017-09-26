@@ -1,13 +1,13 @@
 [package]
 
 name = "systemd"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
 description = "A rust interface to libsystemd provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/systemd"
-include = ["Cargo.toml", "**/*.rs", "README.md" ]
+include = ["Cargo.toml", "src/**/*.rs", "tests/**/*.rs", "README.md" ]
 
 [features]
 bus = ["libsystemd-sys/bus"]
