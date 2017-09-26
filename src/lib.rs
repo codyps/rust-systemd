@@ -2,6 +2,7 @@ extern crate libc;
 extern crate log;
 extern crate libsystemd_sys as ffi;
 extern crate mbox;
+extern crate cstr_argument;
 pub use std::io::{Result, Error};
 
 /// Convert a systemd ffi return value into a Result
@@ -25,17 +26,6 @@ pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
 macro_rules! sd_try {
     ($e:expr) => ({
         try!($crate::ffi_result(unsafe{ $e}))
-    })
-}
-
-/// Given an Option<&str>, either returns a pointer to a const char*, or a NULL
-/// pointer if None.
-#[macro_export]
-macro_rules! char_or_null {
-    ($e:expr) => (match $e {
-        Some(p) => ::std::ffi::CString::new(p.as_bytes()).unwrap()
-                                                         .as_ptr() as *const ::libc::c_char,
-        None => ptr::null() as *const ::libc::c_char
     })
 }
 
