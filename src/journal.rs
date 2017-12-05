@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::os::raw::c_void;
+use std::u64;
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
@@ -26,6 +27,8 @@ pub fn send(args: &[&str]) -> c_int {
 pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
+
+pub type JournalWait = Option<u64>;
 
 enum SyslogLevel {
     // Emerg = 0,
@@ -143,6 +146,13 @@ pub enum JournalSeek {
     },
 }
 
+pub enum JournalWaitResult {
+    Nop,
+    Append,
+    Invalidate
+}
+
+
 impl Journal {
     /// Open the systemd journal for reading.
     ///
@@ -177,6 +187,8 @@ impl Journal {
     }
 
     /// Get and parse the currently journal record from the journal
+    /// It returns Result<Option<...>> out of convenience for calling
+    /// functions. It always returns Ok(Some(...)) if successful.
     fn get_record(&mut self) -> Result<Option<JournalRecord>> {
         unsafe { ffi::sd_journal_restart_data(self.j) }
 
@@ -209,6 +221,8 @@ impl Journal {
         
     }
 
+    /// Read the previous record from the journal. Returns `Ok(None)` if there
+    /// are no more records to read.
     pub fn previous_record(&mut self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_previous(self.j)) == 0 {
             return Ok(None);
@@ -216,6 +230,55 @@ impl Journal {
         
         self.get_record()
     }
+
+    /// Wait for next record to arrive.
+    fn wait(&mut self, wait_time: JournalWait) -> Result<JournalWaitResult> {
+        let time = wait_time.unwrap_or(::std::u64::MAX);
+        match sd_try!(ffi::sd_journal_wait(self.j, time)) {
+            ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
+            ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
+            ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
+            _ => Err(io::Error::new(InvalidData, "Failed to wait for changes"))
+        }
+    }
+
+    /// Wait for the next record to appear. Returns `Ok(None)` if there were no
+    /// new records in the given wait time.
+    pub fn await_next_record(&mut self, wait_time: JournalWait) -> Result<Option<JournalRecord>> {
+        match self.wait(wait_time)? {
+            JournalWaitResult::Nop => Ok(None),
+            JournalWaitResult::Append => self.get_record(),
+
+            // This is possibly wrong, but I can't generate a scenario with 
+            // ..::Invalidate and neither systemd's journalctl, 
+            // systemd-journal-upload, and other utilities handle that case.
+            JournalWaitResult::Invalidate => self.get_record()
+        }
+    }
+
+    /// Iterate through all elements from the current cursor, then await the
+    /// next record(s) and wait again.
+    pub fn watch_all_elements<F>(&mut self, f: F) -> Result<()>
+        where F: Fn(JournalRecord) -> Result<()> {
+            fn try_and_try<F,A>(mut f: F) -> Result<A>
+                where F: FnMut() -> Result<Option<A>> {
+                    loop {
+                        match f()? {
+                            Some(r) => return Ok(r),
+                            None => continue
+                        }
+                    }
+                }
+
+            loop {
+                let candidate = self.next_record()?;
+                let rec = match candidate {
+                    Some(rec) => rec,
+                    None => try_and_try(|| { self.await_next_record(None) })?
+                };
+                f(rec)?
+            }
+        }
 
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
