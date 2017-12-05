@@ -28,7 +28,7 @@ pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
 
-pub type JournalWait = Option<u64>;
+pub type JournalWait = Option<time::Duration>;
 
 enum SyslogLevel {
     // Emerg = 0,
@@ -103,6 +103,12 @@ fn duration_from_usec(usec: u64) -> time::Duration {
     let sub_nsec = sub_usec * 1000;
     time::Duration::new(secs, sub_nsec)
 }
+
+fn usec_from_duration(duration: time::Duration) -> u64 {
+    let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
+    duration.as_secs() * 1_000_000 + sub_usecs
+}
+
 
 fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
     let d = duration_from_usec(usec);
@@ -233,7 +239,8 @@ impl Journal {
 
     /// Wait for next record to arrive.
     fn wait(&mut self, wait_time: JournalWait) -> Result<JournalWaitResult> {
-        let time = wait_time.unwrap_or(::std::u64::MAX);
+        let time = wait_time.map(usec_from_duration).unwrap_or(::std::u64::MAX);
+
         match sd_try!(ffi::sd_journal_wait(self.j, time)) {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
             ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
