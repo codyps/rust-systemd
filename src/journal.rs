@@ -265,8 +265,8 @@ impl Journal {
 
     /// Iterate through all elements from the current cursor, then await the
     /// next record(s) and wait again.
-    pub fn watch_all_elements<F>(&mut self, f: F) -> Result<()>
-        where F: Fn(JournalRecord) -> Result<()> {
+    pub fn watch_all_elements<F>(&mut self, mut f: F) -> Result<()>
+        where F: FnMut(JournalRecord) -> Result<()> {
             fn try_and_try<F,A>(mut f: F) -> Result<A>
                 where F: FnMut() -> Result<Option<A>> {
                     loop {
