@@ -269,21 +269,15 @@ impl Journal {
     /// next record(s) and wait again.
     pub fn watch_all_elements<F>(&mut self, mut f: F) -> Result<()>
         where F: FnMut(JournalRecord) -> Result<()> {
-            fn try_and_try<F,A>(mut f: F) -> Result<A>
-                where F: FnMut() -> Result<Option<A>> {
-                    loop {
-                        match f()? {
-                            Some(r) => return Ok(r),
-                            None => continue
-                        }
-                    }
-                }
-
             loop {
                 let candidate = self.next_record()?;
                 let rec = match candidate {
                     Some(rec) => rec,
-                    None => try_and_try(|| { self.await_next_record(None) })?
+                    None => { loop {
+                        if let Some(r) = self.await_next_record(None)? {
+                            break r;
+                        }
+                    }}
                 };
                 f(rec)?
             }
