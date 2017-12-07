@@ -126,6 +126,7 @@ pub struct Journal {
 }
 
 /// Represents the set of journal files to read.
+#[derive(Clone, Debug)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
@@ -152,6 +153,7 @@ pub enum JournalSeek {
     },
 }
 
+#[derive(Clone, Debug)]
 pub enum JournalWaitResult {
     Nop,
     Append,
