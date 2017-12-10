@@ -28,8 +28,6 @@ pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
 }
 
-pub type JournalWait = Option<time::Duration>;
-
 enum SyslogLevel {
     // Emerg = 0,
     // Alert = 1,
@@ -240,7 +238,9 @@ impl Journal {
     }
 
     /// Wait for next record to arrive.
-    fn wait(&mut self, wait_time: JournalWait) -> Result<JournalWaitResult> {
+    /// Pass wait_time `None` to wait for an unlimited period for new records.
+    fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
+
         let time = wait_time.map(usec_from_duration).unwrap_or(::std::u64::MAX);
 
         match sd_try!(ffi::sd_journal_wait(self.j, time)) {
@@ -253,7 +253,8 @@ impl Journal {
 
     /// Wait for the next record to appear. Returns `Ok(None)` if there were no
     /// new records in the given wait time.
-    pub fn await_next_record(&mut self, wait_time: JournalWait) -> Result<Option<JournalRecord>> {
+    /// Pass wait_time `None` to wait for an unlimited period for new records.
+    pub fn await_next_record(&mut self, wait_time: Option<time::Duration>) -> Result<Option<JournalRecord>> {
         match self.wait(wait_time)? {
             JournalWaitResult::Nop => Ok(None),
             JournalWaitResult::Append => self.next_record(),
