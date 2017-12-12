@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::os::raw::c_void;
+use std::u64;
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
@@ -101,6 +102,12 @@ fn duration_from_usec(usec: u64) -> time::Duration {
     time::Duration::new(secs, sub_nsec)
 }
 
+fn usec_from_duration(duration: time::Duration) -> u64 {
+    let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
+    duration.as_secs() * 1_000_000 + sub_usecs
+}
+
+
 fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
     let d = duration_from_usec(usec);
     time::UNIX_EPOCH + d
@@ -117,6 +124,7 @@ pub struct Journal {
 }
 
 /// Represents the set of journal files to read.
+#[derive(Clone, Debug)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
@@ -142,6 +150,14 @@ pub enum JournalSeek {
         cursor: String,
     },
 }
+
+#[derive(Clone, Debug)]
+pub enum JournalWaitResult {
+    Nop,
+    Append,
+    Invalidate
+}
+
 
 impl Journal {
     /// Open the systemd journal for reading.
@@ -177,6 +193,8 @@ impl Journal {
     }
 
     /// Get and parse the currently journal record from the journal
+    /// It returns Result<Option<...>> out of convenience for calling
+    /// functions. It always returns Ok(Some(...)) if successful.
     fn get_record(&mut self) -> Result<Option<JournalRecord>> {
         unsafe { ffi::sd_journal_restart_data(self.j) }
 
@@ -209,6 +227,8 @@ impl Journal {
         
     }
 
+    /// Read the previous record from the journal. Returns `Ok(None)` if there
+    /// are no more records to read.
     pub fn previous_record(&mut self) -> Result<Option<JournalRecord>> {
         if sd_try!(ffi::sd_journal_previous(self.j)) == 0 {
             return Ok(None);
@@ -216,6 +236,53 @@ impl Journal {
         
         self.get_record()
     }
+
+    /// Wait for next record to arrive.
+    /// Pass wait_time `None` to wait for an unlimited period for new records.
+    fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
+
+        let time = wait_time.map(usec_from_duration).unwrap_or(::std::u64::MAX);
+
+        match sd_try!(ffi::sd_journal_wait(self.j, time)) {
+            ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
+            ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
+            ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
+            _ => Err(io::Error::new(InvalidData, "Failed to wait for changes"))
+        }
+    }
+
+    /// Wait for the next record to appear. Returns `Ok(None)` if there were no
+    /// new records in the given wait time.
+    /// Pass wait_time `None` to wait for an unlimited period for new records.
+    pub fn await_next_record(&mut self, wait_time: Option<time::Duration>) -> Result<Option<JournalRecord>> {
+        match self.wait(wait_time)? {
+            JournalWaitResult::Nop => Ok(None),
+            JournalWaitResult::Append => self.next_record(),
+
+            // This is possibly wrong, but I can't generate a scenario with 
+            // ..::Invalidate and neither systemd's journalctl, 
+            // systemd-journal-upload, and other utilities handle that case.
+            JournalWaitResult::Invalidate => self.next_record()
+        }
+    }
+
+    /// Iterate through all elements from the current cursor, then await the
+    /// next record(s) and wait again.
+    pub fn watch_all_elements<F>(&mut self, mut f: F) -> Result<()>
+        where F: FnMut(JournalRecord) -> Result<()> {
+            loop {
+                let candidate = self.next_record()?;
+                let rec = match candidate {
+                    Some(rec) => rec,
+                    None => { loop {
+                        if let Some(r) = self.await_next_record(None)? {
+                            break r;
+                        }
+                    }}
+                };
+                f(rec)?
+            }
+        }
 
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
