@@ -147,16 +147,16 @@ pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
                       listening: Listening,
                       path: Option<S>)
                       -> Result<bool> {
+    let path_cstr = path.map(|p| p.into_cstr());
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_path: *const c_char;
     let c_length: size_t;
-    match path {
+    match path_cstr.as_ref() {
         Some(p) => {
-            let path = p.into_cstr();
-            let path_cstr = path.as_ref();
-            c_length = path_cstr.to_bytes().len() as size_t;
-            c_path = path_cstr.as_ptr() as *const c_char;
+            let path_ref = p.as_ref();
+            c_length = path_ref.to_bytes().len() as size_t;
+            c_path = path_ref.as_ptr() as *const c_char;
         }
         None => {
             c_path = ptr::null();
