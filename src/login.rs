@@ -1,7 +1,7 @@
 use std::ptr;
 use std::io;
 use std::io::ErrorKind::InvalidData;
-use super::ffi::{c_char, pid_t};
+use super::ffi::{c_char, pid_t, uid_t};
 use ffi::login as ffi;
 use super::Result;
 use mbox::MString;
@@ -99,9 +99,9 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
 /// Specific processes can be optionally targeted via their PID. When no PID is
 /// specified, operation is executed for the calling process.
 /// This method can be used to retrieve an owner uid.
-pub fn get_owner_uid(pid: Option<pid_t>) -> Result<pid_t> {
+pub fn get_owner_uid(pid: Option<pid_t>) -> Result<uid_t> {
     let mut c_owner_uid: u32 = 0u32;
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid));
-    Ok(c_owner_uid as pid_t)
+    Ok(c_owner_uid as uid_t)
 }
