@@ -37,7 +37,7 @@ fn main() {
    journal::send(["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
    journal::JournalLog::init().unwrap();
    warn!("HI");
-   sd_journal_log!(4, "HI {:?}", 2);
+   sd_journal_log!(log::Level::Warn, "HI {:?}", 2);
 }
 ```
 
