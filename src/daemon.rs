@@ -1,4 +1,4 @@
-use std::{ptr, collections};
+use std::{ptr, collections, env};
 use std::os::unix::io::RawFd as Fd;
 use libc::{c_char, c_uint};
 use super::ffi::{c_int, size_t, pid_t};
@@ -51,11 +51,11 @@ pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
 /// `unset_environment` is `true`
 pub fn listen_fds(unset_environment: bool) -> Result<Fd> {
     // in order to use rust's locking of the environment, do the env var unsetting ourselves
-    let fds = sd_try!(ffi::sd_listen_fds(false));
-    if (unset_environment) {
-        std::env::remove_var("LISTEN_FDS");
-        std::env::remove_var("LISTEN_PID");
-        std::env::remove_var("LISTEN_FDNAMES");
+    let fds = sd_try!(ffi::sd_listen_fds(0));
+    if unset_environment {
+        env::remove_var("LISTEN_FDS");
+        env::remove_var("LISTEN_PID");
+        env::remove_var("LISTEN_FDNAMES");
     }
     Ok(fds)
 }
