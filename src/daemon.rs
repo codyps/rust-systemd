@@ -50,7 +50,13 @@ pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
 /// `unset_environment` is `true`
 pub fn listen_fds(unset_environment: bool) -> Result<Fd> {
-    let fds = sd_try!(ffi::sd_listen_fds(unset_environment as c_int));
+    // in order to use rust's locking of the environment, do the env var unsetting ourselves
+    let fds = sd_try!(ffi::sd_listen_fds(false));
+    if (unset_environment) {
+        std::env::remove_var("LISTEN_FDS");
+        std::env::remove_var("LISTEN_PID");
+        std::env::remove_var("LISTEN_FDNAMES");
+    }
     Ok(fds)
 }
 
