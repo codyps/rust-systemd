@@ -30,7 +30,7 @@ fn test() {
     log!(target: "systemd-tests", log::Level::Info, "HI info with target");
     log!(log::Level::Warn, "HI warn");
     log!(target: "systemd-tests", log::Level::Warn, "HI warn with target");
-    sd_journal_log!(log::Level::Warn, "HI {:?}", 2);
+    sd_journal_log!(4, "HI {:?}", 2);
 }
 
 #[test]

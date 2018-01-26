@@ -1,6 +1,6 @@
 use libc::{c_char, c_int, size_t};
 use log::{self, Log, Record, Level, SetLoggerError};
-use std::{io, ptr, result};
+use std::{io, ptr, result, fmt};
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
@@ -38,6 +38,16 @@ enum SyslogLevel {
     Info = 6,
     Debug = 7,
 }
+
+/// Record a log entry, with custom priority and location.
+pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments) {
+    send(&[&format!("PRIORITY={}", level),
+           &format!("MESSAGE={}", args),
+           &format!("CODE_LINE={}", line),
+           &format!("CODE_FILE={}", file),
+           &format!("CODE_FUNCTION={}", module_path)]);
+}
+
 
 /// Send a `log::Record` to systemd-journald.
 pub fn log_record(record: &Record) {

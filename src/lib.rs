@@ -48,7 +48,10 @@ macro_rules! log_with{
             .module_path(Some(module_path!()))
             .build())
     });
-    (target: $tgt:expr, $func:expr, $lvl:expr, $($arg:tt),+) => ({
+    (@raw $func:expr, $lvl:expr, $($arg:tt),+) => ({
+        $func($lvl, file!(), line!(), module_path!(), &format_args!($($arg),+))
+    });
+    (@target: $tgt:expr, $func:expr, $lvl:expr, $($arg:tt),+) => ({
         $func(&::log::Record::builder()
             .args(format_args!($($arg),+))
             .level($lvl)
@@ -62,7 +65,7 @@ macro_rules! log_with{
 
 #[macro_export]
 macro_rules! sd_journal_log{
-    ($lvl:expr, $($arg:tt)+) => (log_with!(::systemd::journal::log_record, $lvl, $($arg)+))
+    ($lvl:expr, $($arg:tt)+) => (log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))
 }
 
 /// High-level interface to the systemd daemon module.
