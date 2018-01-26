@@ -40,19 +40,29 @@ pub mod journal;
 #[macro_export]
 macro_rules! log_with{
     ($func:expr, $lvl:expr, $($arg:tt),+) => ({
-        static LOC: ::log::LogLocation = ::log::LogLocation {
-            __line: line!(),
-            __file: file!(),
-            __module_path: module_path!()
-        };
-        let lvl = $lvl;
-        $func(lvl, &LOC, &format_args!($($arg),+))
+        $func(&::log::Record::builder()
+            .args(format_args!($($arg),+))
+            .level($lvl)
+            .file(Some(file!()))
+            .line(Some(line!()))
+            .module_path(Some(module_path!()))
+            .build())
+    });
+    (target: $tgt:expr, $func:expr, $lvl:expr, $($arg:tt),+) => ({
+        $func(&::log::Record::builder()
+            .args(format_args!($($arg),+))
+            .level($lvl)
+            .target($tgt)
+            .file(Some(file!()))
+            .line(Some(line!()))
+            .module_path(Some(module_path!()))
+            .build())
     })
 }
 
 #[macro_export]
 macro_rules! sd_journal_log{
-    ($lvl:expr, $($arg:tt)+) => (log_with!(::systemd::journal::log, $lvl, $($arg)+))
+    ($lvl:expr, $($arg:tt)+) => (log_with!(::systemd::journal::log_record, $lvl, $($arg)+))
 }
 
 /// High-level interface to the systemd daemon module.

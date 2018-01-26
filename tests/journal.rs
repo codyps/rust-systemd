@@ -25,8 +25,12 @@ fn test() {
     journal::print(1, &format!("Rust can talk to the journal: {}", 4));
 
     journal::JournalLog::init().ok().unwrap();
-    log!(log::LogLevel::Info, "HI");
-    sd_journal_log!(4, "HI {:?}", 2);
+    log::set_max_level(log::LevelFilter::Warn);
+    log!(log::Level::Info, "HI info");
+    log!(target: "systemd-tests", log::Level::Info, "HI info with target");
+    log!(log::Level::Warn, "HI warn");
+    log!(target: "systemd-tests", log::Level::Warn, "HI warn with target");
+    sd_journal_log!(log::Level::Warn, "HI {:?}", 2);
 }
 
 #[test]
@@ -36,7 +40,7 @@ fn cursor() {
     }
 
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
-    log!(log::LogLevel::Info, "rust-systemd test_seek entry");
+    log!(log::Level::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
     let _s = j.cursor().unwrap();
 }
@@ -48,7 +52,7 @@ fn ts() {
     }
 
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
-    log!(log::LogLevel::Info, "rust-systemd test_seek entry");
+    log!(log::Level::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
     let _s = j.timestamp().unwrap();
 }
@@ -60,7 +64,7 @@ fn test_seek() {
     if ! have_journal() {
         return;
     }
-    log!(log::LogLevel::Info, "rust-systemd test_seek entry");
+    log!(log::Level::Info, "rust-systemd test_seek entry");
     assert!(j.seek(journal::JournalSeek::Head).is_ok());
     assert!(j.next_record().is_ok());
     let c1 = j.seek(journal::JournalSeek::Current);

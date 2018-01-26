@@ -1,6 +1,6 @@
 use libc::{c_char, c_int, size_t};
-use log::{self, Log, LogRecord, LogLocation, LogLevel, LogLevelFilter, SetLoggerError};
-use std::{fmt, io, ptr, result};
+use log::{self, Log, Record, Level, SetLoggerError};
+use std::{io, ptr, result};
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
@@ -39,59 +39,50 @@ enum SyslogLevel {
     Debug = 7,
 }
 
-/// Send a `log::LogRecord` to systemd-journald.
-pub fn log_record(record: &LogRecord) {
+/// Send a `log::Record` to systemd-journald.
+pub fn log_record(record: &Record) {
     let lvl = match record.level() {
-        LogLevel::Error => SyslogLevel::Err,
-        LogLevel::Warn => SyslogLevel::Warning,
-        LogLevel::Info => SyslogLevel::Info,
-        LogLevel::Debug |
-        LogLevel::Trace => SyslogLevel::Debug,
+        Level::Error => SyslogLevel::Err,
+        Level::Warn => SyslogLevel::Warning,
+        Level::Info => SyslogLevel::Info,
+        Level::Debug |
+        Level::Trace => SyslogLevel::Debug,
     } as usize;
-    log_target(lvl, record.location(), record.args(), record.target());
-}
 
-/// Record a log entry, with custom priority and location.
-pub fn log(level: usize, loc: &LogLocation, args: &fmt::Arguments) {
-    send(&[&format!("PRIORITY={}", level),
-           &format!("MESSAGE={}", args),
-           &format!("CODE_LINE={}", loc.line()),
-           &format!("CODE_FILE={}", loc.file()),
-           &format!("CODE_FUNCTION={}", loc.module_path())]);
-}
+    let mut keys = vec![
+        format!("PRIORITY={}", lvl),
+        format!("MESSAGE={}", record.args()),
+        format!("TARGET={}", record.target()),
+    ];
 
-/// Record a log entry, with custom priority, location and target.
-pub fn log_target(level: usize, loc: &LogLocation, args: &fmt::Arguments, target: &str) {
-    send(&[&format!("PRIORITY={}", level),
-           &format!("MESSAGE={}", args),
-           &format!("TARGET={}", target),
-           &format!("CODE_LINE={}", loc.line()),
-           &format!("CODE_FILE={}", loc.file()),
-           &format!("CODE_FUNCTION={}", loc.module_path())]);
+    record.line().map(|line| keys.push(format!("CODE_LINE={}", line)));
+    record.file().map(|file| keys.push(format!("CODE_FILE={}", file)));
+    record.module_path().map(|module_path| keys.push(format!("CODE_FUNCTION={}", module_path)));
+
+    let str_keys = keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+    send(&str_keys);
 }
 
 /// Logger implementation over systemd-journald.
 pub struct JournalLog;
 impl Log for JournalLog {
-    fn enabled(&self, _metadata: &log::LogMetadata) -> bool {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 
-    fn log(&self, record: &LogRecord) {
+    fn log(&self, record: &Record) {
         log_record(record);
+    }
+
+    fn flush(&self) {
+        // There is no flushing required.
     }
 }
 
+static LOGGER: JournalLog = JournalLog;
 impl JournalLog {
     pub fn init() -> result::Result<(), SetLoggerError> {
-        Self::init_with_level(LogLevelFilter::Info)
-    }
-
-    pub fn init_with_level(level: LogLevelFilter) -> result::Result<(), SetLoggerError> {
-        log::set_logger(|max_log_level| {
-            max_log_level.set(level);
-            Box::new(JournalLog)
-        })
+        log::set_logger(&LOGGER)
     }
 }
 
