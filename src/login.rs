@@ -1,10 +1,11 @@
 use std::ptr;
 use std::io;
 use std::io::ErrorKind::InvalidData;
-use super::ffi::{c_char, pid_t, uid_t};
+use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use ffi::login as ffi;
 use super::Result;
 use mbox::MString;
+use cstr_argument::CStrArgument;
 
 /// Systemd slice and unit types
 pub enum UnitType {
@@ -92,6 +93,29 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     let ss = unsafe { MString::from_raw(c_session) };
     let ss = try!(ss.or(Err(io::Error::new(InvalidData, "Invalid session"))));
     Ok(ss.to_string())
+}
+
+/// Determines the seat identifier of the seat the session identified
+/// by the specified session identifier belongs to.
+///
+/// Note that not all sessions are attached to a seat, this call will fail for them.
+pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
+    let session = session.into_cstr();
+    let mut c_seat: *mut c_char = ptr::null_mut();
+    sd_try!(ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat));
+    let ss = unsafe { MString::from_raw(c_seat) };
+    let ss = try!(ss.or(Err(io::Error::new(InvalidData, "Invalid session"))));
+    Ok(ss.to_string())
+}
+
+/// Determines the VT number of the session identified by the specified session identifier.
+///
+/// This function will return an error if the seat does not support VTs.
+pub fn get_vt<S: CStrArgument>(session: S) -> Result<u32> {
+    let session = session.into_cstr();
+    let c_vt: *mut c_uint = ptr::null_mut();
+    sd_try!(ffi::sd_session_get_vt(session.as_ref().as_ptr(), c_vt));
+    Ok(unsafe { *c_vt })
 }
 
 /// Determines the owner uid of a process.
