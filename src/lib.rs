@@ -51,7 +51,7 @@ macro_rules! log_with{
     (@raw $func:expr, $lvl:expr, $($arg:tt),+) => ({
         $func($lvl, file!(), line!(), module_path!(), &format_args!($($arg),+))
     });
-    (@target: $tgt:expr, $func:expr, $lvl:expr, $($arg:tt),+) => ({
+    (@target $tgt:expr, $func:expr, $lvl:expr, $($arg:tt),+) => ({
         $func(&::log::Record::builder()
             .args(format_args!($($arg),+))
             .level($lvl)
