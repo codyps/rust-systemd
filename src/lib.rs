@@ -1,8 +1,10 @@
 extern crate libc;
 extern crate log;
 extern crate libsystemd_sys as ffi;
-extern crate mbox;
 extern crate cstr_argument;
+
+use libc::{c_char, c_void, free, strlen};
+
 pub use std::io::{Result, Error};
 
 /// Convert a systemd ffi return value into a Result
@@ -12,6 +14,21 @@ pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
         Err(Error::from_raw_os_error(-ret))
     } else {
         Ok(ret)
+    }
+}
+
+/// Convert a malloc'd C string into a rust string and call free on it.
+/// Returns None if the pointer is null.
+fn free_cstring(ptr: *mut c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    unsafe {
+        let len = strlen(ptr);
+        let char_slice = std::slice::from_raw_parts(ptr as *mut u8, len);
+        let s = String::from_utf8_lossy(&char_slice).into_owned();
+        free(ptr as *mut c_void);
+        Some(s)
     }
 }
 

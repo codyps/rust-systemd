@@ -1,10 +1,7 @@
 use std::ptr;
-use std::io;
-use std::io::ErrorKind::InvalidData;
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use ffi::login as ffi;
-use super::Result;
-use mbox::MString;
+use super::{Result, free_cstring};
 use cstr_argument::CStrArgument;
 
 /// Systemd slice and unit types
@@ -27,9 +24,8 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_unit(p, &mut c_unit_name)),
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name))
     };
-    let unit_name = unsafe { MString::from_raw(c_unit_name) };
-    let unit_name = try!(unit_name.or(Err(io::Error::new(InvalidData, "Invalid unit name"))));
-    Ok(unit_name.to_string())
+    let unit_name = free_cstring(c_unit_name).unwrap();
+    Ok(unit_name)
 }
 
 /// Determines the slice (either in system or user session) of a process.
@@ -44,9 +40,8 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_slice(p, &mut c_slice_name)),
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name))
     };
-    let slice_id = unsafe { MString::from_raw(c_slice_name) };
-    let slice_id = try!(slice_id.or(Err(io::Error::new(InvalidData, "Invalid slice id"))));
-    Ok(slice_id.to_string())
+    let slice_id = free_cstring(c_slice_name).unwrap();
+    Ok(slice_id)
 }
 
 /// Determines the machine name of a process.
@@ -59,9 +54,8 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
     let mut c_machine_name: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_machine_name(p, &mut c_machine_name));
-    let machine_id = unsafe { MString::from_raw(c_machine_name) };
-    let machine_id = try!(machine_id.or(Err(io::Error::new(InvalidData, "Invalid machine id"))));
-    Ok(machine_id.to_string())
+    let machine_id = free_cstring(c_machine_name).unwrap();
+    Ok(machine_id)
 }
 
 /// Determines the control group path of a process.
@@ -76,9 +70,8 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
     let mut c_cgroup: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_cgroup(p, &mut c_cgroup));
-    let cg = unsafe { MString::from_raw(c_cgroup) };
-    let cg = try!(cg.or(Err(io::Error::new(InvalidData, "Invalid cgroup"))));
-    Ok(cg.to_string())
+    let cg = free_cstring(c_cgroup).unwrap();
+    Ok(cg)
 }
 
 /// Determines the session identifier of a process.
@@ -90,9 +83,8 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_session(p, &mut c_session));
-    let ss = unsafe { MString::from_raw(c_session) };
-    let ss = try!(ss.or(Err(io::Error::new(InvalidData, "Invalid session"))));
-    Ok(ss.to_string())
+    let ss = free_cstring(c_session).unwrap();
+    Ok(ss)
 }
 
 /// Determines the seat identifier of the seat the session identified
@@ -103,9 +95,8 @@ pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
     let session = session.into_cstr();
     let mut c_seat: *mut c_char = ptr::null_mut();
     sd_try!(ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat));
-    let ss = unsafe { MString::from_raw(c_seat) };
-    let ss = try!(ss.or(Err(io::Error::new(InvalidData, "Invalid session"))));
-    Ok(ss.to_string())
+    let ss = free_cstring(c_seat).unwrap();
+    Ok(ss)
 }
 
 /// Determines the VT number of the session identified by the specified session identifier.

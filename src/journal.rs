@@ -10,9 +10,8 @@ use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
 use id128::Id128;
-use super::Result;
+use super::{free_cstring, Result};
 use std::time;
-use mbox::MString;
 
 /// Send preformatted fields to systemd.
 ///
@@ -313,9 +312,8 @@ impl Journal {
             sd_try!(ffi::sd_journal_next(self.j));
             sd_try!(ffi::sd_journal_get_cursor(self.j, &c));
         }
-        let cs = unsafe { MString::from_raw(c) };
-        let cs = try!(cs.or(Err(io::Error::new(InvalidData, "invalid cursor"))));
-        Ok(cs.to_string())
+        let cs = free_cstring(c).unwrap();
+        Ok(cs)
     }
 
     /// Returns the cursor of current journal entry
@@ -323,10 +321,8 @@ impl Journal {
         let mut c_cursor: *mut c_char = ptr::null_mut();
 
         sd_try!(ffi::sd_journal_get_cursor(self.j, &mut c_cursor));
-
-        let cursor = unsafe { MString::from_raw(c_cursor) };
-        let cursor = try!(cursor.or(Err(io::Error::new(InvalidData, "invalid cursor"))));
-        Ok(cursor.to_string())
+        let cursor = free_cstring(c_cursor).unwrap();
+        Ok(cursor)
     }
 
     /// Returns timestamp at which current journal is recorded

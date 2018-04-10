@@ -16,7 +16,6 @@ bus = ["libsystemd-sys/bus"]
 log = "~0.4"
 libc = "~0.2"
 utf8-cstr = "~0.1"
-mbox = "~0.4"
 cstr-argument = "~0.0"
 
 [dependencies.libsystemd-sys]
