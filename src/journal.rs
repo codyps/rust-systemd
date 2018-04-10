@@ -206,7 +206,7 @@ impl Journal {
         while sd_try!(ffi::sd_journal_enumerate_data(self.j, &data, &mut sz)) > 0 {
             unsafe {
                 let b = ::std::slice::from_raw_parts_mut(data, sz as usize);
-                let field = ::std::str::from_utf8_unchecked(b);
+                let field = String::from_utf8_lossy(b);
                 let mut name_value = field.splitn(2, '=');
                 let name = name_value.next().unwrap();
                 let value = name_value.next().unwrap();
