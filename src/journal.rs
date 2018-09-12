@@ -130,7 +130,7 @@ pub enum JournalFiles {
     System,
     /// The current user's journal.
     CurrentUser,
-    /// Both the system-wide journal and the current user's journal.
+    /// All journal files, including other users'.
     All,
 }
 
