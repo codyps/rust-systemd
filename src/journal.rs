@@ -316,7 +316,7 @@ impl Journal {
         Ok(cs)
     }
 
-    /// Returns the cursor of current journal entry
+    /// Returns the cursor of current journal entry.
     pub fn cursor(&self) -> Result<String> {
         let mut c_cursor: *mut c_char = ptr::null_mut();
 
@@ -325,7 +325,7 @@ impl Journal {
         Ok(cursor)
     }
 
-    /// Returns timestamp at which current journal is recorded
+    /// Returns timestamp at which current journal entry is recorded.
     pub fn timestamp(&self) -> Result<time::SystemTime> {
         let mut timestamp_us: u64 = 0;
         sd_try!(ffi::sd_journal_get_realtime_usec(self.j, &mut timestamp_us));
