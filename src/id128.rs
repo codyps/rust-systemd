@@ -57,3 +57,9 @@ impl PartialEq for Id128 {
         self.inner.bytes == other.inner.bytes
     }
 }
+
+impl Clone for Id128 {
+    fn clone(&self) -> Self {
+        Id128 { inner: ffi::id128::sd_id128_t { bytes: self.inner.bytes.clone() } }
+    }
+}
