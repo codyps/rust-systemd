@@ -287,10 +287,14 @@ impl Journal {
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
     pub fn seek(&mut self, seek: JournalSeek) -> Result<String> {
+        let mut tail = false;
         match seek {
             JournalSeek::Head => sd_try!(ffi::sd_journal_seek_head(self.j)),
             JournalSeek::Current => 0,
-            JournalSeek::Tail => sd_try!(ffi::sd_journal_seek_tail(self.j)),
+            JournalSeek::Tail => {
+                tail = true;
+                sd_try!(ffi::sd_journal_seek_tail(self.j))
+            }
             JournalSeek::ClockMonotonic { boot_id, usec } => {
                 sd_try!(ffi::sd_journal_seek_monotonic_usec(self.j,
                                                             sd_id128_t {
@@ -309,7 +313,11 @@ impl Journal {
         let c: *mut c_char = ptr::null_mut();
         if unsafe { ffi::sd_journal_get_cursor(self.j, &c) != 0 } {
             // Cursor may need to be re-aligned on a real entry first.
-            sd_try!(ffi::sd_journal_next(self.j));
+            if tail {
+                sd_try!(ffi::sd_journal_previous(self.j));
+            } else {
+                sd_try!(ffi::sd_journal_next(self.j));
+            }
             sd_try!(ffi::sd_journal_get_cursor(self.j, &c));
         }
         let cs = free_cstring(c).unwrap();
