@@ -34,6 +34,10 @@ pub const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished
 pub const STATE_READY: &'static str = "READY";
+/// Tells systemd the daemon is reloading its configuration
+pub const STATE_RELOADING: &'static str = "RELOADING";
+/// Tells systemd the daemon is stopping
+pub const STATE_STOPPING: &'static str = "STOPPING";
 /// Single-line status string describing daemon state
 pub const STATE_STATUS: &'static str = "STATUS";
 /// Errno-style error code in case of failure
@@ -45,6 +49,10 @@ pub const STATE_MAINPID: &'static str = "MAINPID";
 /// Update the watchdog timestamp (set to 1). Daemon should do this regularly,
 /// if using this feature.
 pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
+/// Reset the watchdog timeout during runtime.
+pub const STATE_WATCHDOG_USEC: &'static str = "WATCHDOG_USEC";
+/// Extend the timeout for the current state.
+pub const STATE_EXTEND_TIMEOUT_USEC: &'static str = "EXTEND_TIMEOUT_USEC";
 
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
