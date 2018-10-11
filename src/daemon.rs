@@ -53,6 +53,12 @@ pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
 pub const STATE_WATCHDOG_USEC: &'static str = "WATCHDOG_USEC";
 /// Extend the timeout for the current state.
 pub const STATE_EXTEND_TIMEOUT_USEC: &'static str = "EXTEND_TIMEOUT_USEC";
+/// Store file discriptors in the service manager.
+pub const STATE_FDSTORE: &'static str = "FDSTORE";
+/// Remove file discriptors from the service manager store.
+pub const STATE_FDSTOREREMOVE: &'static str = "FDSTOREREMOVE";
+/// Name the group of file descriptors sent to the service manager.
+pub const STATE_FDNAME: &'static str = "FDNAME";
 
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
@@ -232,6 +238,22 @@ where
 {
     let c_state = state_to_c_string(state);
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr()));
+    Ok(result != 0)
+}
+
+/// Similar to `pid_notify()`, but this also sends file descriptors to the store.
+pub fn pid_notify_with_fds<'a, I, K, V>(pid: pid_t,
+                                        unset_environment: bool,
+                                        state: I,
+                                        fds: &[Fd])
+                                        -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    let c_state = state_to_c_string(state);
+    let result = sd_try!(ffi::sd_pid_notify_with_fds(pid, unset_environment as c_int, c_state.as_ptr(), fds.as_ptr(), fds.len() as c_uint));
     Ok(result != 0)
 }
 
