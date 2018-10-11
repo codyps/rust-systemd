@@ -22,10 +22,10 @@ fn test_watchdog_enabled() {
 
 #[test]
 fn test_notify() {
-    let mut state = ::std::collections::HashMap::new();
-    state.insert(daemon::STATE_READY, "1");
-    state.insert(daemon::STATE_STATUS, "Running test_notify()");
-    let result = daemon::notify(false, state);
+    let result = daemon::notify(false, [
+        (daemon::STATE_READY, "1"),
+        (daemon::STATE_STATUS, "Running test_notify()"),
+    ].into_iter());
     assert!(result.is_ok());
     assert_eq!(result.ok().unwrap(), false); // should fail, since this is not systemd-launched.
 }

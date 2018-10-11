@@ -1,4 +1,4 @@
-use std::{ptr, collections, env};
+use std::{ptr, env};
 use std::os::unix::io::RawFd as Fd;
 use libc::{c_char, c_uint};
 use super::ffi::{c_int, size_t, pid_t};
@@ -190,10 +190,15 @@ pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
-fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CString {
+fn state_to_c_string<'a, I, K, V>(state: I) -> ::std::ffi::CString
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let mut state_vec = Vec::new();
-    for (key, value) in state.iter() {
-        state_vec.push(vec![*key, *value].join("="));
+    for (key, value) in state {
+        state_vec.push(vec![key.as_ref(), value.as_ref()].join("="));
     }
     let state_str = state_vec.join("\n");
     ::std::ffi::CString::new(state_str.as_bytes()).unwrap()
@@ -203,7 +208,12 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
 /// of key-value pairs.  See `sd-daemon.h` for details. Some of the most common
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
-pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
+pub fn notify<'a, I, K, V>(unset_environment: bool, state: I) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let c_state = state_to_c_string(state);
     let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state.as_ptr()));
     Ok(result != 0)
@@ -211,10 +221,15 @@ pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) 
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify(pid: pid_t,
-                  unset_environment: bool,
-                  state: collections::HashMap<&str, &str>)
-                  -> Result<bool> {
+pub fn pid_notify<'a, I, K, V>(pid: pid_t,
+                               unset_environment: bool,
+                               state: I)
+                               -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let c_state = state_to_c_string(state);
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr()));
     Ok(result != 0)
