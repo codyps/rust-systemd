@@ -45,4 +45,21 @@ impl Id128 {
     pub fn as_bytes(&self) -> &[u8; 16] {
         &self.inner.bytes
     }
+
+    // Keep this private to the crate since we don't want to expose another crate's type here.
+    pub(crate) fn from_ffi(id: ffi::id128::sd_id128_t) -> Id128 {
+        Id128 { inner: id }
+    }
+}
+
+impl PartialEq for Id128 {
+    fn eq(&self, other: &Id128) -> bool {
+        self.inner.bytes == other.inner.bytes
+    }
+}
+
+impl Clone for Id128 {
+    fn clone(&self) -> Self {
+        Id128 { inner: ffi::id128::sd_id128_t { bytes: self.inner.bytes.clone() } }
+    }
 }

@@ -4,6 +4,7 @@ use std::{io, ptr, result, fmt};
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
+use std::mem::uninitialized;
 use std::os::raw::c_void;
 use std::u64;
 use ffi::array_to_iovecs;
@@ -287,10 +288,14 @@ impl Journal {
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
     pub fn seek(&mut self, seek: JournalSeek) -> Result<String> {
+        let mut tail = false;
         match seek {
             JournalSeek::Head => sd_try!(ffi::sd_journal_seek_head(self.j)),
             JournalSeek::Current => 0,
-            JournalSeek::Tail => sd_try!(ffi::sd_journal_seek_tail(self.j)),
+            JournalSeek::Tail => {
+                tail = true;
+                sd_try!(ffi::sd_journal_seek_tail(self.j))
+            }
             JournalSeek::ClockMonotonic { boot_id, usec } => {
                 sd_try!(ffi::sd_journal_seek_monotonic_usec(self.j,
                                                             sd_id128_t {
@@ -309,14 +314,18 @@ impl Journal {
         let c: *mut c_char = ptr::null_mut();
         if unsafe { ffi::sd_journal_get_cursor(self.j, &c) != 0 } {
             // Cursor may need to be re-aligned on a real entry first.
-            sd_try!(ffi::sd_journal_next(self.j));
+            if tail {
+                sd_try!(ffi::sd_journal_previous(self.j));
+            } else {
+                sd_try!(ffi::sd_journal_next(self.j));
+            }
             sd_try!(ffi::sd_journal_get_cursor(self.j, &c));
         }
         let cs = free_cstring(c).unwrap();
         Ok(cs)
     }
 
-    /// Returns the cursor of current journal entry
+    /// Returns the cursor of current journal entry.
     pub fn cursor(&self) -> Result<String> {
         let mut c_cursor: *mut c_char = ptr::null_mut();
 
@@ -325,11 +334,35 @@ impl Journal {
         Ok(cursor)
     }
 
-    /// Returns timestamp at which current journal is recorded
+    /// Returns timestamp at which current journal entry is recorded.
     pub fn timestamp(&self) -> Result<time::SystemTime> {
         let mut timestamp_us: u64 = 0;
         sd_try!(ffi::sd_journal_get_realtime_usec(self.j, &mut timestamp_us));
         Ok(system_time_from_realtime_usec(timestamp_us))
+    }
+
+    /// Returns monotonic timestamp and boot ID at which current journal entry is recorded.
+    pub fn monotonic_timestamp(&self) -> Result<(u64, Id128)> {
+        let mut monotonic_timestamp_us: u64 = 0;
+        let mut id: sd_id128_t = unsafe { uninitialized() };
+        sd_try!(ffi::sd_journal_get_monotonic_usec(
+            self.j,
+            &mut monotonic_timestamp_us,
+            &mut id,
+        ));
+        Ok((monotonic_timestamp_us, Id128::from_ffi(id)))
+    }
+
+    /// Returns monotonic timestamp at which current journal entry is recorded. Returns an error if
+    /// the current entry is not from the current system boot.
+    pub fn monotonic_timestamp_current_boot(&self) -> Result<u64> {
+        let mut monotonic_timestamp_us: u64 = 0;
+        sd_try!(ffi::sd_journal_get_monotonic_usec(
+            self.j,
+            &mut monotonic_timestamp_us,
+            ptr::null_mut(),
+        ));
+        Ok(monotonic_timestamp_us)
     }
 
     /// Adds a match by which to filter the entries of the journal.
