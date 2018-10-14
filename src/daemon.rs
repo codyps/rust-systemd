@@ -1,4 +1,4 @@
-use std::{ptr, collections, env};
+use std::{ptr, env};
 use std::os::unix::io::RawFd as Fd;
 use libc::{c_char, c_uint};
 use super::ffi::{c_int, size_t, pid_t};
@@ -34,6 +34,10 @@ pub const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished
 pub const STATE_READY: &'static str = "READY";
+/// Tells systemd the daemon is reloading its configuration
+pub const STATE_RELOADING: &'static str = "RELOADING";
+/// Tells systemd the daemon is stopping
+pub const STATE_STOPPING: &'static str = "STOPPING";
 /// Single-line status string describing daemon state
 pub const STATE_STATUS: &'static str = "STATUS";
 /// Errno-style error code in case of failure
@@ -45,6 +49,16 @@ pub const STATE_MAINPID: &'static str = "MAINPID";
 /// Update the watchdog timestamp (set to 1). Daemon should do this regularly,
 /// if using this feature.
 pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
+/// Reset the watchdog timeout during runtime.
+pub const STATE_WATCHDOG_USEC: &'static str = "WATCHDOG_USEC";
+/// Extend the timeout for the current state.
+pub const STATE_EXTEND_TIMEOUT_USEC: &'static str = "EXTEND_TIMEOUT_USEC";
+/// Store file discriptors in the service manager.
+pub const STATE_FDSTORE: &'static str = "FDSTORE";
+/// Remove file discriptors from the service manager store.
+pub const STATE_FDSTOREREMOVE: &'static str = "FDSTOREREMOVE";
+/// Name the group of file descriptors sent to the service manager.
+pub const STATE_FDNAME: &'static str = "FDNAME";
 
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
@@ -182,10 +196,15 @@ pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
-fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CString {
+fn state_to_c_string<'a, I, K, V>(state: I) -> ::std::ffi::CString
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let mut state_vec = Vec::new();
-    for (key, value) in state.iter() {
-        state_vec.push(vec![*key, *value].join("="));
+    for (key, value) in state {
+        state_vec.push(vec![key.as_ref(), value.as_ref()].join("="));
     }
     let state_str = state_vec.join("\n");
     ::std::ffi::CString::new(state_str.as_bytes()).unwrap()
@@ -195,7 +214,12 @@ fn state_to_c_string(state: collections::HashMap<&str, &str>) -> ::std::ffi::CSt
 /// of key-value pairs.  See `sd-daemon.h` for details. Some of the most common
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
-pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) -> Result<bool> {
+pub fn notify<'a, I, K, V>(unset_environment: bool, state: I) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let c_state = state_to_c_string(state);
     let result = sd_try!(ffi::sd_notify(unset_environment as c_int, c_state.as_ptr()));
     Ok(result != 0)
@@ -203,12 +227,33 @@ pub fn notify(unset_environment: bool, state: collections::HashMap<&str, &str>) 
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify(pid: pid_t,
-                  unset_environment: bool,
-                  state: collections::HashMap<&str, &str>)
-                  -> Result<bool> {
+pub fn pid_notify<'a, I, K, V>(pid: pid_t,
+                               unset_environment: bool,
+                               state: I)
+                               -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
     let c_state = state_to_c_string(state);
     let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr()));
+    Ok(result != 0)
+}
+
+/// Similar to `pid_notify()`, but this also sends file descriptors to the store.
+pub fn pid_notify_with_fds<'a, I, K, V>(pid: pid_t,
+                                        unset_environment: bool,
+                                        state: I,
+                                        fds: &[Fd])
+                                        -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    let c_state = state_to_c_string(state);
+    let result = sd_try!(ffi::sd_pid_notify_with_fds(pid, unset_environment as c_int, c_state.as_ptr(), fds.as_ptr(), fds.len() as c_uint));
     Ok(result != 0)
 }
 
