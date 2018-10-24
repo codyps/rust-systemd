@@ -15,7 +15,7 @@ git = "https://github.com/jmesmon/rust-systemd"
 Or
 ```toml
 [dependencies]
-systemd = "~0.3"
+systemd = "~0.4"
 ```
 
 journal
