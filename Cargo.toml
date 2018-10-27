@@ -21,3 +21,6 @@ cstr-argument = "~0.1"
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
 version = "0.2.2"
+
+[dev-dependencies]
+version-sync = "0.5"
