@@ -9,13 +9,15 @@ rust-systemd
 
 In `Cargo.toml`:
 ```toml
-[dependencies.systemd]
-git = "https://github.com/jmesmon/rust-systemd"
-```
-Or
-```toml
 [dependencies]
 systemd = "~0.4"
+```
+
+Or
+
+```toml,no_sync
+[dependencies]
+systemd = { git = "https://github.com/jmesmon/rust-systemd" }
 ```
 
 journal
