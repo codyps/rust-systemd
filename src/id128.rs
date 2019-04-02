@@ -13,6 +13,12 @@ pub struct Id128 {
     pub(crate) inner: ffi::id128::sd_id128_t,
 }
 
+impl fmt::Debug for Id128 {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        <Self as fmt::Display>::fmt(self, fmt)
+    }
+}
+
 impl fmt::Display for Id128 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         for b in self.inner.bytes.iter() {
