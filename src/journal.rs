@@ -135,6 +135,7 @@ pub enum JournalFiles {
 }
 
 /// Seeking position in journal.
+#[derive(Clone, Debug)]
 pub enum JournalSeek {
     Head,
     Current,
