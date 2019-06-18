@@ -60,6 +60,13 @@ pub type sd_bus_track_handler_t = Option<unsafe extern "C" fn(track: *mut sd_bus
                                                               userdata: *mut c_void)
                                                               -> c_int>;
 
+
+#[allow(non_camel_case_types)]
+type sd_destroy_t = Option<unsafe extern "C" fn(userdata: *mut c_void)>;
+
+#[allow(non_camel_case_types)]
+pub type sd_bus_destroy_t = sd_destroy_t;
+
 #[repr(C)]
 pub struct sd_bus_error {
     pub name: *const c_char,
@@ -87,8 +94,11 @@ extern "C" {
 
     pub fn sd_bus_new(ret: *mut *mut sd_bus) -> c_int;
 
-    pub fn sd_bus_set_address(bus: *mut sd_bus) -> c_int;
-    pub fn sd_bus_set_fd(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_address(bus: *mut sd_bus,
+                              address: *const c_char) -> c_int;
+    pub fn sd_bus_set_fd(bus: *mut sd_bus,
+                         input_fd: c_int,
+                         output_fd: c_int) -> c_int;
     pub fn sd_bus_set_exec(bus: *mut sd_bus,
                            path: *const c_char,
                            argv: *const *mut c_char)
@@ -113,6 +123,16 @@ extern "C" {
     pub fn sd_bus_get_creds_mask(bus: *mut sd_bus, creds_mask: *mut u64) -> c_int;
     pub fn sd_bus_set_allow_interactive_authorization(bus: *mut sd_bus, b: c_int) -> c_int;
     pub fn sd_bus_get_allow_interactive_authorization(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_exit_on_disconnect(bus: *mut sd_bus, b: c_int) -> c_int;
+    pub fn sd_bus_get_exit_on_disconnect(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_close_on_exit(bus: *mut sd_bus, b: c_int) -> c_int;
+    pub fn sd_bus_get_close_on_exit(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_watch_bind(bus: *mut sd_bus, b: c_int) -> c_int;
+    pub fn sd_bus_get_watch_bind(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_connected_signal(bus: *mut sd_bus, b: c_int) -> c_int;
+    pub fn sd_bus_get_connected_signal(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_set_sender(bus: *mut sd_bus, sender: *const c_char) -> c_int;
+    pub fn sd_bus_get_sender(bus: *mut sd_bus, ret: *mut *const c_char) -> c_int;
 
     pub fn sd_bus_start(ret: *mut sd_bus) -> c_int;
 
@@ -121,11 +141,13 @@ extern "C" {
 
     pub fn sd_bus_ref(bus: *mut sd_bus) -> *mut sd_bus;
     pub fn sd_bus_unref(bus: *mut sd_bus) -> *mut sd_bus;
+    pub fn sd_bus_close_unref(bus: *mut sd_bus) -> *mut sd_bus;
     pub fn sd_bus_flush_close_unref(bus: *mut sd_bus) -> *mut sd_bus;
 
     pub fn sd_bus_default_flush_close();
 
     pub fn sd_bus_is_open(bus: *mut sd_bus) -> c_int;
+    pub fn sd_bus_is_ready(bus: *mut sd_bus) -> c_int;
 
     pub fn sd_bus_get_bus_id(bus: *mut sd_bus, id: *mut sd_id128_t) -> c_int;
     pub fn sd_bus_get_scope(bus: *mut sd_bus, scope: *mut *const c_char) -> c_int;
@@ -174,6 +196,12 @@ extern "C" {
     pub fn sd_bus_attach_event(bus: *mut sd_bus, e: *mut sd_event, priority: c_int) -> c_int;
     pub fn sd_bus_detach_event(bus: *mut sd_bus) -> c_int;
     pub fn sd_bus_get_event(bus: *mut sd_bus) -> *mut sd_event;
+
+    pub fn sd_bus_get_n_queued_read(bus: *mut sd_bus, ret: *mut u64) -> c_int;
+    pub fn sd_bus_get_n_queued_write(bus: *mut sd_bus, ret: *mut u64) -> c_int;
+
+    pub fn sd_bus_set_method_call_timeout(bus: *mut sd_bus, usec: u64) -> c_int;
+    pub fn sd_bus_get_method_call_timeout(bus: *mut sd_bus, ret: *mut u64) -> c_int;
 
     pub fn sd_bus_add_filter(bus: *mut sd_bus,
                              slot: *mut *mut sd_bus_slot,
@@ -238,6 +266,12 @@ extern "C" {
     pub fn sd_bus_slot_get_description(slot: *mut sd_bus_slot,
                                        description: *mut *const c_char)
                                        -> c_int;
+    pub fn sd_bus_slot_get_floating(slot: *mut sd_bus_slot) -> c_int;
+    pub fn sd_bus_slot_set_floating(slot: *mut sd_bus_slot, b: c_int) -> c_int;
+    pub fn sd_bus_slot_set_destroy_callback(slot: *mut sd_bus_slot, callback: sd_bus_destroy_t)
+        -> c_int;
+    pub fn sd_bus_slot_get_destroy_callback(slot: *mut sd_bus_slot, callback: *mut sd_bus_destroy_t)
+        -> c_int;
 
     pub fn sd_bus_slot_get_current_message(slot: *mut sd_bus_slot) -> *mut sd_bus_message;
     pub fn sd_bus_slot_get_current_handler(bus: *mut sd_bus_slot) -> sd_bus_message_handler_t;
@@ -245,6 +279,7 @@ extern "C" {
 
     // Message object
 
+    pub fn sd_bus_message_new(bus: *mut sd_bus, m: *mut *mut sd_bus_message, typ: u8) -> c_int;
     pub fn sd_bus_message_new_signal(bus: *mut sd_bus,
                                      m: *mut *mut sd_bus_message,
                                      path: *const c_char,
@@ -286,6 +321,8 @@ extern "C" {
     pub fn sd_bus_message_ref(m: *mut sd_bus_message) -> *mut sd_bus_message;
     pub fn sd_bus_message_unref(m: *mut sd_bus_message) -> *mut sd_bus_message;
 
+    pub fn sd_bus_message_seal(m: *mut sd_bus_message, cookie: u64, timeout_usec: u64) -> c_int;
+
     pub fn sd_bus_message_get_type(m: *mut sd_bus_message, typ: *mut u8) -> c_int;
     pub fn sd_bus_message_get_cookie(m: *mut sd_bus_message, cookie: *mut u64) -> c_int;
     pub fn sd_bus_message_get_reply_cookie(m: *mut sd_bus_message, cookie: *mut u64) -> c_int;
@@ -309,7 +346,7 @@ extern "C" {
     pub fn sd_bus_message_get_seqnum(m: *mut sd_bus_message, seqnum: *mut u64) -> c_int;
 
     pub fn sd_bus_message_get_bus(m: *mut sd_bus_message) -> *mut sd_bus;
-    // do not unref the result
+    /// do not unref the result
     pub fn sd_bus_message_get_creds(m: *mut sd_bus_message) -> *mut sd_bus_creds;
 
     pub fn sd_bus_message_is_signal(m: *mut sd_bus_message,
@@ -333,9 +370,14 @@ extern "C" {
     pub fn sd_bus_message_set_destination(m: *mut sd_bus_message,
                                           destination: *const c_char)
                                           -> c_int;
+    pub fn sd_bus_message_set_sender(m: *mut sd_bus_message,
+                                     sender: *const c_char)
+        -> c_int;
     pub fn sd_bus_message_set_priority(m: *mut sd_bus_message, priority: i64) -> c_int;
 
     pub fn sd_bus_message_append(m: *mut sd_bus_message, types: *const c_char, ...) -> c_int;
+    // pub fn sd_bus_message_appendv(m: *mut sd_bus_message, types: *const c_char, ap: va_list) ->
+    // c_int;
     pub fn sd_bus_message_append_basic(m: *mut sd_bus_message,
                                        typ: c_char,
                                        p: *const c_void)
@@ -386,6 +428,7 @@ extern "C" {
                                -> c_int;
 
     pub fn sd_bus_message_read(m: *mut sd_bus_message, types: *const c_char, ...) -> c_int;
+    //pub fn sd_bus_message_readv(m: *mut sd_bus_message, types: *const c_char, ap: va_list);
     pub fn sd_bus_message_read_basic(m: *mut sd_bus_message, typ: c_char, p: *mut c_void) -> c_int;
     pub fn sd_bus_message_read_array(m: *mut sd_bus_message,
                                      typ: c_char,
@@ -415,7 +458,15 @@ extern "C" {
 
     pub fn sd_bus_get_unique_name(bus: *mut sd_bus, unique: *mut *const c_char) -> c_int;
     pub fn sd_bus_request_name(bus: *mut sd_bus, name: *const c_char, flags: u64) -> c_int;
+    pub fn sd_bus_request_name_async(bus: *mut sd_bus, ret_slot: *mut *mut sd_bus_slot,
+                                     name: *const c_char, flags: u64,
+                                     callback: sd_bus_message_handler_t,
+                                     userdata: *mut c_void) -> c_int;
     pub fn sd_bus_release_name(bus: *mut sd_bus, name: *const c_char) -> c_int;
+    pub fn sd_bus_release_name_async(bus: *mut sd_bus, ret_slot: *mut *mut sd_bus_slot,
+                                     name: *const c_char,
+                                     callback: sd_bus_message_handler_t,
+                                     userdata: *mut c_void) -> c_int;
     // free the results
     pub fn sd_bus_list_names(bus: *mut sd_bus,
                              acquired: *mut *mut *mut c_char,
@@ -473,7 +524,7 @@ extern "C" {
                                        typ: c_char,
                                        ret_ptr: *mut c_void)
                                        -> c_int;
-    // free the result!
+    /// free the result!
     pub fn sd_bus_get_property_string(bus: *mut sd_bus,
                                       destination: *const c_char,
                                       path: *const c_char,
@@ -482,7 +533,7 @@ extern "C" {
                                       ret_error: *mut sd_bus_error,
                                       ret: *mut *mut c_char)
                                       -> c_int;
-    // free the result!
+    /// free the result!
     pub fn sd_bus_get_property_strv(bus: *mut sd_bus,
                                     destination: *const c_char,
                                     path: *const c_char,
@@ -690,8 +741,15 @@ extern "C" {
     pub fn sd_bus_track_add_name(track: *mut sd_bus_track, name: *const c_char) -> c_int;
     pub fn sd_bus_track_remove_name(track: *mut sd_bus_track, name: *const c_char) -> c_int;
 
+    pub fn sd_bus_track_set_recursive(track: *mut sd_bus_track, b: c_int) -> c_int;
+    pub fn sd_bus_track_count_sender(track: *mut sd_bus_track, m: *mut sd_bus_message) -> c_int;
+    pub fn sd_bus_track_count_name(track: *mut sd_bus_track, name: *const c_char) -> c_int;
+
     pub fn sd_bus_track_count(track: *mut sd_bus_track) -> c_uint;
     pub fn sd_bus_track_contains(track: *mut sd_bus_track, names: *const c_char) -> *const c_char;
     pub fn sd_bus_track_first(track: *mut sd_bus_track) -> *const c_char;
     pub fn sd_bus_track_next(track: *mut sd_bus_track) -> *const c_char;
+
+    pub fn sd_bus_track_set_destroy_callback(track: *mut sd_bus_track, callback: sd_bus_destroy_t) -> c_int;
+    pub fn sd_bus_track_get_destroy_callback(track: *mut sd_bus_track, ret: *mut sd_bus_destroy_t) -> c_int;
 }
