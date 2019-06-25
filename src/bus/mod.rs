@@ -1,7 +1,25 @@
+// Persistent issues:
+//
+//  - callbacks trigger allocation
+//    The underlying systemd calls which add callbacks perform allocation internally (they allocate
+//    a `slot`). We add our own `Box` allocation. This currently isn't exposed to users of the
+//    methods: they pass a `Fn`, not a `Box<Fn>`.
+//
+//    In some cases, this restriction is probably not necessary, but it's unclear how to handle.
+//
+//  - very easy to create multiple mutable references to the same data
+//    The messages, slots, bus, etc all have methods to obtain the other end of the "link".
+//    Messages can get the bus they're attached to. They're then able to upgrade their ref to a
+//    owned reference, and can then use that owned reference as mutable.
+//
+//    We may just need to restrict the ability to adjust ownership and obtain references to less
+//    than what is possible with sd-bus directly.
+
 extern crate utf8_cstr;
 
+//use enumflags2_derive::EnumFlags;
 use ffi;
-use ffi::{c_int, c_char, c_void};
+use ffi::{c_int, c_char, c_void, pid_t};
 use std::{fmt,str};
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
@@ -11,6 +29,9 @@ use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
 use std::borrow::{Borrow,BorrowMut};
 use std::result;
+use std::time::Duration;
+
+use super::usec_from_duration;
 use self::utf8_cstr::Utf8CStr;
 
 pub mod types;
@@ -438,11 +459,101 @@ fn t_member_name() {
     MemberName::from_bytes(b"a\0").unwrap();
 }
 
+/*
+/// Representation of a callback that may occur in the future.
+///
+/// XXX: when does fiddling with these cause callbacks to get de-registered. Do they ever get
+/// de-registered?
+struct Slot {
+    raw: *mut ffi::sd_bus_slot,
+}
+
+struct SlotRef
+    _inner: ffi::sd_bus_slot,
+}
+
+impl Slot {
+
+
+}
+*/
+
+/*
+/// These correspond to the flags passed to [`sd_bus_request_name()`]
+///
+/// [`sd_bus_request_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_request_name.html
+#[derive(EnumFlags,Copy,Clone,Debug,PartialEq,Eq)]
+#[repr(u64)]
+pub enum NameFlags {
+    /// After acquiring the name succesfully, premit other peers to take over the name when they
+    /// try to aquire it with `ReplaceExisting`.
+    // XXX: add dbus meaning
+    AllowReplacement = 1<<0,
+
+    /// Take over the name if it is already acquired by another peer, and that other peer has
+    /// permitted takeover by setting `AllowReplacement` when acquiring it.
+    // XXX: add dbus meaning
+    ReplaceExisting = 1<<1,
+
+    /// Queue the acquisition of the name when the name is already taken.
+    Queue = 1<<2,
+}
+*/
+
+#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[repr(u8)]
+pub enum MessageType {
+    MethodCall,
+    MethodReturn,
+    MethodError,
+    Signal,
+}
+
+impl MessageType {
+    pub fn from_raw(raw: u8) -> Self {
+        match raw as c_int {
+            ffi::bus::SD_BUS_MESSAGE_METHOD_CALL => MessageType::MethodCall,
+            ffi::bus::SD_BUS_MESSAGE_METHOD_RETURN => MessageType::MethodReturn,
+            ffi::bus::SD_BUS_MESSAGE_METHOD_ERROR => MessageType::MethodError,
+            ffi::bus::SD_BUS_MESSAGE_SIGNAL => MessageType::Signal,
+            _ => panic!(),
+        }
+    }
+}
+
+/*
+impl enumflags2::BitFlags<NameFlags> {
+    fn as_raw(&self) -> u64 {
+        let mut v = 0;
+        for f in self.iter() {
+            match f {
+                NameFlags::AllowReplacement => { v |= ffi::SD_BUS_NAME_ALLOW_REPLACEMENT },
+                NameFlags::ReplaceExisting  => { v |= ffi::SD_BUS_NAME_REPLACE_EXISTING },
+                NameFlags::Queue => { v |= ffi::SD_BUS_NAME_QUEUE },
+            }
+        }
+    }
+}
+*/
+
 // TODO: consider providing a duplicate of this that promises it contains an error
 // We need this more general one for writing more direct interfaces into sd-bus, but most user code
 // will only encounter an error that is correctly populated by sd-bus itself.
-struct RawError {
+#[repr(C)]
+pub struct RawError {
     inner: ffi::bus::sd_bus_error,
+}
+
+impl RawError {
+    pub unsafe fn from_ptr<'a>(ptr: *const ffi::bus::sd_bus_error) -> &'a Self
+    {
+        // this is incredibly questionable: we're casting it through to a wrapper struct. It's
+        // unclear if we're providing everything necessary for this to work right.
+        //
+        // This probably indincates we should get rid of the concrete/cached `Error` as we can't
+        // make this into an `Error` without coping it.
+        transmute(ptr as *const _)
+    }
 }
 
 pub struct Error {
@@ -454,7 +565,7 @@ pub struct Error {
 impl Error {
     /// Unsafety:
     ///
-    /// - `raw` must be set.
+    /// - `raw` must be populated with valid pointers, is it is if returned by another sd_bus api.
     unsafe fn from_raw(raw: RawError) -> Error {
         let n = CStr::from_ptr(raw.inner.name).to_bytes_with_nul().len();
         let m = if raw.inner.message.is_null() {
@@ -672,12 +783,12 @@ fn t_raw_error() {
 }
 
 /* XXX: fixme: return code does have meaning! */
-extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef) -> Result<()>>(
-    msg: *mut ffi::bus::sd_bus_message,
-    userdata: *mut c_void,
-    ret_error: *mut ffi::bus::sd_bus_error) -> c_int
+extern "C" fn raw_message_handler<F>(msg: *mut ffi::bus::sd_bus_message, userdata: *mut c_void,
+                                     ret_error: *mut ffi::bus::sd_bus_error) -> c_int
+where
+    F: Fn(&mut MessageRef) -> Result<()>
 {
-    let m: &mut F = unsafe { transmute(userdata) };
+    let m: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
     let e = m(unsafe { MessageRef::from_mut_ptr(msg)});
 
     match e {
@@ -694,6 +805,13 @@ extern "C" fn raw_message_handler<F: FnMut(&mut MessageRef) -> Result<()>>(
             0
         }
     }
+}
+
+extern "C" fn raw_destroy_cb_message_handler<F>(userdata: *mut c_void)
+    where
+        F: Fn(&mut MessageRef) -> Result<()>
+{
+    let _: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
 }
 
 pub struct Bus {
@@ -743,17 +861,31 @@ impl Bus {
     }
 }
 
+impl AsRef<BusRef> for Bus {
+    #[inline]
+    fn as_ref(&self) -> &BusRef {
+        unsafe { BusRef::from_ptr(self.as_ptr()) }
+    }
+}
+
+impl AsMut<BusRef> for Bus {
+    #[inline]
+    fn as_mut(&mut self) -> &mut BusRef {
+        unsafe { BusRef::from_mut_ptr(self.as_mut_ptr()) }
+    }
+}
+
 impl Borrow<BusRef> for Bus {
     #[inline]
     fn borrow(&self) -> &BusRef {
-        unsafe { BusRef::from_ptr(self.as_ptr()) }
+        self.as_ref()
     }
 }
 
 impl BorrowMut<BusRef> for Bus {
     #[inline]
     fn borrow_mut(&mut self) -> &mut BusRef {
-        unsafe { BusRef::from_mut_ptr(self.as_mut_ptr()) }
+        self.as_mut()
     }
 }
 
@@ -792,7 +924,34 @@ pub struct BusRef {
 
 impl fmt::Debug for BusRef {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("BusRef").finish()
+        fmt.debug_struct("BusRef")
+            .field("unique_name", &self.unique_name())
+            .field("bus_id", &self.bus_id())
+            .field("scope", &self.scope())
+            .field("tid", &self.tid())
+            //.field("owner_creds", &self.owner_creds())
+            .field("description", &self.description())
+            //.field("is_server", &self.is_server())
+            //.field("is_bus_client", &self.is_bus_client())
+            .field("address", &self.address())
+            //.field("is_trusted", &self.is_trusted())
+            //.field("is_anonymous", &self.is_anonymous())
+            //.field("is_monitor", &self.is_monitor())
+            //.field("is_open", &self.is_open())
+            //.field("is_ready", &self.is_ready())
+            .field("fd", &self.fd())
+            .field("events", &self.events())
+            .field("n_queued_read", &self.n_queued_read())
+            .field("n_queued_write", &self.n_queued_write())
+            //.field("event", &self.event())
+            .field("method_call_timeout", &self.method_call_timeout())
+            .finish()
+        // Consider:
+        // current_message
+        // current_handler
+        // current_slot
+        //
+        // Also consider removing some of those included. It's a bit bulky
     }
 }
 
@@ -804,32 +963,52 @@ impl ToOwned for BusRef {
     }
 }
 
+
 impl BusRef {
     #[inline]
-    unsafe fn from_ptr<'a>(r: *const ffi::bus::sd_bus) -> &'a BusRef {
+    pub unsafe fn from_ptr<'a>(r: *const ffi::bus::sd_bus) -> &'a BusRef {
         transmute(r)
     }
 
     #[inline]
-    unsafe fn from_mut_ptr<'a>(r: *mut ffi::bus::sd_bus) -> &'a mut BusRef {
+    pub unsafe fn from_mut_ptr<'a>(r: *mut ffi::bus::sd_bus) -> &'a mut BusRef {
         transmute(r)
     }
 
     #[inline]
-    pub fn to_owned(&self) -> Bus {
-        unsafe { Bus::from_ptr(self.as_ptr()) }
-    }
-
-    #[inline]
-    fn as_ptr(&self) -> *mut ffi::bus::sd_bus {
+    pub fn as_ptr(&self) -> *mut ffi::bus::sd_bus {
         unsafe { transmute(self) }
     }
 
+    /// Returns the file descriptor used to communicate from a message bus object. This descriptor
+    /// can be used with `poll(3)` or a similar function to wait for I/O events on the specified
+    /// bus connection object.
+    ///
+    /// This corresponds to [`sd_bus_get_fd`]
+    ///
+    /// [`sd_bus_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_fd.html
+    #[inline]
+    pub fn fd(&self) -> super::Result<c_int> {
+        Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.as_ptr())))
+    }
+
+    /// Returns the I/O events to wait for, suitable for passing to poll or a similar call.
+    /// Returns a combination of `POLLIN`, `POLLOUT`, ... events.
+    ///
+    /// This corresponds to [`sd_bus_get_events`].
+    ///
+    /// [`sd_bus_get_events`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_events.html
     #[inline]
     pub fn events(&self) -> super::Result<c_int> {
         Ok(sd_try!(ffi::bus::sd_bus_get_events(self.as_ptr())))
     }
 
+    /// Returns the time-out in us to pass to `poll()` or a similar call when waiting for events on
+    /// the specified bus connection.
+    ///
+    /// This corresponds to [`sd_bus_get_timeout`].
+    ///
+    /// [`sd_bus_get_timeout`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_timeout.html
     #[inline]
     pub fn timeout(&self) -> super::Result<u64> {
         let mut b = unsafe { uninitialized() };
@@ -837,11 +1016,78 @@ impl BusRef {
         Ok(b)
     }
 
+    /// Drives the connection between the client and the message bus.
+    /// Each time it is invoked a single operation is executed.
+    ///
+    /// Returns `None` if no operations were pending (and thus no operations were processed).
+    /// Returns `Some(None)` if progress was made but no message was processed.
+    /// Returns `Some(Message)` if a message was processed.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_process`].
+    ///
+    /// [`sd_bus_process`]: https://www.freedesktop.org/software/systemd/man/sd_bus_process.html
     #[inline]
-    pub fn fd(&self) -> super::Result<c_int> {
-        Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.as_ptr())))
+    pub fn process(&mut self) -> super::Result<Option<Option<Message>>>
+    {
+        let mut b = unsafe { uninitialized() };
+        let r = sd_try!(ffi::bus::sd_bus_process(self.as_ptr(), &mut b));
+        if r > 0 {
+            if b.is_null() {
+                Ok(Some(None))
+            } else {
+                Ok(Some(Some(unsafe { Message::take_ptr(b) })))
+            }
+        } else {
+            Ok(None)
+        }
     }
 
+    /// This corresponds to [`sd_bus_process_priority`].
+    ///
+    /// [`sd_bus_process_priority`]: https://www.freedesktop.org/software/systemd/man/sd_bus_process_priority.html
+    #[inline]
+    pub fn process_priority(&mut self, max_priority: i64) ->
+        super::Result<Option<Option<Message>>>
+    {
+        let mut b = unsafe { uninitialized() };
+        let r = sd_try!(ffi::bus::sd_bus_process_priority(self.as_ptr(), max_priority, &mut b));
+        if r > 0 {
+            if b.is_null() {
+                Ok(Some(None))
+            } else {
+                Ok(Some(Some(unsafe { Message::take_ptr(b) })))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Synchronously waits for pending I/O on this `Bus` object.
+    ///
+    /// After each invocation of `wait()`, `process()` should be invoked to process pending I/O
+    /// work.
+    ///
+    /// Returns `true` if any I/O was seen.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_wait`].
+    ///
+    /// [`sd_bus_wait`]: https://www.freedesktop.org/software/systemd/man/sd_bus_wait.html
+    #[inline]
+    pub fn wait(&mut self, timeout: Option<Duration>) -> super::Result<bool>
+    {
+        Ok(sd_try!(ffi::bus::sd_bus_wait(self.as_ptr(),
+            timeout.map(usec_from_duration).unwrap_or(std::u64::MAX))) > 0)
+    }
+
+    /// Get the unique name (address) of this connection to this `Bus`.
+    ///
+    /// 
+    ///
+    /// This corresponds to [`sd_bus_get_unique_name`].
+    ///
+    /// [`sd_bus_get_unique_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_unique_name.html
     #[inline]
     pub fn unique_name(&self) -> super::Result<&BusName> {
         let mut e = unsafe { uninitialized() };
@@ -849,6 +1095,86 @@ impl BusRef {
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
+    pub fn scope(&self) -> super::Result<&CStr>
+    {
+        let mut ret = ptr::null();
+        sd_try!(ffi::bus::sd_bus_get_scope(self.as_ptr(), &mut ret));
+        Ok(unsafe{ CStr::from_ptr(ret)})
+    }
+
+    pub fn tid(&self) -> super::Result<pid_t>
+    {
+        let mut ret = 0;
+        sd_try!(ffi::bus::sd_bus_get_tid(self.as_ptr(), &mut ret));
+        Ok(ret)
+    }
+
+    // pub fn owner_creds(&self, creds_mask: u64) -> super::Result<sd_bus_creds>
+
+    pub fn description(&self) -> super::Result<&CStr>
+    {
+        let mut ret = ptr::null();
+        sd_try!(ffi::bus::sd_bus_get_description(self.as_ptr(), &mut ret));
+        Ok(unsafe { CStr::from_ptr(ret)})
+    }
+
+    pub fn address(&self) -> super::Result<&CStr>
+    {
+        let mut ret = ptr::null();
+        sd_try!(ffi::bus::sd_bus_get_address(self.as_ptr(), &mut ret));
+        Ok(unsafe { CStr::from_ptr(ret)})
+    }
+
+    /*
+            .field("is_server", &self.is_server())
+            .field("is_bus_client", &self.is_bus_client())
+            .field("address", &self.address())
+            .field("is_trusted", &self.is_trusted())
+            .field("is_anonymous", &self.is_anonymous())
+            .field("is_monitor", &self.is_monitor())
+            .field("is_open", &self.is_open())
+            .field("is_ready", &self.is_ready())
+    */
+
+    pub fn n_queued_write(&self) -> super::Result<u64>
+    {
+        let mut ret = Default::default();
+        sd_try!(ffi::bus::sd_bus_get_n_queued_write(self.as_ptr(), &mut ret));
+        Ok(ret)
+    }
+
+    pub fn n_queued_read(&self) -> super::Result<u64>
+    {
+        let mut ret = Default::default();
+        sd_try!(ffi::bus::sd_bus_get_n_queued_read(self.as_ptr(), &mut ret));
+        Ok(ret)
+    }
+
+    /*
+    pub fn event(&self) -> super::Result<Event>
+    {
+
+    }
+    */
+
+    pub fn method_call_timeout(&self) -> super::Result<u64>
+    {
+        let mut ret = Default::default();
+        sd_try!(ffi::bus::sd_bus_get_method_call_timeout(self.as_ptr(), &mut ret));
+        Ok(ret)
+    }
+
+    pub fn bus_id(&self) -> super::Result<super::id128::Id128>
+    {
+        let mut id: super::id128::Id128 = Default::default();
+        try!(::ffi_result(unsafe { ffi::bus::sd_bus_get_bus_id(self.as_ptr(), id.as_raw_mut()) }));
+        Ok(id)
+    }
+
+    ///
+    /// This corresponds to [`sd_bus_message_new_signal`].
+    ///
+    /// [`sd_bus_message_new_signal`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_signal.html
     #[inline]
     pub fn new_signal(&mut self,
                       path: &ObjectPath,
@@ -864,6 +1190,10 @@ impl BusRef {
         Ok(unsafe { Message::take_ptr(m) })
     }
 
+
+    /// This corresponds to [`sd_bus_message_new_method_call`].
+    ///
+    /// [`sd_bus_message_new_method_call`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_call.html
     #[inline]
     pub fn new_method_call(&mut self,
                            dest: &BusName,
@@ -884,45 +1214,98 @@ impl BusRef {
     // new_method_errno
 
     // TODO: consider using a guard object for name handling
-    /// This blocks. To get async behavior, use 'call_async' directly.
+    /// This blocks. To get async behavior, use `request_name_async()`
+    ///
+    ///
+    /// This corresponds to [`sd_bus_request_name`]
+    ///
+    /// [`sd_bus_request_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_request_name.html
     #[inline]
-    pub fn request_name(&self, name: &BusName, flags: u64) -> super::Result<()> {
+    pub fn request_name(&mut self, name: &BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(self.as_ptr(),
                                               &*name as *const _ as *const _,
                                               flags));
         Ok(())
     }
 
-    /// This blocks. To get async behavior, use 'call_async' directly.
+    #[inline]
+    pub fn request_name_async<F>(&mut self, name: &BusName, flags: u64, callback: F) ->
+        super::Result<()>
+    where
+        F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static
+    {
+        let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
+                             *mut c_void,
+                             *mut ffi::bus::sd_bus_error)
+                             -> c_int = raw_message_handler::<F>;
+        let d: extern "C" fn(*mut c_void)
+            = raw_destroy_cb_message_handler::<F>;
+        let mut slot = ptr::null_mut();
+        let b = Box::into_raw(Box::new(callback));
+        match unsafe {::ffi_result(ffi::bus::sd_bus_request_name_async(self.as_ptr(),
+            &mut slot,
+            &*name as *const _ as *const _,
+            flags,
+            Some(f),
+            b as *mut c_void,
+        ))} {
+            Err(e) => {
+                // try not to leak
+                unsafe { Box::from_raw(b) };
+                Err(e)
+            },
+            Ok(_) => {
+                unsafe {
+                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
+                    // we don't want to take care of this one, let the bus handle it
+                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// This blocks. To get async behavior, use `request_name` directly.
     #[inline]
     pub fn release_name(&self, name: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_release_name(self.as_ptr(), &*name as *const _ as *const _));
         Ok(())
     }
 
-    // XXX: alternates for (userdata: T):
-    //  - userdata: T, and automatically box as needed. Allows a useful external control.
-    //  - userdata: Box<T>, allows users to supply a box directly if they already have one
-    //  - userdata: &mut T, allows users to manage lifetime of passed in values direcly
-    //  - userdata: SizeMatches<*const _>, allows users to use things without a pointer indirection
-    //    (such as integer types). Not clear this is possible in rust today (1.9).
-    //  - cb: &FnMut
-    //  - cb: &CustomTrait
+    /// This corresponds to [`sd_bus_add_object`]
+    ///
+    /// [`sd_bus_add_object`]: https://www.freedesktop.org/software/systemd/man/sd_bus_add_object.html
     #[inline]
-    pub fn add_object<F: FnMut(&mut MessageRef) -> Result<()>>(&self,
-                                                                      path: &ObjectPath,
-                                                                      cb: &mut F)
-                                                                      -> super::Result<()> {
+    pub fn add_object<F>(&self, path: &ObjectPath, callback: F) -> super::Result<()>
+        where
+            F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static
+    {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
                              *mut c_void,
                              *mut ffi::bus::sd_bus_error)
                              -> c_int = raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_add_object(self.as_ptr(),
-                                            ptr::null_mut(),
+        let d: extern "C" fn(*mut c_void)
+            = raw_destroy_cb_message_handler::<F>;
+        let mut slot = ptr::null_mut();
+        let b = Box::into_raw(Box::new(callback));
+        match ::ffi_result(unsafe { ffi::bus::sd_bus_add_object(self.as_ptr(),
+                                            &mut slot,
                                             &*path as *const _ as *const _,
                                             Some(f),
-                                            cb as *mut _ as *mut _));
-        Ok(())
+                                            b as *mut c_void)})
+        {
+            Err(e) => {
+                unsafe { Box::from_raw(b) };
+                Err(e)
+            },
+            Ok(_) => {
+                unsafe {
+                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
+                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
+                }
+                Ok(())
+            }
+        }
     }
 
     #[inline]
@@ -996,7 +1379,7 @@ impl Track {
 
 /// A message to be sent or that was recieved over dbus
 ///
-/// This is reference counted, clone does not copy the type
+/// This is reference counted, cloned objects refer to the same root object.
 pub struct Message {
     raw: *mut ffi::bus::sd_bus_message,
 }
@@ -1022,16 +1405,22 @@ impl Message {
      * To construct a Message from an un-owned pointer, use MessageRef::from_ptr(p).to_owned()
      */
     #[inline]
-    unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message {
+    pub unsafe fn take_ptr(p: *mut ffi::bus::sd_bus_message) -> Message
+    {
         Message { raw: p }
     }
 
-    // fn into_ptr(mut self) -> *mut ffi::bus::sd_bus_message {
-    // let r = self.as_mut_ptr();
-    // forget(self);
-    // r
-    // }
-    //
+    #[inline]
+    pub fn as_ptr(&self) -> *const ffi::bus::sd_bus_message
+    {
+        self.raw
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message
+    {
+        self.raw
+    }
 }
 
 impl Drop for Message {
@@ -1048,19 +1437,33 @@ impl Clone for Message {
     }
 }
 
+impl AsRef<MessageRef> for Message {
+    #[inline]
+    fn as_ref(&self) -> &MessageRef {
+        unsafe { MessageRef::from_ptr(self.as_ptr()) }
+    }
+}
+
+impl AsMut<MessageRef> for Message {
+    #[inline]
+    fn as_mut(&mut self) -> &mut MessageRef {
+        unsafe { MessageRef::from_mut_ptr(self.as_mut_ptr()) }
+    }
+}
+
 impl Deref for Message {
     type Target = MessageRef;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { MessageRef::from_ptr(self.raw) }
+        self.as_ref()
     }
 }
 
 impl DerefMut for Message {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { MessageRef::from_mut_ptr(self.raw) }
+        self.as_mut()
     }
 }
 
@@ -1090,29 +1493,46 @@ impl ToOwned for MessageRef {
     }
 }
 
+impl fmt::Debug for MessageRef {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Message")
+            .field("type", &self.type_())
+            .field("signature", &self.signature())
+            .field("path", &self.path())
+            .field("member", &self.member())
+            .field("interface", &self.interface())
+            .field("sender", &self.sender())
+            .field("destination", &self.destination())
+            .finish()
+    }
+}
+
 impl MessageRef {
     #[inline]
-    unsafe fn from_ptr<'a>(p: *const ffi::bus::sd_bus_message) -> &'a MessageRef {
+    pub unsafe fn from_ptr<'a>(p: *const ffi::bus::sd_bus_message) -> &'a MessageRef {
         transmute(p)
     }
 
     #[inline]
-    unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_message) -> &'a mut MessageRef {
+    pub unsafe fn from_mut_ptr<'a>(p: *mut ffi::bus::sd_bus_message) -> &'a mut MessageRef {
         transmute(p)
     }
 
     #[inline]
-    fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
+    pub fn as_ptr(&self) -> *const ffi::bus::sd_bus_message {
         unsafe { transmute(self) }
     }
 
     #[inline]
-    fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
+    pub fn as_mut_ptr(&self) -> *mut ffi::bus::sd_bus_message {
         unsafe { transmute(self) }
     }
 
     /* FIXME: unclear that the mut handling is correct in all of this code (not just this function)
      * */
+    /// This corresponds to [`sd_bus_message_get_bus`]
+    ///
+    /// [`sd_bus_message_get_bus`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_bus.html
     #[inline]
     pub fn bus(&self) -> &BusRef {
         unsafe { BusRef::from_mut_ptr(ffi::bus::sd_bus_message_get_bus(self.as_ptr() as *mut _)) }
@@ -1123,6 +1543,10 @@ impl MessageRef {
     /// XXX: describe broadcast
     ///
     /// Fails if the message is sealed
+    ///
+    /// This corresponds to [`sd_bus_message_set_destination`]
+    ///
+    /// [`sd_bus_message_set_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_destination.html
     #[inline]
     pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_message_set_destination(self.as_mut_ptr(),
@@ -1143,36 +1567,194 @@ impl MessageRef {
     /// The
     /// [specification](https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-starting-services)
     /// covers some details about the auto start mechanism, but not all of it is specified.
+    ///
+    /// This corresponds to [`sd_bus_message_set_auto_start`]
+    ///
+    /// [`sd_bus_message_set_auto_start`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_auto_start.html
     #[inline]
     pub fn set_auto_start(&mut self, yes: bool) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_message_set_auto_start(self.as_mut_ptr(), yes as c_int));
         Ok(())
     }
 
+    /// This corresponds to [`sd_bus_message_get_type`]
+    ///
+    /// [`sd_bus_message_get_type`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_type.html
+    pub fn type_(&self) -> MessageType {
+        let mut t = 0;
+        ::ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_get_type(self.as_mut_ptr(), &mut t)
+            }
+        ).unwrap();
+
+        MessageType::from_raw(t)
+    }
+
+    /// This corresponds to [`sd_bus_message_get_path`]
+    ///
+    /// [`sd_bus_message_get_path`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_path.html
+    pub fn path(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_path(self.as_mut_ptr()) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_interface`]
+    ///
+    /// [`sd_bus_message_get_interface`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_interface.html
+    pub fn interface(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_interface(self.as_mut_ptr()) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_member`]
+    ///
+    /// [`sd_bus_message_get_member`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_member.html
+    pub fn member(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_member(self.as_mut_ptr()) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_sender`]
+    ///
+    /// [`sd_bus_message_get_sender`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_sender.html
+    pub fn sender(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_sender(self.as_mut_ptr()) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_destination`]
+    ///
+    /// [`sd_bus_message_get_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_destination.html
+    pub fn destination(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_destination(self.as_mut_ptr()) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_signature`]
+    ///
+    /// [`sd_bus_message_get_signature`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_signature.html
+    // XXX: doesn't allow partial signatures
+    pub fn signature(&self) -> &CStr
+    {
+        let p = unsafe { ffi::bus::sd_bus_message_get_signature(self.as_mut_ptr(), 1) };
+        if p.is_null() {
+            panic!();
+        }
+
+        unsafe { CStr::from_ptr(p) }
+    }
+
+    /// This corresponds to [`sd_bus_message_is_empty`]
+    ///
+    /// [`sd_bus_message_is_empty`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_is_empty.html
+    pub fn is_empty(&self) -> bool {
+        ::ffi_result(unsafe { ffi::bus::sd_bus_message_is_empty(self.as_mut_ptr()) }).unwrap() != 0
+    }
+
+    /// This corresponds to [`sd_bus_message_get_error`]
+    ///
+    /// [`sd_bus_message_get_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_error.html
+    pub fn error(&self) -> &RawError
+    {
+        unsafe { RawError::from_ptr(ffi::bus::sd_bus_message_get_error(self.as_mut_ptr())) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_errno`]
+    ///
+    /// [`sd_bus_message_get_errno`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_errno.html
+    pub fn errno(&self) -> c_int
+    {
+        unsafe { ffi::bus::sd_bus_message_get_errno(self.as_mut_ptr()) }
+    }
+
+    /// This corresponds to [`sd_bus_message_get_monotonic_usec`]
+    ///
+    /// [`sd_bus_message_get_monotonic_usec`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_monotonic_usec.html
+    pub fn monotonic_usec(&self) -> super::Result<u64>
+    {
+        let mut usec = 0;
+        try!(
+            ::ffi_result(
+                unsafe {
+                    ffi::bus::sd_bus_message_get_monotonic_usec(self.as_mut_ptr(), &mut usec)
+                }
+            )
+        );
+
+        Ok(usec)
+    }
+
+    /// This corresponds to [`sd_bus_message_get_realtime_usec`]
+    ///
+    /// [`sd_bus_message_get_realtime_usec`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_realtime_usec.html
+    pub fn realtime_usec(&self) -> super::Result<u64>
+    {
+        let mut usec = 0;
+        try!(
+            ::ffi_result(
+                unsafe {
+                    ffi::bus::sd_bus_message_get_realtime_usec(self.as_mut_ptr(), &mut usec)
+                }
+            )
+        );
+
+        Ok(usec)
+    }
+
+    /// This corresponds to [`sd_bus_message_get_seqnum`]
+    ///
+    /// [`sd_bus_message_get_seqnum`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_seqnum.html
+    pub fn seqnum(&self) -> super::Result<u64>
+    {
+        let mut seqnum = 0;
+        try!(
+            ::ffi_result(
+                unsafe {
+                    ffi::bus::sd_bus_message_get_seqnum(self.as_mut_ptr(), &mut seqnum)
+                }
+            )
+        );
+
+        Ok(seqnum)
+    }
+
     // # properties
-    // type
     // cookie
     // reply_cookie
     // priority
     // expect_reply
     // auto_start
     // allow_interactive_authorization
-    // signature
-    // path
-    // interface
-    // member
-    // destination
-    // sender
-    // error
-    // errno
-    // monotonic_usec
-    // realtime_usec
-    // seqnum
 
     // is_signal
     // is_method_call
     // is_method_error
-    // is_empty
     // has_signature
 
     /*
@@ -1185,6 +1767,10 @@ impl MessageRef {
     /// Send expecting a reply. Returns the reply cookie.
     ///
     /// Seals `self`.
+    ///
+    /// This corresponds to [`sd_bus_send`]
+    ///
+    /// [`sd_bus_send`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send.html
     #[inline]
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
@@ -1195,6 +1781,10 @@ impl MessageRef {
 
     /// Send without expecting any reply
     /// Seals `self`.
+    ///
+    /// This corresponds to [`sd_bus_send`]
+    ///
+    /// [`sd_bus_send`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send.html
     #[inline]
     pub fn send_no_reply(&mut self) -> super::Result<()> {
         // self.bus().send_no_reply(self)
@@ -1206,6 +1796,11 @@ impl MessageRef {
     ///
     /// Internally, this is the same as `.set_destination()` + `.send()`
     /// Seals `self`.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_send_to`]
+    ///
+    /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
     pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
@@ -1219,6 +1814,11 @@ impl MessageRef {
 
     /// Same as `self.send_to()`, but don't expect a reply.
     /// Seals `self`.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_send_to`]
+    ///
+    /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
     pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
@@ -1234,6 +1834,11 @@ impl MessageRef {
     ///
     /// XXX: document blocking forever
     /// Seals `self`.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_call`]
+    ///
+    /// [`sd_bus_call`]: https://www.freedesktop.org/software/systemd/man/sd_bus_call.html
     #[inline]
     pub fn call(&mut self, usec: u64) -> Result<Message> {
         let mut r = unsafe { uninitialized() };
@@ -1248,31 +1853,56 @@ impl MessageRef {
         e.into_result().map(|_| unsafe { Message::take_ptr(r)})
     }
 
+    // XXX: we may need to move this, unclear we have the right lifetime here (we're being too
+    // strict)
+    //
     /// Use this message to call a dbus method. Returns immediately and will call the callback when
     /// a reply is recieved.
     ///
     /// XXX: document how timeout affects this
     /// Seals `self`.
-    // XXX: we may need to move this, unclear we have the right lifetime here (we're being too
-    // strict)
+    ///
+    /// This corresponds to [`sd_bus_call_async`]
+    ///
+    /// [`sd_bus_call_async`]: https://www.freedesktop.org/software/systemd/man/sd_bus_call_async.html
     #[inline]
-    pub fn call_async<F: FnMut(&mut MessageRef) -> Result<()>>(&mut self,
-                                                                      callback: &mut F,
-                                                                      usec: u64)
-                                                                      -> super::Result<()> {
+    pub fn call_async<F>(&mut self, callback: F, usec: u64) -> super::Result<()>
+            where F: Fn(&mut MessageRef) -> Result<()> + 'static + Sync + Send
+    {
         let f: extern "C" fn(*mut ffi::bus::sd_bus_message,
                              *mut c_void,
                              *mut ffi::bus::sd_bus_error)
                              -> c_int = raw_message_handler::<F>;
-        sd_try!(ffi::bus::sd_bus_call_async(ptr::null_mut(),
-                                            ptr::null_mut(),
+        let d: extern "C" fn(*mut c_void)
+            = raw_destroy_cb_message_handler::<F>;
+        let b = Box::into_raw(Box::new(callback));
+        let mut slot = ptr::null_mut();
+        match ::ffi_result(unsafe { ffi::bus::sd_bus_call_async(ptr::null_mut(),
+                                            &mut slot,
                                             self.as_mut_ptr(),
                                             Some(f),
-                                            callback as *mut _ as *mut _,
-                                            usec));
-        Ok(())
+                                            b as *mut c_void,
+                                            usec)
+        }) {
+            Err(e) => {
+                // try not to leak
+                unsafe { Box::from_raw(b) };
+                Err(e)
+            },
+            Ok(_) => {
+                unsafe {
+                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
+                    // we don't want to take care of this one, let the bus handle it
+                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
+                }
+                Ok(())
+            }
+        }
     }
 
+    /// This corresponds to [`sd_bus_message_new_method_error`]
+    ///
+    /// [`sd_bus_message_new_method_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_error.html
     #[inline]
     pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
@@ -1280,6 +1910,9 @@ impl MessageRef {
         Ok(unsafe { Message::take_ptr(m) })
     }
 
+    /// This corresponds to [`sd_bus_message_new_method_return`]
+    ///
+    /// [`sd_bus_message_new_method_return`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_return.html
     #[inline]
     pub fn new_method_return(&mut self) -> super::Result<Message> {
         let mut m = unsafe { uninitialized() };
@@ -1289,6 +1922,10 @@ impl MessageRef {
 
     /// Raw access to append data to this message
     /// Will fail if the message is sealed
+    ///
+    /// This corresponds to [`sd_bus_message_append_basic`]
+    ///
+    /// [`sd_bus_message_append_basic`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_append_basic.html
     // XXX: unclear if this should operate directly on the message or be split out to the iterator
     // mechanism
     #[inline]
@@ -1342,6 +1979,11 @@ impl<'a> MessageIter<'a> {
     ///
     ///  - `dbus_type` when given to `sd_bus_message_read_basic()` must result in something that
     ///    can be reinterpreted as `R`.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_message_read_basic`]
+    ///
+    /// [`sd_bus_message_read_basic`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_read_basic.html
     #[inline]
     pub unsafe fn read_basic_raw<R, T, F: FnOnce(R) -> T>(&mut self, dbus_type: u8, cons: F)
             -> ::Result<Option<T>>
@@ -1371,6 +2013,11 @@ impl<'a> MessageIter<'a> {
     /// &str! As `Message` isn't `Send` or `Sync`, we can garuntee we're not racing with someone
     /// else to free it though. Probably need to allocate space for it here rather than return a
     /// ref.
+    ///
+    ///
+    /// This corresponds to [`sd_bus_message_peek_type`]
+    ///
+    /// [`sd_bus_message_peek_type`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_peek_type.html
     // &str lasts until next call of sd_bus_message_peek_type
     // XXX: confirm that lifetimes here match that!
     #[inline]

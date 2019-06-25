@@ -3,6 +3,12 @@ extern crate log;
 extern crate libsystemd_sys as ffi;
 extern crate cstr_argument;
 
+/*
+extern crate enumflags2;
+#[macro_use]
+extern crate enumflags2_derive;
+*/
+
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Result, Error};
 
@@ -100,13 +106,5 @@ pub mod login;
 
 /// An interface to work with the dbus message bus.
 ///
-/// WARNING: this is not complete. Right now we're missing:
-///
-///  - message encoding/decoding
-///  - server support
-///  - async client support
-///
-/// In short, the only functional thing is issuing blocking dbus calls with pre-populated messages
-/// and writing custom ffi decoders of the message replies.
 #[cfg(feature = "bus")]
 pub mod bus;
