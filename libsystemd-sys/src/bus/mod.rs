@@ -4,7 +4,9 @@ use super::const_iovec;
 use super::event::sd_event;
 
 pub mod vtable;
+mod protocol;
 pub use self::vtable::sd_bus_vtable;
+pub use self::protocol::*;
 
 #[allow(non_camel_case_types)]
 pub enum sd_bus {}
@@ -73,6 +75,7 @@ pub struct sd_bus_error {
     pub message: *const c_char,
     pub need_free: c_int,
 }
+
 
 #[repr(C)]
 pub struct sd_bus_error_map {
