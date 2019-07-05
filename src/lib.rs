@@ -1,15 +1,14 @@
-extern crate libc;
-extern crate log;
-extern crate libsystemd_sys as ffi;
 extern crate cstr_argument;
+extern crate libc;
+extern crate libsystemd_sys as ffi;
+extern crate log;
 
 use libc::{c_char, c_void, free, strlen};
 
-pub use std::io::{Result, Error};
+pub use std::io::{Error, Result};
 
 /// Convert a systemd ffi return value into a Result
-pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
-{
+pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int> {
     if ret < 0 {
         Err(Error::from_raw_os_error(-ret))
     } else {
@@ -41,9 +40,9 @@ fn free_cstring(ptr: *mut c_char) -> Option<String> {
 /// the FFI call.
 #[macro_export]
 macro_rules! sd_try {
-    ($e:expr) => ({
-        try!($crate::ffi_result(unsafe{ $e}))
-    })
+    ($e:expr) => {{
+        try!($crate::ffi_result(unsafe { $e }))
+    }};
 }
 
 /// High-level interface to the systemd journal.
@@ -51,6 +50,9 @@ macro_rules! sd_try {
 /// The main interface for writing to the journal is `fn log()`, and the main
 /// interface for reading the journal is `struct Journal`.
 pub mod journal;
+pub use journal::{
+    Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult,
+};
 
 /// Similar to `log!()`, except it accepts a func argument rather than hard
 /// coding `::log::log()`, and it doesn't filter on `log_enabled!()`.

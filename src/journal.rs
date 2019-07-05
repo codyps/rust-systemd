@@ -1,17 +1,17 @@
-use libc::{c_char, c_int, size_t};
-use log::{self, Log, Record, Level, SetLoggerError};
-use std::{io, ptr, result, fmt};
-use std::collections::BTreeMap;
-use std::ffi::CString;
-use std::io::ErrorKind::InvalidData;
-use std::os::raw::c_void;
-use std::u64;
+use super::{free_cstring, Result};
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
 use id128::Id128;
-use super::{free_cstring, Result};
+use libc::{c_char, c_int, size_t};
+use log::{self, Level, Log, Record, SetLoggerError};
+use std::collections::BTreeMap;
+use std::ffi::CString;
+use std::io::ErrorKind::InvalidData;
+use std::os::raw::c_void;
 use std::time;
+use std::u64;
+use std::{fmt, io, ptr, result};
 
 /// Send preformatted fields to systemd.
 ///
@@ -40,13 +40,14 @@ enum SyslogLevel {
 
 /// Record a log entry, with custom priority and location.
 pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments) {
-    send(&[&format!("PRIORITY={}", level),
-           &format!("MESSAGE={}", args),
-           &format!("CODE_LINE={}", line),
-           &format!("CODE_FILE={}", file),
-           &format!("CODE_FUNCTION={}", module_path)]);
+    send(&[
+        &format!("PRIORITY={}", level),
+        &format!("MESSAGE={}", args),
+        &format!("CODE_LINE={}", line),
+        &format!("CODE_FILE={}", file),
+        &format!("CODE_FUNCTION={}", module_path),
+    ]);
 }
-
 
 /// Send a `log::Record` to systemd-journald.
 pub fn log_record(record: &Record) {
@@ -54,8 +55,7 @@ pub fn log_record(record: &Record) {
         Level::Error => SyslogLevel::Err,
         Level::Warn => SyslogLevel::Warning,
         Level::Info => SyslogLevel::Info,
-        Level::Debug |
-        Level::Trace => SyslogLevel::Debug,
+        Level::Debug | Level::Trace => SyslogLevel::Debug,
     } as usize;
 
     let mut keys = vec![
@@ -64,9 +64,15 @@ pub fn log_record(record: &Record) {
         format!("TARGET={}", record.target()),
     ];
 
-    record.line().map(|line| keys.push(format!("CODE_LINE={}", line)));
-    record.file().map(|file| keys.push(format!("CODE_FILE={}", file)));
-    record.module_path().map(|module_path| keys.push(format!("CODE_FUNCTION={}", module_path)));
+    record
+        .line()
+        .map(|line| keys.push(format!("CODE_LINE={}", line)));
+    record
+        .file()
+        .map(|file| keys.push(format!("CODE_FILE={}", file)));
+    record
+        .module_path()
+        .map(|module_path| keys.push(format!("CODE_FUNCTION={}", module_path)));
 
     let str_keys = keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
     send(&str_keys);
@@ -107,7 +113,6 @@ fn usec_from_duration(duration: time::Duration) -> u64 {
     duration.as_secs() * 1_000_000 + sub_usecs
 }
 
-
 fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
     let d = duration_from_usec(usec);
     time::UNIX_EPOCH + d
@@ -140,25 +145,17 @@ pub enum JournalSeek {
     Head,
     Current,
     Tail,
-    ClockMonotonic {
-        boot_id: Id128,
-        usec: u64,
-    },
-    ClockRealtime {
-        usec: u64,
-    },
-    Cursor {
-        cursor: String,
-    },
+    ClockMonotonic { boot_id: Id128, usec: u64 },
+    ClockRealtime { usec: u64 },
+    Cursor { cursor: String },
 }
 
 #[derive(Clone, Debug)]
 pub enum JournalWaitResult {
     Nop,
     Append,
-    Invalidate
+    Invalidate,
 }
-
 
 impl Journal {
     /// Open the systemd journal for reading.
@@ -189,6 +186,41 @@ impl Journal {
 
         let mut journal = Journal { j: ptr::null_mut() };
         sd_try!(ffi::sd_journal_open(&mut journal.j, flags));
+        sd_try!(ffi::sd_journal_seek_head(journal.j));
+        Ok(journal)
+    }
+
+    /// Open the systemd journal located in a specific folder for reading.
+    ///
+    /// Params:
+    ///
+    /// * path: the absolute directory path. All journal files in this directory
+    ///   will be opened and interleaved automatically.
+    /// * files: the set of journal files to read. If the calling process
+    ///   doesn't have permission to read the system journal, a call to
+    ///   `Journal::open` with `System` or `All` will succeed, but system
+    ///   journal entries won't be included. This behavior is due to systemd.
+    /// * os_root: if true, journal files are searched for below the usual
+    ///   /var/log/journal and /run/log/journal relative to the specified path,
+    ///   instead of directly beneath it.
+    pub fn open_directory(path: &str, files: JournalFiles, os_root: bool) -> Result<Journal> {
+        let c_path = CString::new(path).unwrap();
+        let mut flags: c_int = 0;
+        if os_root {
+            flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        flags |= match files {
+            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
+            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
+            JournalFiles::All => 0,
+        };
+
+        let mut journal = Journal { j: ptr::null_mut() };
+        sd_try!(ffi::sd_journal_open_directory(
+            &mut journal.j,
+            c_path.as_ptr(),
+            flags
+        ));
         sd_try!(ffi::sd_journal_seek_head(journal.j));
         Ok(journal)
     }
@@ -225,7 +257,6 @@ impl Journal {
         }
 
         self.get_record()
-        
     }
 
     /// Read the previous record from the journal. Returns `Ok(None)` if there
@@ -234,56 +265,59 @@ impl Journal {
         if sd_try!(ffi::sd_journal_previous(self.j)) == 0 {
             return Ok(None);
         }
-        
         self.get_record()
     }
 
     /// Wait for next record to arrive.
     /// Pass wait_time `None` to wait for an unlimited period for new records.
     fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
-
         let time = wait_time.map(usec_from_duration).unwrap_or(::std::u64::MAX);
 
         match sd_try!(ffi::sd_journal_wait(self.j, time)) {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
             ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
             ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
-            _ => Err(io::Error::new(InvalidData, "Failed to wait for changes"))
+            _ => Err(io::Error::new(InvalidData, "Failed to wait for changes")),
         }
     }
 
     /// Wait for the next record to appear. Returns `Ok(None)` if there were no
     /// new records in the given wait time.
     /// Pass wait_time `None` to wait for an unlimited period for new records.
-    pub fn await_next_record(&mut self, wait_time: Option<time::Duration>) -> Result<Option<JournalRecord>> {
+    pub fn await_next_record(
+        &mut self,
+        wait_time: Option<time::Duration>,
+    ) -> Result<Option<JournalRecord>> {
         match self.wait(wait_time)? {
             JournalWaitResult::Nop => Ok(None),
             JournalWaitResult::Append => self.next_record(),
 
-            // This is possibly wrong, but I can't generate a scenario with 
-            // ..::Invalidate and neither systemd's journalctl, 
+            // This is possibly wrong, but I can't generate a scenario with
+            // ..::Invalidate and neither systemd's journalctl,
             // systemd-journal-upload, and other utilities handle that case.
-            JournalWaitResult::Invalidate => self.next_record()
+            JournalWaitResult::Invalidate => self.next_record(),
         }
     }
 
     /// Iterate through all elements from the current cursor, then await the
     /// next record(s) and wait again.
     pub fn watch_all_elements<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(JournalRecord) -> Result<()> {
-            loop {
-                let candidate = self.next_record()?;
-                let rec = match candidate {
-                    Some(rec) => rec,
-                    None => { loop {
-                        if let Some(r) = self.await_next_record(None)? {
-                            break r;
-                        }
-                    }}
-                };
-                f(rec)?
-            }
+    where
+        F: FnMut(JournalRecord) -> Result<()>,
+    {
+        loop {
+            let candidate = self.next_record()?;
+            let rec = match candidate {
+                Some(rec) => rec,
+                None => loop {
+                    if let Some(r) = self.await_next_record(None)? {
+                        break r;
+                    }
+                },
+            };
+            f(rec)?
         }
+    }
 
     /// Seek to a specific position in journal. On success, returns a cursor
     /// to the current entry.
@@ -297,11 +331,13 @@ impl Journal {
                 sd_try!(ffi::sd_journal_seek_tail(self.j))
             }
             JournalSeek::ClockMonotonic { boot_id, usec } => {
-                sd_try!(ffi::sd_journal_seek_monotonic_usec(self.j,
-                                                            sd_id128_t {
-                                                                bytes: *boot_id.as_bytes(),
-                                                            },
-                                                            usec))
+                sd_try!(ffi::sd_journal_seek_monotonic_usec(
+                    self.j,
+                    sd_id128_t {
+                        bytes: *boot_id.as_bytes(),
+                    },
+                    usec
+                ))
             }
             JournalSeek::ClockRealtime { usec } => {
                 sd_try!(ffi::sd_journal_seek_realtime_usec(self.j, usec))
