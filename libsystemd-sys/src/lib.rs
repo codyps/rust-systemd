@@ -8,8 +8,7 @@
 //! by the systemd man pages.
 
 extern crate libc;
-pub use libc::{size_t, pid_t, uid_t, gid_t, signalfd_siginfo, siginfo_t, clockid_t, int64_t,
-               uint32_t, uint64_t};
+pub use libc::{size_t, pid_t, uid_t, gid_t, signalfd_siginfo, siginfo_t, clockid_t};
 pub use std::os::raw::{c_char, c_int, c_void, c_uint};
 
 pub mod id128;
