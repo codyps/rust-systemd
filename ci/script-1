@@ -1,0 +1,12 @@
+#! /bin/bash
+# EXECUTED FROM INSIDE DOCKER
+set -euf -o pipefail
+export RUST_BACKTRACE=1
+
+# TODO: try all combinations of features in a nicer way
+cargo build --examples
+cargo test
+
+cargo build --examples --features bus
+cargo test --features bus
+cargo doc --features bus
