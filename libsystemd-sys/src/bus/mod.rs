@@ -271,8 +271,10 @@ extern "C" {
                                        -> c_int;
     pub fn sd_bus_slot_get_floating(slot: *mut sd_bus_slot) -> c_int;
     pub fn sd_bus_slot_set_floating(slot: *mut sd_bus_slot, b: c_int) -> c_int;
+    // since v239
     pub fn sd_bus_slot_set_destroy_callback(slot: *mut sd_bus_slot, callback: sd_bus_destroy_t)
         -> c_int;
+    // since v239
     pub fn sd_bus_slot_get_destroy_callback(slot: *mut sd_bus_slot, callback: *mut sd_bus_destroy_t)
         -> c_int;
 
