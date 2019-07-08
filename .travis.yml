@@ -1,21 +1,17 @@
 language: rust
 dist: trusty
 sudo: required
-cache: ccache
-before_install:
-  - sudo add-apt-repository ppa:pitti/systemd-semaphore -y
-  - sudo apt-get -qq update
-  - sudo apt-get install -y intltool gperf libcap-dev libmount-dev libmount1 realpath
-  - ./libsystemd-sys/build-systemd.sh
+cache:
+  ccache: true
+  cargo: true
 
-env: TARGET_ARCH=x86_64 TARGET_VENDOR=-unknown TARGET_OS=linux-gnu FEATURES=bus
 rust:
   - stable
   - beta
   - nightly
 
 script:
-  - ci/script.sh
+  - ci/script
 
 after_success:
   - ci/travis-doc-upload.sh

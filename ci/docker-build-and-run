@@ -1,0 +1,74 @@
+#! /bin/bash
+set -euf -o pipefail
+
+path_to_abs() {
+	case "$1" in
+	./*) echo "$PWD/${1#./}" ;;
+	/*)  echo "$1" ;;
+	*)   echo "$PWD/${1}" ;;
+	esac
+}
+
+D="$(dirname "$0")"
+src_root="$(path_to_abs "$(dirname "$D")")"
+
+show() {
+	for i in "$@"; do
+		i="${i/\'/\'\\\'\'/}"
+		>&2 printf "'%s' " "$i"
+	done
+	>&2 printf "\n"
+}
+
+run() {
+	>&2 printf "run: "
+	show "$@"
+	"$@"
+}
+
+pre_args=()
+for i in "$@"; do
+	if [ "$i" = "--" ]; then
+		shift
+		break
+	fi
+	pre_args+=("$i")
+	shift
+done
+
+d_build() {
+	docker build "$@" "$D"
+}
+
+dbus_vol=()
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+	dbus_vol+=(--env DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS")
+	case "$DBUS_SESSION_BUS_ADDRESS" in
+	unix:path)
+		dbus_path="${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
+		dbus_vol=(--volume "$dbus_path:$dbus_path")
+		;;
+	unix:abstract)
+		;;
+	*)
+		>&2 echo "WARN: unrecognized DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+		;;
+	esac
+fi
+
+run d_build
+run exec docker run \
+	--user "$(id -u):$(id -g)" \
+	--rm \
+	--init \
+	--volume "$HOME/.cargo:/cargo" \
+	--env CARGO_HOME=/cargo \
+	--volume "$(rustc --print sysroot):/rust:ro" \
+	--volume "$src_root:/checkout:ro" \
+	--volume "$src_root/target:/checkout/target" \
+	${dbus_vol[@]+"${dbus_vol[@]}"} \
+	--volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \
+	--workdir /checkout \
+	${pre_args[@]+"${pre_args[@]}"} \
+	"$(d_build -q)" \
+	"$@"

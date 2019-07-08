@@ -3,9 +3,20 @@ extern crate log;
 extern crate libsystemd_sys as ffi;
 extern crate cstr_argument;
 
-use libc::{c_char, c_void, free, strlen};
+/*
+extern crate enumflags2;
+#[macro_use]
+extern crate enumflags2_derive;
+*/
 
+use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Result, Error};
+
+
+fn usec_from_duration(duration: std::time::Duration) -> u64 {
+    let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
+    duration.as_secs() * 1_000_000 + sub_usecs
+}
 
 /// Convert a systemd ffi return value into a Result
 pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
@@ -95,13 +106,5 @@ pub mod login;
 
 /// An interface to work with the dbus message bus.
 ///
-/// WARNING: this is not complete. Right now we're missing:
-///
-///  - message encoding/decoding
-///  - server support
-///  - async client support
-///
-/// In short, the only functional thing is issuing blocking dbus calls with pre-populated messages
-/// and writing custom ffi decoders of the message replies.
 #[cfg(feature = "bus")]
 pub mod bus;

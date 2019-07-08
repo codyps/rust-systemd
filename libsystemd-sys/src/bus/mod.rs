@@ -4,7 +4,9 @@ use super::const_iovec;
 use super::event::sd_event;
 
 pub mod vtable;
+mod protocol;
 pub use self::vtable::sd_bus_vtable;
+pub use self::protocol::*;
 
 #[allow(non_camel_case_types)]
 pub enum sd_bus {}
@@ -73,6 +75,7 @@ pub struct sd_bus_error {
     pub message: *const c_char,
     pub need_free: c_int,
 }
+
 
 #[repr(C)]
 pub struct sd_bus_error_map {
@@ -268,8 +271,10 @@ extern "C" {
                                        -> c_int;
     pub fn sd_bus_slot_get_floating(slot: *mut sd_bus_slot) -> c_int;
     pub fn sd_bus_slot_set_floating(slot: *mut sd_bus_slot, b: c_int) -> c_int;
+    // since v239
     pub fn sd_bus_slot_set_destroy_callback(slot: *mut sd_bus_slot, callback: sd_bus_destroy_t)
         -> c_int;
+    // since v239
     pub fn sd_bus_slot_get_destroy_callback(slot: *mut sd_bus_slot, callback: *mut sd_bus_destroy_t)
         -> c_int;
 

@@ -7,7 +7,6 @@ set -eufx
 
 D="$(dirname "$0")"
 
-. "$D/common.sh"
 . "$D/travis-doc-upload.cfg"
 
 [ "$TRAVIS_BRANCH" = master ] || [ "$TRAVIS_BRANCH" = "doc-test" ]
@@ -46,7 +45,7 @@ git config user.name "doc upload bot"
 git config user.email "nobody@example.com"
 rm -rf "$PROJECT_NAME"
 mkdir -p "$(dirname "$PROJECT_NAME")"
-mv ../target/$TARGET/doc "$PROJECT_NAME"
+mv ../target/doc "$PROJECT_NAME"
 
 # For each element of $PROJECT_NAME generate an index
 # this _must_ be the crate we care about, used to suffix last indexing

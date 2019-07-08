@@ -1,3 +1,0 @@
-[submodule "libsystemd-sys/systemd"]
-	path = libsystemd-sys/systemd
-	url = https://github.com/systemd/systemd.git

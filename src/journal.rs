@@ -10,7 +10,7 @@ use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
 use id128::Id128;
-use super::{free_cstring, Result};
+use super::{free_cstring, Result, usec_from_duration};
 use std::time;
 
 /// Send preformatted fields to systemd.
@@ -100,11 +100,6 @@ fn duration_from_usec(usec: u64) -> time::Duration {
     let sub_usec = (usec % 1_000_000) as u32;
     let sub_nsec = sub_usec * 1000;
     time::Duration::new(secs, sub_nsec)
-}
-
-fn usec_from_duration(duration: time::Duration) -> u64 {
-    let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
-    duration.as_secs() * 1_000_000 + sub_usecs
 }
 
 

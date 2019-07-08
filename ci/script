@@ -1,0 +1,4 @@
+#! /bin/bash
+set -euf -o pipefail
+D="$(dirname "$0")"
+"$D"/docker-build-and-run -- "$D"/script-1

@@ -65,6 +65,16 @@ impl Id128 {
     pub fn as_bytes(&self) -> &[u8; 16] {
         &self.inner.bytes
     }
+
+    pub unsafe fn as_raw(&self) -> &ffi::id128::sd_id128_t
+    {
+        &self.inner
+    }
+
+    pub unsafe fn as_raw_mut(&mut self) -> &mut ffi::id128::sd_id128_t
+    {
+        &mut self.inner
+    }
 }
 
 impl PartialEq for Id128 {
