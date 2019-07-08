@@ -1,7 +1,9 @@
 language: rust
 dist: trusty
 sudo: required
-cache: ccache
+cache:
+  ccache: true
+  cargo: true
 
 rust:
   - stable
