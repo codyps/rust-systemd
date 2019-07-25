@@ -118,6 +118,10 @@ pub struct Journal {
     j: *mut ffi::sd_journal,
 }
 
+// We don't allow any thread unsafe operations on `Journal`
+// so it is safe to mark it as `Send`
+unsafe impl Send for Journal {}
+
 /// Represents the set of journal files to read.
 #[derive(Clone, Debug)]
 pub enum JournalFiles {
