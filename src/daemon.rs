@@ -1,15 +1,15 @@
-use std::{ptr, env};
-use std::os::unix::io::RawFd as Fd;
-use libc::{c_char, c_uint};
-use super::ffi::{c_int, size_t, pid_t};
-use libc::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
-use std::net::TcpListener;
-use ffi::daemon as ffi;
-use super::{Result, Error};
-use std::io::ErrorKind;
-use std::os::unix::io::FromRawFd;
+use super::ffi::{c_int, pid_t, size_t};
+use super::{Error, Result};
 use cstr_argument::CStrArgument;
+use ffi::daemon as ffi;
+use libc::{c_char, c_uint};
+use libc::{SOCK_DGRAM, SOCK_RAW, SOCK_STREAM};
+use std::io::ErrorKind;
+use std::net::TcpListener;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd as Fd;
 use std::ptr::null;
+use std::{env, ptr};
 
 // XXX: this is stolen from std::old_io::net::addrinfo until we have a replacement in the standard
 // lib.
@@ -78,7 +78,10 @@ pub fn listen_fds(unset_environment: bool) -> Result<Fd> {
 /// supplied, the file descriptor must also match the path.
 pub fn is_fifo<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = sd_try!(ffi::sd_is_fifo(fd, path.map_or(null(), |x| x.as_ref().as_ptr())));
+    let result = sd_try!(ffi::sd_is_fifo(
+        fd,
+        path.map_or(null(), |x| x.as_ref().as_ptr())
+    ));
     Ok(result != 0)
 }
 
@@ -86,7 +89,10 @@ pub fn is_fifo<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
 /// If a path is supplied, the file descriptor must also match the path.
 pub fn is_special<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = sd_try!(ffi::sd_is_special(fd, path.map_or(null(), |x| x.as_ref().as_ptr())));
+    let result = sd_try!(ffi::sd_is_special(
+        fd,
+        path.map_or(null(), |x| x.as_ref().as_ptr())
+    ));
     Ok(result != 0)
 }
 
@@ -115,11 +121,12 @@ fn get_c_listening(listening: Listening) -> c_int {
 /// Identifies whether the passed file descriptor is a socket. If family and
 /// type are supplied, they must match as well. See `Listening` for listening
 /// check parameters.
-pub fn is_socket(fd: Fd,
-                 family: Option<c_uint>,
-                 socktype: Option<SocketType>,
-                 listening: Listening)
-                 -> Result<bool> {
+pub fn is_socket(
+    fd: Fd,
+    family: Option<c_uint>,
+    socktype: Option<SocketType>,
+    listening: Listening,
+) -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -131,28 +138,40 @@ pub fn is_socket(fd: Fd,
 /// Identifies whether the passed file descriptor is an Internet socket. If
 /// family, type, and/or port are supplied, they must match as well. See
 /// `Listening` for listening check parameters.
-pub fn is_socket_inet(fd: Fd,
-                      family: Option<c_uint>,
-                      socktype: Option<SocketType>,
-                      listening: Listening,
-                      port: Option<u16>)
-                      -> Result<bool> {
+pub fn is_socket_inet(
+    fd: Fd,
+    family: Option<c_uint>,
+    socktype: Option<SocketType>,
+    listening: Listening,
+    port: Option<u16>,
+) -> Result<bool> {
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_port = port.unwrap_or(0) as u16;
 
-    let result = sd_try!(ffi::sd_is_socket_inet(fd, c_family, c_socktype, c_listening, c_port));
+    let result = sd_try!(ffi::sd_is_socket_inet(
+        fd,
+        c_family,
+        c_socktype,
+        c_listening,
+        c_port
+    ));
     Ok(result != 0)
 }
 
 pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
-    if !try!(is_socket_inet(fd,
-                            None,
-                            Some(SocketType::Stream),
-                            Listening::IsListening,
-                            None)) {
-        Err(Error::new(ErrorKind::InvalidInput, "Socket type was not as expected"))
+    if !try!(is_socket_inet(
+        fd,
+        None,
+        Some(SocketType::Stream),
+        Listening::IsListening,
+        None
+    )) {
+        Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Socket type was not as expected",
+        ))
     } else {
         Ok(unsafe { TcpListener::from_raw_fd(fd) })
     }
@@ -162,11 +181,12 @@ pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
 /// are supplied, it must match as well. For normal sockets, leave the path set
 /// to None; otherwise, pass in the full socket path.  See `Listening` for
 /// listening check parameters.
-pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
-                      socktype: Option<SocketType>,
-                      listening: Listening,
-                      path: Option<S>)
-                      -> Result<bool> {
+pub fn is_socket_unix<S: CStrArgument>(
+    fd: Fd,
+    socktype: Option<SocketType>,
+    listening: Listening,
+    path: Option<S>,
+) -> Result<bool> {
     let path_cstr = path.map(|p| p.into_cstr());
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
@@ -184,7 +204,13 @@ pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
         }
     }
 
-    let result = sd_try!(ffi::sd_is_socket_unix(fd, c_socktype, c_listening, c_path, c_length));
+    let result = sd_try!(ffi::sd_is_socket_unix(
+        fd,
+        c_socktype,
+        c_listening,
+        c_path,
+        c_length
+    ));
     Ok(result != 0)
 }
 
@@ -192,7 +218,10 @@ pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
 /// path is supplied, it will also verify the name.
 pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = sd_try!(ffi::sd_is_mq(fd, path.map_or(null(), |x| x.as_ref().as_ptr())));
+    let result = sd_try!(ffi::sd_is_mq(
+        fd,
+        path.map_or(null(), |x| x.as_ref().as_ptr())
+    ));
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
@@ -227,33 +256,41 @@ where
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify<'a, I, K, V>(pid: pid_t,
-                               unset_environment: bool,
-                               state: I)
-                               -> Result<bool>
+pub fn pid_notify<'a, I, K, V>(pid: pid_t, unset_environment: bool, state: I) -> Result<bool>
 where
     I: Iterator<Item = &'a (K, V)>,
     K: AsRef<str> + 'a,
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = sd_try!(ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr()));
+    let result = sd_try!(ffi::sd_pid_notify(
+        pid,
+        unset_environment as c_int,
+        c_state.as_ptr()
+    ));
     Ok(result != 0)
 }
 
 /// Similar to `pid_notify()`, but this also sends file descriptors to the store.
-pub fn pid_notify_with_fds<'a, I, K, V>(pid: pid_t,
-                                        unset_environment: bool,
-                                        state: I,
-                                        fds: &[Fd])
-                                        -> Result<bool>
+pub fn pid_notify_with_fds<'a, I, K, V>(
+    pid: pid_t,
+    unset_environment: bool,
+    state: I,
+    fds: &[Fd],
+) -> Result<bool>
 where
     I: Iterator<Item = &'a (K, V)>,
     K: AsRef<str> + 'a,
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = sd_try!(ffi::sd_pid_notify_with_fds(pid, unset_environment as c_int, c_state.as_ptr(), fds.as_ptr(), fds.len() as c_uint));
+    let result = sd_try!(ffi::sd_pid_notify_with_fds(
+        pid,
+        unset_environment as c_int,
+        c_state.as_ptr(),
+        fds.as_ptr(),
+        fds.len() as c_uint
+    ));
     Ok(result != 0)
 }
 
@@ -267,6 +304,9 @@ pub fn booted() -> Result<bool> {
 /// response from the process. If 0, the watchdog is disabled.
 pub fn watchdog_enabled(unset_environment: bool) -> Result<u64> {
     let mut timeout: u64 = 0;
-    sd_try!(ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout));
+    sd_try!(ffi::sd_watchdog_enabled(
+        unset_environment as c_int,
+        &mut timeout
+    ));
     Ok(timeout)
 }

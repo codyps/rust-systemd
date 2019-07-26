@@ -1,7 +1,7 @@
-extern crate libc;
-extern crate log;
-extern crate libsystemd_sys as ffi;
 extern crate cstr_argument;
+extern crate libc;
+extern crate libsystemd_sys as ffi;
+extern crate log;
 
 /*
 extern crate enumflags2;
@@ -10,8 +10,7 @@ extern crate enumflags2_derive;
 */
 
 use libc::{c_char, c_void, free, strlen};
-pub use std::io::{Result, Error};
-
+pub use std::io::{Error, Result};
 
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
     let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
@@ -19,8 +18,7 @@ fn usec_from_duration(duration: std::time::Duration) -> u64 {
 }
 
 /// Convert a systemd ffi return value into a Result
-pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
-{
+pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int> {
     if ret < 0 {
         Err(Error::from_raw_os_error(-ret))
     } else {
@@ -52,9 +50,9 @@ fn free_cstring(ptr: *mut c_char) -> Option<String> {
 /// the FFI call.
 #[macro_export]
 macro_rules! sd_try {
-    ($e:expr) => ({
-        try!($crate::ffi_result(unsafe{ $e}))
-    })
+    ($e:expr) => {{
+        try!($crate::ffi_result(unsafe { $e }))
+    }};
 }
 
 /// High-level interface to the systemd journal.

@@ -4,8 +4,8 @@ extern crate systemd;
 extern crate log;
 
 use std::path::Path;
-use systemd::journal;
 use systemd::id128;
+use systemd::journal;
 
 // Some systems don't have a running journal, which causes our tests to fail currently
 //
@@ -36,7 +36,7 @@ fn test() {
 
 #[test]
 fn cursor() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
 
@@ -48,7 +48,7 @@ fn cursor() {
 
 #[test]
 fn ts() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
 
@@ -65,11 +65,10 @@ fn ts() {
     assert_eq!(u1, u2);
 }
 
-
 #[test]
 fn test_seek() {
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
     log!(log::Level::Info, "rust-systemd test_seek entry");
@@ -85,13 +84,15 @@ fn test_seek() {
     let c3 = j.cursor().unwrap();
     let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
     assert!(j.seek(valid_cursor).is_ok());
-    let invalid_cursor = journal::JournalSeek::Cursor { cursor: "".to_string() };
+    let invalid_cursor = journal::JournalSeek::Cursor {
+        cursor: "".to_string(),
+    };
     assert!(j.seek(invalid_cursor).is_err());
 }
 
 #[test]
 fn test_simple_match() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
     let key = "RUST_TEST_MARKER";
@@ -113,7 +114,11 @@ fn test_simple_match() {
 
     // check for negative matches
     assert!(j.seek(journal::JournalSeek::Tail).is_ok());
-    assert!(j.match_flush().unwrap().match_add("NOKEY", "NOVALUE").is_ok());
+    assert!(j
+        .match_flush()
+        .unwrap()
+        .match_add("NOKEY", "NOVALUE")
+        .is_ok());
     journal::send(&[&msg]);
     assert!(j.next_record().unwrap().is_none());
 }

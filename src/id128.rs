@@ -66,13 +66,11 @@ impl Id128 {
         &self.inner.bytes
     }
 
-    pub unsafe fn as_raw(&self) -> &ffi::id128::sd_id128_t
-    {
+    pub unsafe fn as_raw(&self) -> &ffi::id128::sd_id128_t {
         &self.inner
     }
 
-    pub unsafe fn as_raw_mut(&mut self) -> &mut ffi::id128::sd_id128_t
-    {
+    pub unsafe fn as_raw_mut(&mut self) -> &mut ffi::id128::sd_id128_t {
         &mut self.inner
     }
 }
@@ -85,6 +83,10 @@ impl PartialEq for Id128 {
 
 impl Clone for Id128 {
     fn clone(&self) -> Self {
-        Id128 { inner: ffi::id128::sd_id128_t { bytes: self.inner.bytes.clone() } }
+        Id128 {
+            inner: ffi::id128::sd_id128_t {
+                bytes: self.inner.bytes.clone(),
+            },
+        }
     }
 }
