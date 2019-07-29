@@ -219,6 +219,53 @@ impl Journal {
         Ok(Journal { j })
     }
 
+    /// Open a systemd journal stored in a given directory for reading.
+    ///
+    /// Params:
+    ///
+    /// * path: The path to the directory containing the journal files.
+    /// * files: Which set of journal files to read.
+    /// * os_root: If true, journal files are searched for below the
+    /// usual `/var/log/journal` and `/run/log/journal` relative to the
+    /// specified path, instead of directly beneath the path.
+    pub fn open_files<T: AsRef<Path>>(
+        paths: &[T],
+        files: JournalFiles,
+        os_root: bool,
+    ) -> Result<Journal> {
+        let paths: Vec<CString> = paths
+            .into_iter()
+            .map(|path| {
+                path.as_ref()
+                    .to_str()
+                    .ok_or(Error::new(InvalidData, "Invalid journal filename"))
+                    .and_then(|path| {
+                        CString::new(path)
+                            .map_err(|_| Error::new(InvalidData, "Invalid journal filename"))
+                    })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        // The function requires a NULL-terminated array of pointers
+        let mut c_paths = paths
+            .iter()
+            .map(|path| path.as_ptr())
+            .collect::<Vec<*const i8>>();
+        c_paths.push(ptr::null_mut());
+
+        let mut flags = files.as_flags();
+        if os_root {
+            flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        let mut j: *mut ffi::sd_journal = ptr::null_mut();
+        sd_try!(ffi::sd_journal_open_files(
+            &mut j,
+            c_paths.as_mut_ptr(),
+            flags
+        ));
+        sd_try!(ffi::sd_journal_seek_head(j));
+        Ok(Journal { j })
+    }
+
     /// Get and parse the currently journal record from the journal
     /// It returns Result<Option<...>> out of convenience for calling
     /// functions. It always returns Ok(Some(...)) if successful.
