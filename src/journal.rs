@@ -1,4 +1,4 @@
-use super::{free_cstring, usec_from_duration, Result};
+use super::{free_cstring, usec_from_duration, Error, Result};
 use ffi::array_to_iovecs;
 use ffi::id128::sd_id128_t;
 use ffi::journal as ffi;
@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::os::raw::c_void;
+use std::path::Path;
 use std::time;
 use std::u64;
 use std::{fmt, io, ptr, result};
@@ -134,6 +135,16 @@ pub enum JournalFiles {
     All,
 }
 
+impl JournalFiles {
+    fn as_flags(self) -> c_int {
+        match self {
+            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
+            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
+            JournalFiles::All => 0,
+        }
+    }
+}
+
 /// Seeking position in journal.
 #[derive(Clone, Debug)]
 pub enum JournalSeek {
@@ -166,23 +177,46 @@ impl Journal {
     /// * local_only: if true, include only journal entries originating from
     ///   localhost. If false, include all entries.
     pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
-        let mut flags: c_int = 0;
+        let mut flags = files.as_flags();
         if runtime_only {
             flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
         }
         if local_only {
             flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
         }
-        flags |= match files {
-            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
-            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
-            JournalFiles::All => 0,
-        };
-
         let mut journal = Journal { j: ptr::null_mut() };
         sd_try!(ffi::sd_journal_open(&mut journal.j, flags));
         sd_try!(ffi::sd_journal_seek_head(journal.j));
         Ok(journal)
+    }
+
+    /// Open a systemd journal stored in a given directory for reading.
+    ///
+    /// Params:
+    ///
+    /// * path: The path to the directory containing the journal files.
+    /// * files: Which set of journal files to read.
+    /// * os_root: If true, journal files are searched for below the
+    /// usual `/var/log/journal` and `/run/log/journal` relative to the
+    /// specified path, instead of directly beneath the path.
+    pub fn open_directory<T: AsRef<Path>>(
+        path: T,
+        files: JournalFiles,
+        os_root: bool,
+    ) -> Result<Journal> {
+        let path = CString::new(
+            path.as_ref()
+                .to_str()
+                .ok_or(Error::new(InvalidData, "Invalid journal path"))?,
+        )?;
+        let mut flags = files.as_flags();
+        if os_root {
+            flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        let mut j: *mut ffi::sd_journal = ptr::null_mut();
+        sd_try!(ffi::sd_journal_open_directory(&mut j, path.as_ptr(), flags));
+        sd_try!(ffi::sd_journal_seek_head(j));
+        Ok(Journal { j })
     }
 
     /// Get and parse the currently journal record from the journal
