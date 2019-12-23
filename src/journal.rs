@@ -192,6 +192,75 @@ impl Journal {
         Ok(journal)
     }
 
+    /// Open the systemd journal located in a specific folder for reading.
+    ///
+    /// Params:
+    ///
+    /// * path: the absolute directory path. All journal files in this directory
+    ///   will be opened and interleaved automatically.
+    /// * files: the set of journal files to read. If the calling process
+    ///   doesn't have permission to read the system journal, a call to
+    ///   `Journal::open` with `System` or `All` will succeed, but system
+    ///   journal entries won't be included. This behavior is due to systemd.
+    /// * os_root: if true, journal files are searched for below the usual
+    ///   /var/log/journal and /run/log/journal relative to the specified path,
+    ///   instead of directly beneath it.
+    pub fn open_directory(path: &std::path::Path, files: JournalFiles, os_root: bool) -> Result<Journal> {
+        let c_path = CString::new(path.to_str().unwrap()).unwrap();
+        let mut flags: c_int = 0;
+        if os_root {
+            flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        flags |= match files {
+            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
+            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
+            JournalFiles::All => 0
+        };
+
+        let mut journal = Journal { j: ptr::null_mut() };
+        sd_try!(ffi::sd_journal_open_directory(&mut journal.j, c_path.as_ptr(), flags));
+        sd_try!(ffi::sd_journal_seek_head(journal.j));
+        Ok(journal)
+    }
+
+    /// Open the systemd journal located in a specific folder for reading.
+    ///
+    /// Params:
+    ///
+    /// * path: the absolute directory path. All journal files in this directory
+    ///   will be opened and interleaved automatically.
+    /// * files: the set of journal files to read. If the calling process
+    ///   doesn't have permission to read the system journal, a call to
+    ///   `Journal::open` with `System` or `All` will succeed, but system
+    ///   journal entries won't be included. This behavior is due to systemd.
+    /// * os_root: if true, journal files are searched for below the usual
+    ///   /var/log/journal and /run/log/journal relative to the specified path,
+    ///   instead of directly beneath it.
+    pub fn open_files(paths: &std::vec::Vec<&std::path::Path>, flags: JournalFiles, os_root: bool) -> Result<Journal> {
+        let mut c_paths: Vec<std::rc::Rc<CString>> = std::vec::Vec::new();
+        let mut c_paths_ptr: Vec<*const c_char> = std::vec::Vec::new();
+        for path in paths {
+            let c_path = std::rc::Rc::new(CString::new(path.to_str().unwrap()).unwrap());
+            c_paths.push(c_path.clone());
+            c_paths_ptr.push(c_path.as_ptr());
+        }
+        c_paths_ptr.push(ptr::null_mut());
+        // let c_path = CString::new(path.to_str().unwrap()).unwrap();
+        let mut c_flags: c_int = 0;
+        if os_root {
+            c_flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        c_flags |= match flags {
+            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
+            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
+            JournalFiles::All => 0
+        };
+        let mut journal = Journal { j: ptr::null_mut() };
+        sd_try!(ffi::sd_journal_open_files(&mut journal.j, c_paths_ptr.as_ptr(), c_flags));
+        sd_try!(ffi::sd_journal_seek_head(journal.j));
+        Ok(journal)
+    }
+
     /// Get and parse the currently journal record from the journal
     /// It returns Result<Option<...>> out of convenience for calling
     /// functions. It always returns Ok(Some(...)) if successful.

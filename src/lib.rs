@@ -11,6 +11,7 @@ extern crate enumflags2_derive;
 
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Result, Error};
+pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
 
 
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
