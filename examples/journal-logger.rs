@@ -18,7 +18,7 @@ fn main() {
     // Open the journal
     let runtime_only = false;
     let local_only = false;
-    let mut reader = Journal::open(JournalFiles::All, runtime_only, local_only)
+    let mut reader = Journal::open(&JournalFiles::All, runtime_only, local_only)
         .expect("Could not open journal");
 
     // Seek to end of current log to prevent old messages from being printed

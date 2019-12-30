@@ -172,7 +172,7 @@ impl Journal {
     ///   boot. If false, include all entries.
     /// * local_only: if true, include only journal entries originating from
     ///   localhost. If false, include all entries.
-    pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
+    pub fn open(files: &JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
         let mut flags: c_int = 0;
         if runtime_only {
             flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
@@ -205,7 +205,7 @@ impl Journal {
     /// * os_root: if true, journal files are searched for below the usual
     ///   /var/log/journal and /run/log/journal relative to the specified path,
     ///   instead of directly beneath it.
-    pub fn open_directory(path: &std::path::Path, files: JournalFiles, os_root: bool) -> Result<Journal> {
+    pub fn open_directory(path: &std::path::Path, files: &JournalFiles, os_root: bool) -> Result<Journal> {
         let c_path = CString::new(path.to_str().unwrap()).unwrap();
         let mut flags: c_int = 0;
         if os_root {
