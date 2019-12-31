@@ -124,6 +124,7 @@ unsafe impl Send for Journal {}
 
 /// Represents the set of journal files to read.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
