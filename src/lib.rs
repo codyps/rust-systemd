@@ -54,7 +54,7 @@ fn free_cstring(ptr: *mut c_char) -> Option<String> {
 #[macro_export]
 macro_rules! sd_try {
     ($e:expr) => ({
-        try!($crate::ffi_result(unsafe{ $e}))
+        $crate::ffi_result(unsafe{ $e})?
     })
 }
 

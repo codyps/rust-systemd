@@ -147,11 +147,11 @@ pub fn is_socket_inet(fd: Fd,
 }
 
 pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
-    if !try!(is_socket_inet(fd,
+    if !(is_socket_inet(fd,
                             None,
                             Some(SocketType::Stream),
                             Listening::IsListening,
-                            None)) {
+                            None)?) {
         Err(Error::new(ErrorKind::InvalidInput, "Socket type was not as expected"))
     } else {
         Ok(unsafe { TcpListener::from_raw_fd(fd) })

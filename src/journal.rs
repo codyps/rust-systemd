@@ -242,7 +242,7 @@ impl Journal {
             c_paths_ptr.push(c_path.as_ptr());
         }
         c_paths_ptr.push(ptr::null_mut());
-        let mut c_flags: c_int = 0;
+        let c_flags: c_int = 0;
 
         let mut journal = Journal { j: ptr::null_mut() };
         sd_try!(ffi::sd_journal_open_files(&mut journal.j, c_paths_ptr.as_ptr(), c_flags));
@@ -364,7 +364,7 @@ impl Journal {
                 sd_try!(ffi::sd_journal_seek_realtime_usec(self.j, usec))
             }
             JournalSeek::Cursor { cursor } => {
-                let c = try!(CString::new(cursor));
+                let c = CString::new(cursor)?;
                 sd_try!(ffi::sd_journal_seek_cursor(self.j, c.as_ptr()))
             }
         };
