@@ -109,6 +109,7 @@ fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
 }
 
 // A single log entry from journal.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub type JournalRecord = BTreeMap<String, String>;
 
 /// A reader for systemd journal.
@@ -124,6 +125,7 @@ unsafe impl Send for Journal {}
 
 /// Represents the set of journal files to read.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
