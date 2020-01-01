@@ -1,6 +1,6 @@
 use std::ptr;
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
-use ffi::login as ffi;
+use super::ffi::login as ffi;
 use super::{Result, free_cstring};
 use cstr_argument::CStrArgument;
 

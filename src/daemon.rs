@@ -4,7 +4,7 @@ use libc::{c_char, c_uint};
 use super::ffi::{c_int, size_t, pid_t};
 use libc::{SOCK_STREAM, SOCK_DGRAM, SOCK_RAW};
 use std::net::TcpListener;
-use ffi::daemon as ffi;
+use super::ffi::daemon as ffi;
 use super::{Result, Error};
 use std::io::ErrorKind;
 use std::os::unix::io::FromRawFd;

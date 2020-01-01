@@ -15,7 +15,7 @@ pub const SD_JOURNAL_NOP: c_int = 0;
 pub const SD_JOURNAL_APPEND: c_int = 1;
 pub const SD_JOURNAL_INVALIDATE: c_int = 2;
 
-use id128::sd_id128_t;
+use super::id128::sd_id128_t;
 pub enum sd_journal {}
 
 extern "C" {

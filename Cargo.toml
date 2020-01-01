@@ -8,9 +8,11 @@ description = "A rust interface to libsystemd provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/systemd"
 include = ["Cargo.toml", "src/**/*.rs", "tests/**/*.rs", "README.md" ]
+edition = "2018"
 
 [features]
 bus = ["libsystemd-sys/bus"]
+default = ["bus"]
 
 [dependencies]
 log = "~0.4"

@@ -6,10 +6,10 @@ use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::os::raw::c_void;
 use std::u64;
-use ffi::array_to_iovecs;
-use ffi::id128::sd_id128_t;
-use ffi::journal as ffi;
-use id128::Id128;
+use super::ffi::array_to_iovecs;
+use super::ffi::id128::sd_id128_t;
+use super::ffi::journal as ffi;
+use super::id128::Id128;
 use super::{free_cstring, Result, usec_from_duration};
 use std::time;
 

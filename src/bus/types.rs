@@ -45,7 +45,7 @@ pub trait ToSdBusMessage {
     // type signature?
     // function to do append?
     // Do we need a ToOwned bit? Check ToSql
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()>;
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()>;
 }
 
 /**
@@ -55,18 +55,18 @@ pub trait ToSdBusMessage {
  * may need to add a `from_message_to()` that takes a reference, much like `Clone`.
  */
 pub trait FromSdBusMessage<'a> {
-    fn from_message(m: &'a mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized;
 }
 
 impl<T: SdBusMessageDirect> ToSdBusMessage for T {
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(Self::dbus_type(), self as *const _ as *const _) }
     }
 }
 
 impl<'a, T: SdBusMessageDirect + 'a> FromSdBusMessage<'a> for T {
-    fn from_message(m: &'a mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized
     {
         let t = Self::dbus_type();
@@ -126,15 +126,15 @@ msg_basic!{
 }
 
 impl ToSdBusMessage for bool {
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         let i : c_int = if *self { 1 } else { 0 };
-        try!(unsafe { m.append_basic_raw(b'b', &i as *const _ as *const _) });
+        (unsafe { m.append_basic_raw(b'b', &i as *const _ as *const _) })?;
         Ok(())
     }
 }
 
 impl<'a> FromSdBusMessage<'a> for bool {
-    fn from_message(m: &mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized
     {
         unsafe { m.read_basic_raw(b'b', |x: c_int| x != 0) }
@@ -148,15 +148,15 @@ impl<'a> FromSdBusMessage<'a> for bool {
 pub struct UnixFd(pub c_int);
 
 impl ToSdBusMessage for UnixFd {
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         let i : c_int = self.0;
-        try!(unsafe { m.append_basic_raw(b'h', &i as *const _ as *const _)});
+        (unsafe { m.append_basic_raw(b'h', &i as *const _ as *const _)})?;
         Ok(())
     }
 }
 
 impl<'a> FromSdBusMessage<'a> for UnixFd {
-    fn from_message(m: &'a mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized
     {
         unsafe { m.read_basic_raw(b'h', |x: c_int| UnixFd(x)) }
@@ -164,8 +164,8 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
 }
 
 impl<'a> ToSdBusMessage for &'a super::ObjectPath {
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
-        try!(unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _)});
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
+        (unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _)})?;
         Ok(())
     }
 }
@@ -176,7 +176,7 @@ impl<'a> ToSdBusMessage for &'a super::ObjectPath {
 //
 // If we could use &MessageRef instead this could be useful.
 impl<'a> FromSdBusMessage<'a> for &'a super::ObjectPath {
-    fn from_message(m: &'a mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized
     {
         unsafe {m.read_basic_raw(b'o', |x: *const c_char| super::ObjectPath::from_ptr_unchecked(x))}
@@ -184,13 +184,13 @@ impl<'a> FromSdBusMessage<'a> for &'a super::ObjectPath {
 }
 
 impl<'a> ToSdBusMessage for &'a Utf8CStr {
-    fn to_message(&self, m: &mut MessageRef) -> ::Result<()> {
+    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(b's', self.as_ptr() as *const _) }
     }
 }
 
 impl<'a> FromSdBusMessage<'a> for &'a Utf8CStr {
-    fn from_message(m: &'a mut MessageIter<'a>) -> ::Result<Option<Self>>
+    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
         where Self: Sized
     {
         unsafe {m.read_basic_raw(b's', |x: *const c_char| Utf8CStr::from_cstr_unchecked(CStr::from_ptr(x)))}
