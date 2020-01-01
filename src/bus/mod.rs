@@ -23,7 +23,7 @@ use ffi::{c_int, c_char, c_void, pid_t};
 use std::{fmt,str};
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
-use std::mem::{uninitialized, transmute, forget};
+use std::mem::{MaybeUninit, transmute, forget};
 use std::ptr;
 use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
@@ -748,7 +748,7 @@ impl Drop for RawError {
 impl Clone for RawError {
     #[inline]
     fn clone(&self) -> RawError {
-        let mut e = unsafe { RawError { inner: uninitialized() } };
+        let mut e = unsafe { RawError { inner: MaybeUninit::uninit().assume_init() } };
         unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
         e
     }
@@ -821,21 +821,21 @@ pub struct Bus {
 impl Bus {
     #[inline]
     pub fn default() -> super::Result<Bus> {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_default(&mut b));
         Ok(Bus { raw: b })
     }
 
     #[inline]
     pub fn default_user() -> super::Result<Bus> {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_default_user(&mut b));
         Ok(Bus { raw: b })
     }
 
     #[inline]
     pub fn default_system() -> super::Result<Bus> {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_default_system(&mut b));
         Ok(Bus { raw: b })
     }
@@ -1011,7 +1011,7 @@ impl BusRef {
     /// [`sd_bus_get_timeout`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_timeout.html
     #[inline]
     pub fn timeout(&self) -> super::Result<u64> {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), &mut b));
         Ok(b)
     }
@@ -1030,7 +1030,7 @@ impl BusRef {
     #[inline]
     pub fn process(&mut self) -> super::Result<Option<Option<Message>>>
     {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         let r = sd_try!(ffi::bus::sd_bus_process(self.as_ptr(), &mut b));
         if r > 0 {
             if b.is_null() {
@@ -1050,7 +1050,7 @@ impl BusRef {
     pub fn process_priority(&mut self, max_priority: i64) ->
         super::Result<Option<Option<Message>>>
     {
-        let mut b = unsafe { uninitialized() };
+        let mut b = unsafe { MaybeUninit::uninit().assume_init() };
         let r = sd_try!(ffi::bus::sd_bus_process_priority(self.as_ptr(), max_priority, &mut b));
         if r > 0 {
             if b.is_null() {
@@ -1090,7 +1090,7 @@ impl BusRef {
     /// [`sd_bus_get_unique_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_unique_name.html
     #[inline]
     pub fn unique_name(&self) -> super::Result<&BusName> {
-        let mut e = unsafe { uninitialized() };
+        let mut e = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_get_unique_name(self.as_ptr(), &mut e));
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
@@ -1181,7 +1181,7 @@ impl BusRef {
                       interface: &InterfaceName,
                       member: &MemberName)
                       -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
+        let mut m = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_message_new_signal(self.as_ptr(),
                                                     &mut m,
                                                     path.as_ptr() as *const _,
@@ -1201,7 +1201,7 @@ impl BusRef {
                            interface: &InterfaceName,
                            member: &MemberName)
                            -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
+        let mut m = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_message_new_method_call(self.as_ptr(),
                                                          &mut m,
                                                          &*dest as *const _ as *const _,
@@ -1768,7 +1768,7 @@ impl MessageRef {
     #[inline]
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
-        let mut m = unsafe { uninitialized() };
+        let mut m = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_send(ptr::null_mut(), self.as_mut_ptr(), &mut m));
         Ok(m)
     }
@@ -1798,7 +1798,7 @@ impl MessageRef {
     #[inline]
     pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
-        let mut c = unsafe { uninitialized() };
+        let mut c = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_send_to(ptr::null_mut(),
                                          self.as_mut_ptr(),
                                          &*dest as *const _ as *const _,
@@ -1835,7 +1835,7 @@ impl MessageRef {
     /// [`sd_bus_call`]: https://www.freedesktop.org/software/systemd/man/sd_bus_call.html
     #[inline]
     pub fn call(&mut self, usec: u64) -> Result<Message> {
-        let mut r = unsafe { uninitialized() };
+        let mut r = unsafe { MaybeUninit::uninit().assume_init() };
         let mut e = RawError::new();
         unsafe {
             ffi::bus::sd_bus_call(ptr::null_mut(),
@@ -1899,7 +1899,7 @@ impl MessageRef {
     /// [`sd_bus_message_new_method_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_error.html
     #[inline]
     pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
+        let mut m = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_mut_ptr(), &mut m, error.as_ptr()));
         Ok(unsafe { Message::take_ptr(m) })
     }
@@ -1909,7 +1909,7 @@ impl MessageRef {
     /// [`sd_bus_message_new_method_return`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_return.html
     #[inline]
     pub fn new_method_return(&mut self) -> super::Result<Message> {
-        let mut m = unsafe { uninitialized() };
+        let mut m = unsafe { MaybeUninit::uninit().assume_init() };
         sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_mut_ptr(), &mut m));
         Ok(unsafe { Message::take_ptr(m) })
     }
@@ -1983,7 +1983,7 @@ impl<'a> MessageIter<'a> {
             -> crate::Result<Option<T>>
         where T: 'a
     {
-        let mut v: R = uninitialized();
+        let mut v: R = MaybeUninit::uninit().assume_init();
         match crate::ffi_result(ffi::bus::sd_bus_message_read_basic(self.as_mut_ptr(), dbus_type as c_char, &mut v as *mut _ as *mut _)) {
             Ok(1) => Ok(Some(cons(v))),
             Ok(_) => {
@@ -2017,8 +2017,8 @@ impl<'a> MessageIter<'a> {
     #[inline]
     pub fn peek_type(&mut self) -> crate::Result<(c_char, &str)>
     {
-        let mut t: c_char = unsafe { uninitialized() };
-        let mut cont: *const c_char = unsafe { uninitialized() };
+        let mut t: c_char = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut cont: *const c_char = unsafe { MaybeUninit::uninit().assume_init() };
         crate::ffi_result(unsafe { ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), &mut t, &mut cont) })?;
 
         let s = if cont.is_null() {
