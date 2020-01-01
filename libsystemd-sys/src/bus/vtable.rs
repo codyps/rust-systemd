@@ -18,6 +18,7 @@ pub enum SdBusVtableType {
 #[derive(Clone, Copy, Debug)]
 #[repr(u64)]
 pub enum SdBusVtableFlag {
+    #[allow(clippy::identity_op)]
     Deprecated = 1 << 0,
     Hidden = 1 << 1,
     Unprivileged = 1 << 2,
@@ -74,7 +75,7 @@ impl sd_bus_vtable {
         unsafe {
             let raw: *const u8 = transmute(&self.type_and_flags);
             for i in 1..8 {
-                val[i - 1] = *raw.offset(i as isize);
+                val[i - 1] = *raw.add(i);
             }
             transmute(val)
         }
@@ -85,10 +86,10 @@ impl sd_bus_vtable {
 fn vtable_bitfield() {
     let mut b: sd_bus_vtable = Default::default();
 
-    b.type_and_flags = sd_bus_vtable::type_and_flags(0xAA, 0xBBCCBB);
+    b.type_and_flags = sd_bus_vtable::type_and_flags(0xAA, 0xBBC_CBB);
 
     assert_eq!(b.typ(), 0xAA);
-    assert_eq!(b.flags(), 0xBBCCBB);
+    assert_eq!(b.flags(), 0xBBC_CBB);
 }
 
 #[test]

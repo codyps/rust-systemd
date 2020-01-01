@@ -29,9 +29,9 @@ fn main() {
     let mut i = 0;
     reader.watch_all_elements(|record: JournalRecord| {
         let unit = record.get(KEY_UNIT)
-            .ok_or(Error::new(ErrorKind::Other, "Could not get unit from record"))?;
+            .ok_or_else(|| Error::new(ErrorKind::Other, "Could not get unit from record"))?;
         let message = record.get(KEY_MESSAGE)
-            .ok_or(Error::new(ErrorKind::Other, "Could not get message from record"))?;
+            .ok_or_else(|| Error::new(ErrorKind::Other, "Could not get message from record"))?;
         println!("[{}] {}", unit, message);
 
         i += 1;

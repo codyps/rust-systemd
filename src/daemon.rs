@@ -33,32 +33,32 @@ pub enum Listening {
 pub const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished
-pub const STATE_READY: &'static str = "READY";
+pub const STATE_READY: &str = "READY";
 /// Tells systemd the daemon is reloading its configuration
-pub const STATE_RELOADING: &'static str = "RELOADING";
+pub const STATE_RELOADING: &str = "RELOADING";
 /// Tells systemd the daemon is stopping
-pub const STATE_STOPPING: &'static str = "STOPPING";
+pub const STATE_STOPPING: &str = "STOPPING";
 /// Single-line status string describing daemon state
-pub const STATE_STATUS: &'static str = "STATUS";
+pub const STATE_STATUS: &str = "STATUS";
 /// Errno-style error code in case of failure
-pub const STATE_ERRNO: &'static str = "ERRNO";
+pub const STATE_ERRNO: &str = "ERRNO";
 /// D-Bus-style error code in case of failure
-pub const STATE_BUSERROR: &'static str = "BUSERROR";
+pub const STATE_BUSERROR: &str = "BUSERROR";
 /// Main PID of the daemon, in case systemd didn't fork it itself
-pub const STATE_MAINPID: &'static str = "MAINPID";
+pub const STATE_MAINPID: &str = "MAINPID";
 /// Update the watchdog timestamp (set to 1). Daemon should do this regularly,
 /// if using this feature.
-pub const STATE_WATCHDOG: &'static str = "WATCHDOG";
+pub const STATE_WATCHDOG: &str = "WATCHDOG";
 /// Reset the watchdog timeout during runtime.
-pub const STATE_WATCHDOG_USEC: &'static str = "WATCHDOG_USEC";
+pub const STATE_WATCHDOG_USEC: &str = "WATCHDOG_USEC";
 /// Extend the timeout for the current state.
-pub const STATE_EXTEND_TIMEOUT_USEC: &'static str = "EXTEND_TIMEOUT_USEC";
+pub const STATE_EXTEND_TIMEOUT_USEC: &str = "EXTEND_TIMEOUT_USEC";
 /// Store file discriptors in the service manager.
-pub const STATE_FDSTORE: &'static str = "FDSTORE";
+pub const STATE_FDSTORE: &str = "FDSTORE";
 /// Remove file discriptors from the service manager store.
-pub const STATE_FDSTOREREMOVE: &'static str = "FDSTOREREMOVE";
+pub const STATE_FDSTOREREMOVE: &str = "FDSTOREREMOVE";
 /// Name the group of file descriptors sent to the service manager.
-pub const STATE_FDNAME: &'static str = "FDNAME";
+pub const STATE_FDNAME: &str = "FDNAME";
 
 /// Returns how many file descriptors have been passed. Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if

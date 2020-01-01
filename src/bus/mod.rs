@@ -15,6 +15,8 @@
 //    We may just need to restrict the ability to adjust ownership and obtain references to less
 //    than what is possible with sd-bus directly.
 
+#![allow(clippy::uninit_assumed_init)]
+
 extern crate utf8_cstr;
 
 //use enumflags2_derive::EnumFlags;
@@ -72,7 +74,7 @@ impl ObjectPath {
      * are met.
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Path must have at least 1 character ('/')");
         }
 
@@ -166,7 +168,7 @@ impl InterfaceName {
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
 
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Name must have more than 0 characters");
         }
 
@@ -287,7 +289,7 @@ impl BusName {
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
 
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Name must have more than 0 characters");
         }
 
@@ -748,6 +750,7 @@ impl Drop for RawError {
 impl Clone for RawError {
     #[inline]
     fn clone(&self) -> RawError {
+        #[allow(clippy::uninit_assumed_init)]
         let mut e = unsafe { RawError { inner: MaybeUninit::uninit().assume_init() } };
         unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
         e
