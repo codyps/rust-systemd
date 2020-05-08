@@ -4,7 +4,7 @@ name = "libsystemd-sys"
 version = "0.2.2"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
-description = "FFI bindings to libsystemd"
+description = "FFI bindings to libsystemd and libelogind"
 repository = "https://github.com/jmesmon/rust-systemd"
 include = ["Cargo.toml", "**/*.rs", "build.rs" ]
 documentation = "https://docs.rs/libsystemd-sys"
@@ -14,6 +14,7 @@ build = "build.rs"
 
 [features]
 bus = []
+elogind = []
 
 [dependencies]
 libc = "0.*"

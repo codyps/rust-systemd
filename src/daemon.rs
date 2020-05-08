@@ -147,11 +147,7 @@ pub fn is_socket_inet(fd: Fd,
 }
 
 pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
-    if !try!(is_socket_inet(fd,
-                            None,
-                            Some(SocketType::Stream),
-                            Listening::IsListening,
-                            None)) {
+    if !is_socket_inet(fd, None, Some(SocketType::Stream), Listening::IsListening, None)? {
         Err(Error::new(ErrorKind::InvalidInput, "Socket type was not as expected"))
     } else {
         Ok(unsafe { TcpListener::from_raw_fd(fd) })
@@ -190,6 +186,7 @@ pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
 
 /// Identifies whether the passed file descriptor is a POSIX message queue. If a
 /// path is supplied, it will also verify the name.
+#[cfg(not(feature = "elogind"))]
 pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
     let result = sd_try!(ffi::sd_is_mq(fd, path.map_or(null(), |x| x.as_ref().as_ptr())));

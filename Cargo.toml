@@ -1,16 +1,16 @@
 [package]
-
 name = "systemd"
 version = "0.4.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
-description = "A rust interface to libsystemd provided APIs"
+description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/systemd"
 include = ["Cargo.toml", "src/**/*.rs", "tests/**/*.rs", "README.md" ]
 
 [features]
 bus = ["libsystemd-sys/bus"]
+elogind = ["libsystemd-sys/elogind"]
 
 [dependencies]
 log = "~0.4"
