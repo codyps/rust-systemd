@@ -375,7 +375,7 @@ impl Journal {
                 sd_try!(ffi::sd_journal_seek_realtime_usec(self.j, usec))
             }
             JournalSeek::Cursor { cursor } => {
-                let c = try!(CString::new(cursor));
+                let c = CString::new(cursor)?;
                 sd_try!(ffi::sd_journal_seek_cursor(self.j, c.as_ptr()))
             }
         };
