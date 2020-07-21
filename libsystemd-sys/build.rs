@@ -13,6 +13,7 @@ fn main() {
              * work fine
              */
             println!("cargo:rustc-flags={}", flags);
+            println!("cargo:rerun-if-env-changed=LIBSYSTEMD_LDFLAGS");
         }
         Err(_) => {
             println!("{}", e);
