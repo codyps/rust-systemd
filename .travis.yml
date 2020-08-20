@@ -1,6 +1,5 @@
 language: rust
-dist: trusty
-sudo: required
+dist: focal
 cache:
   ccache: true
   cargo: true
@@ -8,10 +7,18 @@ cache:
 rust:
   - stable
   - beta
-  - nightly
+
+addons:
+  apt:
+    packages:
+      - gcc
+      - libc6-dev
+      - ca-certificates
+      - libsystemd-dev
+      - pkg-config
 
 script:
-  - ci/script
+  - ci/script-1
 
 branches:
   only:
