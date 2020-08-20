@@ -13,9 +13,6 @@ rust:
 script:
   - ci/script
 
-after_success:
-  - ci/travis-doc-upload.sh
-
 branches:
   only:
     - staging
