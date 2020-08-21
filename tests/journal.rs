@@ -42,7 +42,7 @@ fn cursor() {
 
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
-    assert!(j.seek(journal::JournalSeek::Head).is_ok());
+    j.seek(journal::JournalSeek::Head).unwrap();
     let _s = j.cursor().unwrap();
 }
 
@@ -54,9 +54,9 @@ fn ts() {
 
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
-    assert!(j.seek(journal::JournalSeek::Head).is_ok());
+    j.seek(journal::JournalSeek::Head).unwrap();
     let _s = j.timestamp().unwrap();
-    assert!(j.seek(journal::JournalSeek::Tail).is_ok());
+    j.seek(journal::JournalSeek::Tail).unwrap();
     let (u1, entry_boot_id) = j.monotonic_timestamp().unwrap();
     assert!(u1 > 0);
     let boot_id = id128::Id128::from_boot().unwrap();
@@ -73,18 +73,16 @@ fn test_seek() {
         return;
     }
     log!(log::Level::Info, "rust-systemd test_seek entry");
-    assert!(j.seek(journal::JournalSeek::Head).is_ok());
-    assert!(j.next_record().is_ok());
+    j.seek(journal::JournalSeek::Head).unwrap();
+    j.next_record().unwrap();
     let c1 = j.seek(journal::JournalSeek::Current);
-    assert!(c1.is_ok());
     let c2 = j.seek(journal::JournalSeek::Current);
-    assert!(c2.is_ok());
     assert_eq!(c1.unwrap(), c2.unwrap());
-    assert!(j.seek(journal::JournalSeek::Tail).is_ok());
-    assert!(j.next_record().is_ok());
+    j.seek(journal::JournalSeek::Tail).unwrap();
+    j.next_record().unwrap();
     let c3 = j.cursor().unwrap();
     let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
-    assert!(j.seek(valid_cursor).is_ok());
+    j.seek(valid_cursor).unwrap();
     let invalid_cursor = journal::JournalSeek::Cursor { cursor: "".to_string() };
     assert!(j.seek(invalid_cursor).is_err());
 }
