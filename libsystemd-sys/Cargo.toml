@@ -17,7 +17,8 @@ bus = []
 elogind = []
 
 [dependencies]
-libc = "0.*"
+libc = "0.2.76"
 
 [build-dependencies]
-pkg-config = "0.*"
+pkg-config = "0.3.18"
+build-env = "0.2.0"
