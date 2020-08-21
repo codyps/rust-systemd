@@ -17,6 +17,8 @@ extern "C" {
                              path: *const c_char,
                              length: size_t)
                              -> c_int;
+    // On elogind it always returns error.
+    #[cfg(not(feature = "elogind"))]
     pub fn sd_is_mq(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_notify(unset_environment: c_int, state: *const c_char) -> c_int;
     // skipping sd_*notifyf; ignoring format strings

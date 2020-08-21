@@ -11,6 +11,7 @@ extern crate enumflags2_derive;
 
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Result, Error};
+#[cfg(not(feature = "elogind"))]
 pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
 
 
@@ -54,7 +55,7 @@ fn free_cstring(ptr: *mut c_char) -> Option<String> {
 #[macro_export]
 macro_rules! sd_try {
     ($e:expr) => ({
-        try!($crate::ffi_result(unsafe{ $e}))
+        $crate::ffi_result(unsafe{ $e})?
     })
 }
 
@@ -62,6 +63,7 @@ macro_rules! sd_try {
 ///
 /// The main interface for writing to the journal is `fn log()`, and the main
 /// interface for reading the journal is `struct Journal`.
+#[cfg(not(feature = "elogind"))]
 pub mod journal;
 
 /// Similar to `log!()`, except it accepts a func argument rather than hard
@@ -92,6 +94,7 @@ macro_rules! log_with{
     })
 }
 
+#[cfg(not(feature = "elogind"))]
 #[macro_export]
 macro_rules! sd_journal_log{
     ($lvl:expr, $($arg:tt)+) => (log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))
