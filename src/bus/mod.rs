@@ -23,7 +23,7 @@ use ffi::{c_int, c_char, c_void, pid_t};
 use std::{fmt,str};
 use std::ffi::CStr;
 use std::os::unix::io::AsRawFd;
-use std::mem::{uninitialized, transmute, forget};
+use std::mem::{MaybeUninit, transmute, forget, uninitialized};
 use std::ptr;
 use std::ops::{Deref,DerefMut};
 use std::marker::PhantomData;
@@ -657,6 +657,12 @@ impl Default for RawError {
     }
 }
 
+impl From<ffi::bus::sd_bus_error> for RawError {
+    fn from(inner: ffi::bus::sd_bus_error) -> Self {
+        Self { inner }
+    }
+}
+
 impl RawError {
     #[inline]
     fn new() -> Self {
@@ -748,9 +754,10 @@ impl Drop for RawError {
 impl Clone for RawError {
     #[inline]
     fn clone(&self) -> RawError {
-        let mut e = unsafe { RawError { inner: uninitialized() } };
-        unsafe { ffi::bus::sd_bus_error_copy(&mut e.inner, &self.inner) };
-        e
+        let mut e = MaybeUninit::<ffi::bus::sd_bus_error>::uninit();
+        unsafe { ffi::bus::sd_bus_error_copy(e.as_mut_ptr(), &self.inner) };
+        let e = unsafe { e.assume_init() };
+        e.into()
     }
 }
 
@@ -821,9 +828,9 @@ pub struct Bus {
 impl Bus {
     #[inline]
     pub fn default() -> crate::Result<Bus> {
-        let mut b = unsafe { uninitialized() };
-        sd_try!(ffi::bus::sd_bus_default(&mut b));
-        Ok(Bus { raw: b })
+        let mut b = MaybeUninit::uninit();
+        sd_try!(ffi::bus::sd_bus_default(b.as_mut_ptr()));
+        Ok(Bus { raw: unsafe { b.assume_init()} })
     }
 
     #[inline]
