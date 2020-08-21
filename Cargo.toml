@@ -25,7 +25,7 @@ path = "libsystemd-sys"
 version = "0.2.2"
 
 [dev-dependencies]
-version-sync = "0.8"
+version-sync = "0.9.1"
 
 [profile.release]
 debug = true
