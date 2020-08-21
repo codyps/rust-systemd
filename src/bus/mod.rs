@@ -90,7 +90,7 @@ impl ObjectPath {
                         return Err("Path must not have 2 '/' next to each other");
                     }
                 }
-                b'A'...b'Z' | b'a'...b'z' | b'0'...b'9' | b'_' => {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' => {
                     // Ok
                 }
                 b'\0' => {
@@ -172,7 +172,7 @@ impl InterfaceName {
 
         match b[0] {
             b'.' => return Err("Name must not begin with '.'"),
-            b'A'...b'Z' | b'a'...b'z' | b'_' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
             _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
@@ -191,10 +191,10 @@ impl InterfaceName {
 
                     periods += 1;
                 }
-                b'A'...b'Z' | b'a'...b'z' | b'_' => {
+                b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                     // Ok
                 }
-                b'0'...b'9' => {
+                b'0'..=b'9' => {
                     if prev == b'.' {
                         return Err("Name element must not start with '[0-9]'");
                     }
@@ -298,7 +298,7 @@ impl BusName {
         let mut is_unique = false;
         match b[0] {
             b'.' => return Err("Name must not begin with '.'"),
-            b'A'...b'Z' | b'a'...b'z' | b'_' | b'-' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'-' => {
                 // Ok
             }
             b':' => {
@@ -319,10 +319,10 @@ impl BusName {
 
                     periods += 1;
                 }
-                b'A'...b'Z' | b'a'...b'z' | b'_' | b'-' => {
+                b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'-' => {
                     // Ok
                 }
-                b'0'...b'9' => {
+                b'0'..=b'9' => {
                     if prev == b'.' && !is_unique {
                         return Err("Name element must not start with '[0-9]'");
                     }
@@ -409,7 +409,7 @@ impl MemberName {
         }
 
         match b[0] {
-            b'A'...b'Z' | b'a'...b'z' | b'_' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
             _ => return Err("Must begin with '[A-Z][a-z]_'"),
@@ -417,7 +417,7 @@ impl MemberName {
 
         for c in b {
             match *c {
-                b'A'...b'Z' | b'a'...b'z' | b'0'...b'9' | b'_' => {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' => {
                     // Ok
                 }
                 b'\0' => return Ok(unsafe { Self::from_bytes_unchecked(b) }),
@@ -820,14 +820,14 @@ pub struct Bus {
 
 impl Bus {
     #[inline]
-    pub fn default() -> super::Result<Bus> {
+    pub fn default() -> crate::Result<Bus> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_default(&mut b));
         Ok(Bus { raw: b })
     }
 
     #[inline]
-    pub fn default_user() -> super::Result<Bus> {
+    pub fn default_user() -> crate::Result<Bus> {
         let mut b = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_default_user(&mut b));
         Ok(Bus { raw: b })
@@ -1167,7 +1167,7 @@ impl BusRef {
     pub fn bus_id(&self) -> super::Result<super::id128::Id128>
     {
         let mut id: super::id128::Id128 = Default::default();
-        try!(::ffi_result(unsafe { ffi::bus::sd_bus_get_bus_id(self.as_ptr(), id.as_raw_mut()) }));
+        crate::ffi_result(unsafe { ffi::bus::sd_bus_get_bus_id(self.as_ptr(), id.as_raw_mut()) })?;
         Ok(id)
     }
 
@@ -1242,7 +1242,7 @@ impl BusRef {
             = raw_destroy_cb_message_handler::<F>;
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
-        match unsafe {::ffi_result(ffi::bus::sd_bus_request_name_async(self.as_ptr(),
+        match unsafe {crate::ffi_result(ffi::bus::sd_bus_request_name_async(self.as_ptr(),
             &mut slot,
             &*name as *const _ as *const _,
             flags,
@@ -1288,7 +1288,7 @@ impl BusRef {
             = raw_destroy_cb_message_handler::<F>;
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
-        match ::ffi_result(unsafe { ffi::bus::sd_bus_add_object(self.as_ptr(),
+        match crate::ffi_result(unsafe { ffi::bus::sd_bus_add_object(self.as_ptr(),
                                             &mut slot,
                                             &*path as *const _ as *const _,
                                             Some(f),
@@ -1582,7 +1582,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_type`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_type.html
     pub fn type_(&self) -> MessageType {
         let mut t = 0;
-        ::ffi_result(
+        crate::ffi_result(
             unsafe {
                 ffi::bus::sd_bus_message_get_type(self.as_mut_ptr(), &mut t)
             }
@@ -1674,7 +1674,7 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_is_empty`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_is_empty.html
     pub fn is_empty(&self) -> bool {
-        ::ffi_result(unsafe { ffi::bus::sd_bus_message_is_empty(self.as_mut_ptr()) }).unwrap() != 0
+        crate::ffi_result(unsafe { ffi::bus::sd_bus_message_is_empty(self.as_mut_ptr()) }).unwrap() != 0
     }
 
     /// This corresponds to [`sd_bus_message_get_error`]
@@ -1699,13 +1699,11 @@ impl MessageRef {
     pub fn monotonic_usec(&self) -> super::Result<u64>
     {
         let mut usec = 0;
-        try!(
-            ::ffi_result(
-                unsafe {
-                    ffi::bus::sd_bus_message_get_monotonic_usec(self.as_mut_ptr(), &mut usec)
-                }
-            )
-        );
+        crate::ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_get_monotonic_usec(self.as_mut_ptr(), &mut usec)
+            }
+        )?;
 
         Ok(usec)
     }
@@ -1716,13 +1714,11 @@ impl MessageRef {
     pub fn realtime_usec(&self) -> super::Result<u64>
     {
         let mut usec = 0;
-        try!(
-            ::ffi_result(
-                unsafe {
-                    ffi::bus::sd_bus_message_get_realtime_usec(self.as_mut_ptr(), &mut usec)
-                }
-            )
-        );
+        crate::ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_get_realtime_usec(self.as_mut_ptr(), &mut usec)
+            }
+        )?;
 
         Ok(usec)
     }
@@ -1733,13 +1729,11 @@ impl MessageRef {
     pub fn seqnum(&self) -> super::Result<u64>
     {
         let mut seqnum = 0;
-        try!(
-            ::ffi_result(
-                unsafe {
-                    ffi::bus::sd_bus_message_get_seqnum(self.as_mut_ptr(), &mut seqnum)
-                }
-            )
-        );
+        crate::ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_get_seqnum(self.as_mut_ptr(), &mut seqnum)
+            }
+        )?;
 
         Ok(seqnum)
     }
@@ -1877,7 +1871,7 @@ impl MessageRef {
             = raw_destroy_cb_message_handler::<F>;
         let b = Box::into_raw(Box::new(callback));
         let mut slot = ptr::null_mut();
-        match ::ffi_result(unsafe { ffi::bus::sd_bus_call_async(ptr::null_mut(),
+        match crate::ffi_result(unsafe { ffi::bus::sd_bus_call_async(ptr::null_mut(),
                                             &mut slot,
                                             self.as_mut_ptr(),
                                             Some(f),
@@ -1904,7 +1898,7 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_new_method_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_error.html
     #[inline]
-    pub fn new_method_error(&mut self, error: &Error) -> super::Result<Message> {
+    pub fn new_method_error(&mut self, error: &Error) -> crate::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_method_error(self.as_mut_ptr(), &mut m, error.as_ptr()));
         Ok(unsafe { Message::take_ptr(m) })
@@ -1914,7 +1908,7 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_new_method_return`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_return.html
     #[inline]
-    pub fn new_method_return(&mut self) -> super::Result<Message> {
+    pub fn new_method_return(&mut self) -> crate::Result<Message> {
         let mut m = unsafe { uninitialized() };
         sd_try!(ffi::bus::sd_bus_message_new_method_return(self.as_mut_ptr(), &mut m));
         Ok(unsafe { Message::take_ptr(m) })
@@ -1929,14 +1923,14 @@ impl MessageRef {
     // XXX: unclear if this should operate directly on the message or be split out to the iterator
     // mechanism
     #[inline]
-    pub unsafe fn append_basic_raw(&mut self, dbus_type: u8, v: *const c_void) -> ::Result<()> {
-        try!(::ffi_result(ffi::bus::sd_bus_message_append_basic(self.as_mut_ptr(), dbus_type as c_char, v)));
+    pub unsafe fn append_basic_raw(&mut self, dbus_type: u8, v: *const c_void) -> crate::Result<()> {
+        crate::ffi_result(ffi::bus::sd_bus_message_append_basic(self.as_mut_ptr(), dbus_type as c_char, v))?;
         Ok(())
     }
 
     /// Append a value to the message
     #[inline]
-    pub fn append<V: types::ToSdBusMessage>(&mut self, v: V) -> ::Result<()> {
+    pub fn append<V: types::ToSdBusMessage>(&mut self, v: V) -> crate::Result<()> {
         v.to_message(self)
     }
 
@@ -1948,7 +1942,7 @@ impl MessageRef {
     ///
     /// Requires that message is sealed.
     #[inline]
-    pub fn iter<'a>(&'a mut self) -> ::Result<MessageIter<'a>> {
+    pub fn iter<'a>(&'a mut self) -> crate::Result<MessageIter<'a>> {
         /* probe the `Message` to check if we can iterate on it */
         sd_try!(ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), ptr::null_mut(), ptr::null_mut()));
         Ok(MessageIter { raw: self.as_mut_ptr(), life: PhantomData })
@@ -1986,11 +1980,11 @@ impl<'a> MessageIter<'a> {
     /// [`sd_bus_message_read_basic`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_read_basic.html
     #[inline]
     pub unsafe fn read_basic_raw<R, T, F: FnOnce(R) -> T>(&mut self, dbus_type: u8, cons: F)
-            -> ::Result<Option<T>>
+            -> crate::Result<Option<T>>
         where T: 'a
     {
         let mut v: R = uninitialized();
-        match ::ffi_result(ffi::bus::sd_bus_message_read_basic(self.as_mut_ptr(), dbus_type as c_char, &mut v as *mut _ as *mut _)) {
+        match crate::ffi_result(ffi::bus::sd_bus_message_read_basic(self.as_mut_ptr(), dbus_type as c_char, &mut v as *mut _ as *mut _)) {
             Ok(1) => Ok(Some(cons(v))),
             Ok(_) => {
                 forget(v);
@@ -2021,11 +2015,11 @@ impl<'a> MessageIter<'a> {
     // &str lasts until next call of sd_bus_message_peek_type
     // XXX: confirm that lifetimes here match that!
     #[inline]
-    pub fn peek_type(&mut self) -> ::Result<(c_char, &str)>
+    pub fn peek_type(&mut self) -> crate::Result<(c_char, &str)>
     {
         let mut t: c_char = unsafe { uninitialized() };
         let mut cont: *const c_char = unsafe { uninitialized() };
-        try!(::ffi_result(unsafe { ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), &mut t, &mut cont) }));
+        crate::ffi_result(unsafe { ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), &mut t, &mut cont) })?;
 
         let s = if cont.is_null() {
             /* XXX: we may need to adjust here and return an option, but it isn't yet clear if
@@ -2039,7 +2033,7 @@ impl<'a> MessageIter<'a> {
 
     // XXX: handle containers
 
-    pub fn next<V: types::FromSdBusMessage<'a>>(&'a mut self) -> ::Result<Option<V>>
+    pub fn next<V: types::FromSdBusMessage<'a>>(&'a mut self) -> crate::Result<Option<V>>
     {
         V::from_message(self)
     }
