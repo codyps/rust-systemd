@@ -6,7 +6,7 @@ license = "LGPL-2.1+"
 description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/systemd"
-include = ["Cargo.toml", "src/**/*.rs", "tests/**/*.rs", "README.md" ]
+include = ["Cargo.toml", "src/**/*.rs", "README.md" ]
 
 [features]
 bus = ["libsystemd-sys/bus"]
