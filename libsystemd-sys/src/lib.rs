@@ -1,11 +1,7 @@
-//! Contains definitions for low-level bindings.
+//! Low-level bindings to libsystemd (and similar) libraries
 //!
-//! Most of this module is Rust versions of the systemd headers. The goal of
-//! this crate is to make it unattractive to ever use the FFI directly, but
-//! it's there if you need it.
-//!
-//! Items in this module corresponding to systemd functions are well-documented
-//! by the systemd man pages.
+//! Items in this module correspond to systemd functions/types that are documented by the systemd
+//! (`sd_*`) man pages.
 
 extern crate libc;
 pub use libc::{size_t, pid_t, uid_t, gid_t, signalfd_siginfo, siginfo_t, clockid_t};

@@ -24,7 +24,7 @@ foreign-types = "0.5.0"
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
-version = "0.2.2"
+version = "0.5"
 
 [dev-dependencies]
 version-sync = "0.9.1"
