@@ -18,7 +18,7 @@
  *   potentially the most convenient.
  */
 
-use super::utf8_cstr::Utf8CStr;
+use utf8_cstr::Utf8CStr;
 use std::ffi::CStr;
 use super::{MessageRef, MessageIter};
 use crate::bus;
