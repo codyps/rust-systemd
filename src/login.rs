@@ -24,7 +24,7 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_unit(p, &mut c_unit_name)),
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name))
     };
-    let unit_name = free_cstring(c_unit_name).unwrap();
+    let unit_name = unsafe { free_cstring(c_unit_name).unwrap() };
     Ok(unit_name)
 }
 
@@ -40,7 +40,7 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_slice(p, &mut c_slice_name)),
         UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name))
     };
-    let slice_id = free_cstring(c_slice_name).unwrap();
+    let slice_id = unsafe { free_cstring(c_slice_name).unwrap() };
     Ok(slice_id)
 }
 
@@ -54,7 +54,7 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
     let mut c_machine_name: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_machine_name(p, &mut c_machine_name));
-    let machine_id = free_cstring(c_machine_name).unwrap();
+    let machine_id = unsafe { free_cstring(c_machine_name).unwrap() };
     Ok(machine_id)
 }
 
@@ -70,7 +70,7 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
     let mut c_cgroup: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_cgroup(p, &mut c_cgroup));
-    let cg = free_cstring(c_cgroup).unwrap();
+    let cg = unsafe { free_cstring(c_cgroup).unwrap() };
     Ok(cg)
 }
 
@@ -83,7 +83,7 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     sd_try!(ffi::sd_pid_get_session(p, &mut c_session));
-    let ss = free_cstring(c_session).unwrap();
+    let ss = unsafe { free_cstring(c_session).unwrap() };
     Ok(ss)
 }
 
@@ -95,7 +95,7 @@ pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
     let session = session.into_cstr();
     let mut c_seat: *mut c_char = ptr::null_mut();
     sd_try!(ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat));
-    let ss = free_cstring(c_seat).unwrap();
+    let ss = unsafe { free_cstring(c_seat).unwrap() };
     Ok(ss)
 }
 
