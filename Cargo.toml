@@ -7,6 +7,7 @@ description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/crate/systemd"
 include = ["Cargo.toml", "src/**/*.rs", "README.md" ]
+edition = "2018"
 
 [features]
 bus = ["libsystemd-sys/bus"]

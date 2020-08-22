@@ -1,5 +1,4 @@
 [package]
-
 name = "libsystemd-sys"
 version = "0.2.2"
 authors = ["Cody P Schafer <dev@codyps.com>"]
@@ -8,8 +7,8 @@ description = "FFI bindings to libsystemd and libelogind"
 repository = "https://github.com/jmesmon/rust-systemd"
 include = ["Cargo.toml", "**/*.rs", "build.rs" ]
 documentation = "https://docs.rs/libsystemd-sys"
+edition = "2018"
 
-# 'links' is purposefully omitted
 build = "build.rs"
 
 [features]

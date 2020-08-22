@@ -1,8 +1,4 @@
-extern crate libc;
-extern crate log;
 extern crate libsystemd_sys as ffi;
-extern crate cstr_argument;
-extern crate foreign_types;
 
 /*
 extern crate enumflags2;
