@@ -2,6 +2,7 @@ use std::mem::{transmute, zeroed};
 use std::default::Default;
 use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t, sd_bus_property_get_t, sd_bus_property_set_t};
+use c2rust_bitfields::BitfieldStruct;
 
 // XXX: check this repr, might vary based on platform type sizes
 #[derive(Clone,Copy,Debug)]
@@ -18,6 +19,7 @@ pub enum SdBusVtableType {
 #[derive(Clone, Copy, Debug)]
 #[repr(u64)]
 pub enum SdBusVtableFlag {
+    #[allow(clippy::identity_op)]
     Deprecated = 1 << 0,
     Hidden = 1 << 1,
     Unprivileged = 1 << 2,

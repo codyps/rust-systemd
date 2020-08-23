@@ -40,7 +40,7 @@ fn main() {
     match libs {
         Some(libs) => {
             //let libs = libs.expect(&format!("non utf-8 value provided in {}", lib_var));
-            for lib in libs.into_string().unwrap().split(":") {
+            for lib in libs.into_string().unwrap().split(':') {
                 println!("cargo:rustc-link={}", lib);
             }
         }
