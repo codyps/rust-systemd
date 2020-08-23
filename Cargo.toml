@@ -12,6 +12,7 @@ edition = "2018"
 [features]
 bus = ["libsystemd-sys/bus"]
 elogind = ["libsystemd-sys/elogind"]
+default = ["bus"]
 
 [dependencies]
 log = "~0.4"
