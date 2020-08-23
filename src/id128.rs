@@ -8,6 +8,7 @@ use std::ffi::CStr;
 use std::fmt;
 
 /// A 128-bit ID for systemd.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Id128 {
     pub(crate) inner: ffi::id128::sd_id128_t,
 }
@@ -73,17 +74,5 @@ impl Id128 {
     pub fn as_raw_mut(&mut self) -> &mut ffi::id128::sd_id128_t
     {
         &mut self.inner
-    }
-}
-
-impl PartialEq for Id128 {
-    fn eq(&self, other: &Id128) -> bool {
-        self.inner.bytes == other.inner.bytes
-    }
-}
-
-impl Clone for Id128 {
-    fn clone(&self) -> Self {
-        Id128 { inner: ffi::id128::sd_id128_t { bytes: self.inner.bytes } }
     }
 }
