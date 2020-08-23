@@ -10,7 +10,7 @@ pub use std::os::raw::{c_char, c_int, c_void, c_uint};
 pub mod id128;
 pub mod event;
 pub mod daemon;
-#[cfg(not(feature = "elogind"))]
+#[cfg(feature = "journal")]
 pub mod journal;
 pub mod login;
 

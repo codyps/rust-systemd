@@ -1,29 +1,33 @@
 use std::path::Path;
 
 fn main() {
-    #[cfg(not(feature = "elogind"))]
     let name = "systemd";
-    #[cfg(feature = "elogind")]
-    let name = "elogind";
-
+    let name_upper = name.to_ascii_uppercase();
     let mut be = build_env::BuildEnv::from_env().unwrap();
 
-    let library_name = format!("lib{}", name);
-    let library = pkg_config::find_library(&library_name);
-
-    match library {
-        Ok(_) => return,
-        Err(error) => eprintln!("pkg_config could not find {}: {}", library_name, error),
-    };
-
-    let lib_var = format!("{}_LIBS", name.to_ascii_uppercase());
-    let lib_dir_var = format!("{}_LIB_DIR", name.to_ascii_uppercase());
+    let lib_var = format!("{}_LIBS", name_upper);
+    let lib_dir_var = format!("{}_LIB_DIR", name_upper);
 
     let libs = be.var(lib_var);
     let lib_dir = match be.var(lib_dir_var.clone()) {
         Some(lib_dir) => lib_dir,
         None => {
-            panic!("Environment variable {} is required but is unset", lib_dir_var);
+            // No lib_dir specified, use pkg-config
+            let ln_vn = format!("{}_PKG_NAME", name_upper);
+            let library_name = be.var(&ln_vn)
+                .map(|v| v.into_string()
+                    .unwrap_or_else(|e| panic!("Variable {} could not be converted to a string: {:?}", ln_vn, e))
+                )
+                .unwrap_or_else(|| format!("lib{}", name));
+
+            let library = pkg_config::find_library(&library_name);
+
+            match library {
+                Ok(_) => return,
+                Err(error) => eprintln!("pkg_config could not find {:?}: {}", library_name, error),
+            };
+
+            return;
         }
     };
 
@@ -48,4 +52,5 @@ fn main() {
             println!("cargo:rustc-link={}", name);
         }
     }
+
 }

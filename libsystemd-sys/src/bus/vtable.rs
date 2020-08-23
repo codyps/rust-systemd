@@ -2,7 +2,6 @@ use std::mem::{transmute, zeroed};
 use std::default::Default;
 use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t, sd_bus_property_get_t, sd_bus_property_set_t};
-use c2rust_bitfields::BitfieldStruct;
 
 // XXX: check this repr, might vary based on platform type sizes
 #[derive(Clone,Copy,Debug)]
