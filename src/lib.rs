@@ -13,7 +13,7 @@ pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek,
 
 
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
-    let sub_usecs = (duration.subsec_nanos() / 1000) as u64;
+    let sub_usecs = duration.subsec_micros() as u64;
     duration.as_secs() * 1_000_000 + sub_usecs
 }
 
@@ -29,17 +29,15 @@ pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
 
 /// Convert a malloc'd C string into a rust string and call free on it.
 /// Returns None if the pointer is null.
-fn free_cstring(ptr: *mut c_char) -> Option<String> {
+unsafe fn free_cstring(ptr: *mut c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
-    unsafe {
-        let len = strlen(ptr);
-        let char_slice = std::slice::from_raw_parts(ptr as *mut u8, len);
-        let s = String::from_utf8_lossy(&char_slice).into_owned();
-        free(ptr as *mut c_void);
-        Some(s)
-    }
+    let len = strlen(ptr);
+    let char_slice = std::slice::from_raw_parts(ptr as *mut u8, len);
+    let s = String::from_utf8_lossy(&char_slice).into_owned();
+    free(ptr as *mut c_void);
+    Some(s)
 }
 
 /// An analogue of `try!()` for systemd FFI calls.

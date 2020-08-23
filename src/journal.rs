@@ -65,9 +65,9 @@ pub fn log_record(record: &Record) {
         format!("TARGET={}", record.target()),
     ];
 
-    record.line().map(|line| keys.push(format!("CODE_LINE={}", line)));
-    record.file().map(|file| keys.push(format!("CODE_FILE={}", file)));
-    record.module_path().map(|module_path| keys.push(format!("CODE_FUNCTION={}", module_path)));
+    if let Some(line) = record.line() { keys.push(format!("CODE_LINE={}", line)) }
+    if let Some(file) = record.file() { keys.push(format!("CODE_FILE={}", file)) }
+    if let Some(module_path) = record.module_path() { keys.push(format!("CODE_FUNCTION={}", module_path)) }
 
     let str_keys = keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
     send(&str_keys);
@@ -123,7 +123,8 @@ foreign_type! {
 }
 
 /// Represents the set of journal files to read.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
@@ -133,8 +134,18 @@ pub enum JournalFiles {
     All,
 }
 
+impl JournalFiles {
+    fn as_flags(self) -> c_int {
+        match self {
+            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
+            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
+            JournalFiles::All => 0,
+        }
+    }
+}
+
 /// Seeking position in journal.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JournalSeek {
     Head,
     Current,
@@ -173,18 +184,13 @@ impl Journal {
     /// * local_only: if true, include only journal entries originating from
     ///   localhost. If false, include all entries.
     pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
-        let mut flags: c_int = 0;
+        let mut flags = files.as_flags();
         if runtime_only {
             flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
         }
         if local_only {
             flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
         }
-        flags |= match files {
-            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
-            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
-            JournalFiles::All => 0,
-        };
 
         let mut jp = ptr::null_mut();
         sd_try!(ffi::sd_journal_open(&mut jp, flags));
@@ -231,14 +237,7 @@ impl Journal {
     ///
     /// * path: the absolute directory path. All journal files in this directory
     ///   will be opened and interleaved automatically.
-    /// * files: the set of journal files to read. If the calling process
-    ///   doesn't have permission to read the system journal, a call to
-    ///   `Journal::open` with `System` or `All` will succeed, but system
-    ///   journal entries won't be included. This behavior is due to systemd.
-    /// * os_root: if true, journal files are searched for below the usual
-    ///   /var/log/journal and /run/log/journal relative to the specified path,
-    ///   instead of directly beneath it.
-    pub fn open_files(paths: &std::vec::Vec<&std::path::Path>, flags: JournalFiles, os_root: bool) -> Result<Journal> {
+    pub fn open_files(paths: &[&std::path::Path]) -> Result<Journal> {
         let mut c_paths: Vec<std::rc::Rc<CString>> = std::vec::Vec::new();
         let mut c_paths_ptr: Vec<*const c_char> = std::vec::Vec::new();
         for path in paths {
@@ -248,17 +247,8 @@ impl Journal {
         }
         c_paths_ptr.push(ptr::null_mut());
         // let c_path = CString::new(path.to_str().unwrap()).unwrap();
-        let mut c_flags: c_int = 0;
-        if os_root {
-            c_flags |= ffi::SD_JOURNAL_OS_ROOT;
-        }
-        c_flags |= match flags {
-            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
-            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
-            JournalFiles::All => 0
-        };
         let mut jp = ptr::null_mut();
-        sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), c_flags));
+        sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), 0));
         let journal = unsafe { Journal::from_ptr(jp) };
         sd_try!(ffi::sd_journal_seek_head(journal.as_ptr()));
         Ok(journal)
@@ -273,10 +263,10 @@ impl Journal {
         let mut ret: JournalRecord = BTreeMap::new();
 
         let mut sz: size_t = 0;
-        let data: *mut u8 = ptr::null_mut();
-        while sd_try!(ffi::sd_journal_enumerate_data(self.as_ptr(), &data, &mut sz)) > 0 {
+        let mut data: *const u8 = ptr::null_mut();
+        while sd_try!(ffi::sd_journal_enumerate_data(self.as_ptr(), &mut data, &mut sz)) > 0 {
             unsafe {
-                let b = ::std::slice::from_raw_parts_mut(data, sz as usize);
+                let b = std::slice::from_raw_parts(data, sz as usize);
                 let field = String::from_utf8_lossy(b);
                 let mut name_value = field.splitn(2, '=');
                 let name = name_value.next().unwrap();
@@ -382,26 +372,26 @@ impl Journal {
                 sd_try!(ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ptr()))
             }
         };
-        let c: *mut c_char = ptr::null_mut();
-        if unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &c) != 0 } {
+        let mut c: *const c_char = ptr::null_mut();
+        if unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &mut c) != 0 } {
             // Cursor may need to be re-aligned on a real entry first.
             if tail {
                 sd_try!(ffi::sd_journal_previous(self.as_ptr()));
             } else {
                 sd_try!(ffi::sd_journal_next(self.as_ptr()));
             }
-            sd_try!(ffi::sd_journal_get_cursor(self.as_ptr(), &c));
+            sd_try!(ffi::sd_journal_get_cursor(self.as_ptr(), &mut c));
         }
-        let cs = free_cstring(c).unwrap();
+        let cs = unsafe { free_cstring(c as *mut _).unwrap() };
         Ok(cs)
     }
 
     /// Returns the cursor of current journal entry.
     pub fn cursor(&self) -> Result<String> {
-        let mut c_cursor: *mut c_char = ptr::null_mut();
+        let mut c_cursor: *const c_char = ptr::null_mut();
 
         sd_try!(ffi::sd_journal_get_cursor(self.as_ptr(), &mut c_cursor));
-        let cursor = free_cstring(c_cursor).unwrap();
+        let cursor = unsafe { free_cstring(c_cursor as *mut _).unwrap() };
         Ok(cursor)
     }
 
@@ -440,7 +430,7 @@ impl Journal {
     /// If a match is applied, only entries with this field set will be iterated.
     pub fn match_add<T: Into<Vec<u8>>>(&mut self, key: &str, val: T) -> Result<&mut Journal> {
         let mut filter = Vec::<u8>::from(key);
-        filter.push('=' as u8);
+        filter.push(b'=');
         filter.extend(val.into());
         let data = filter.as_ptr() as *const c_void;
         let datalen = filter.len() as size_t;
