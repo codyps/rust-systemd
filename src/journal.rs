@@ -247,9 +247,8 @@ impl Journal {
         }
         c_paths_ptr.push(ptr::null_mut());
         // let c_path = CString::new(path.to_str().unwrap()).unwrap();
-        let mut c_flags: c_int = 0;
         let mut jp = ptr::null_mut();
-        sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), c_flags));
+        sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), 0));
         let journal = unsafe { Journal::from_ptr(jp) };
         sd_try!(ffi::sd_journal_seek_head(journal.as_ptr()));
         Ok(journal)
