@@ -123,7 +123,7 @@ foreign_type! {
 }
 
 /// Represents the set of journal files to read.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
