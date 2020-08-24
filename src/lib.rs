@@ -12,6 +12,7 @@ pub use std::io::{Result, Error};
 pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
 
 
+#[cfg(any(feature = "journal", feature = "bus"))]
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
     let sub_usecs = duration.subsec_micros() as u64;
     duration.as_secs() * 1_000_000 + sub_usecs
@@ -92,7 +93,7 @@ macro_rules! log_with{
 #[cfg(feature = "journal")]
 #[macro_export]
 macro_rules! sd_journal_log{
-    ($lvl:expr, $($arg:tt)+) => (log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))
+    ($lvl:expr, $($arg:tt)+) => ($crate::log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))
 }
 
 /// High-level interface to the systemd daemon module.
