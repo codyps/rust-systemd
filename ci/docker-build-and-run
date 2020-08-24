@@ -63,8 +63,9 @@ run exec docker run \
 	--init \
 	--volume "$HOME/.cargo:/cargo" \
 	--env CARGO_HOME=/cargo \
+	--volume "$HOME/.rustup:/.rustup" \
 	--volume "$(rustc --print sysroot):/rust:ro" \
-	--volume "$src_root:/checkout:ro" \
+	--volume "$src_root:/checkout" \
 	--volume "$src_root/target:/checkout/target" \
 	${dbus_vol[@]+"${dbus_vol[@]}"} \
 	--volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \
