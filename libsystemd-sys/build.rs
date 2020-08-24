@@ -14,10 +14,16 @@ fn main() {
         None => {
             // No lib_dir specified, use pkg-config
             let ln_vn = format!("{}_PKG_NAME", name_upper);
-            let library_name = be.var(&ln_vn)
-                .map(|v| v.into_string()
-                    .unwrap_or_else(|e| panic!("Variable {} could not be converted to a string: {:?}", ln_vn, e))
-                )
+            let library_name = be
+                .var(&ln_vn)
+                .map(|v| {
+                    v.into_string().unwrap_or_else(|e| {
+                        panic!(
+                            "Variable {} could not be converted to a string: {:?}",
+                            ln_vn, e
+                        )
+                    })
+                })
                 .unwrap_or_else(|| format!("lib{}", name));
 
             let library = pkg_config::find_library(&library_name);
@@ -32,8 +38,10 @@ fn main() {
     };
 
     if !Path::new(&lib_dir).exists() {
-        panic!("{} refers to {:?}, which does not exist",
-            lib_dir_var, lib_dir);
+        panic!(
+            "{} refers to {:?}, which does not exist",
+            lib_dir_var, lib_dir
+        );
     }
 
     println!(
@@ -52,5 +60,4 @@ fn main() {
             println!("cargo:rustc-link={}", name);
         }
     }
-
 }

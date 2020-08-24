@@ -7,7 +7,6 @@ pub const SD_BUS_MESSAGE_METHOD_ERROR: c_int = 3;
 pub const SD_BUS_MESSAGE_SIGNAL: c_int = 4;
 pub const _SD_BUS_MESSAGE_TYPE_MAX: c_int = 5;
 
-
 /*
         _SD_BUS_TYPE_INVALID         = 0,
         SD_BUS_TYPE_BYTE             = 'y',
