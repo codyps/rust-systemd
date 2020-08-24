@@ -20,6 +20,36 @@ Or
 systemd = { git = "https://github.com/jmesmon/rust-systemd" }
 ```
 
+Build Environment variables
+---------------------------
+
+By default, `libsystemd-sys` will use `pkg-config` to find `libsystemd`. It
+defaults to using the `systemd` package. To change the package looked up in
+pkg-config, set the `SYSTEMD_PKG_NAME` environment variable.
+
+If you want to override the source of the `libsystemd` directly, set the env
+var `SYSTEMD_LIB_DIR` to a path which contains the `libsystemd` to link
+against. Optionally, you may also set `SYSTEMD_LIBS` to indicate which
+libraries to link against. Libraries in the variable `SYSTEMD_LIBS` are colon
+(`:`) seperated and may include a `KIND`. For example:
+`SYSTEMD_LIBS="static=foo:bar"`.
+
+
+elogind support
+---------------
+
+Either set `SYSTEMD_PKG_NAME=elogind` or set both `SYSTEMD_LIBS=elogind` and
+set `SYSTEMD_LIB_DIR` to the appropriate directory.
+
+When using elogind, the apis needed for `journal` and `bus` features are not
+avaliable. If your application does not need these features, depend on
+`systemd` this way to allow it to be used with elogind:
+
+```toml
+[dependencies]
+systemd = { version = "0.4", default-features = false }
+```
+
 journal
 -------
 Journal sending is supported, and systemd::journal::Journal is a (low

@@ -10,9 +10,10 @@ include = ["Cargo.toml", "src/**/*.rs", "README.md" ]
 edition = "2018"
 
 [features]
+default = ["bus", "journal"]
+
 bus = ["libsystemd-sys/bus"]
-elogind = ["libsystemd-sys/elogind"]
-default = ["bus"]
+journal = ["libsystemd-sys/journal"]
 
 [dependencies]
 log = "~0.4"

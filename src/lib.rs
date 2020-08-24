@@ -8,7 +8,7 @@ extern crate enumflags2_derive;
 
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Result, Error};
-#[cfg(not(feature = "elogind"))]
+#[cfg(feature = "journal")]
 pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
 
 
@@ -58,7 +58,7 @@ macro_rules! sd_try {
 ///
 /// The main interface for writing to the journal is `fn log()`, and the main
 /// interface for reading the journal is `struct Journal`.
-#[cfg(not(feature = "elogind"))]
+#[cfg(feature = "journal")]
 pub mod journal;
 
 /// Similar to `log!()`, except it accepts a func argument rather than hard
@@ -89,7 +89,7 @@ macro_rules! log_with{
     })
 }
 
-#[cfg(not(feature = "elogind"))]
+#[cfg(feature = "journal")]
 #[macro_export]
 macro_rules! sd_journal_log{
     ($lvl:expr, $($arg:tt)+) => (log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))

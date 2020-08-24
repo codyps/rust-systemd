@@ -18,6 +18,7 @@ pub enum SdBusVtableType {
 #[derive(Clone, Copy, Debug)]
 #[repr(u64)]
 pub enum SdBusVtableFlag {
+    #[allow(clippy::identity_op)]
     Deprecated = 1 << 0,
     Hidden = 1 << 1,
     Unprivileged = 1 << 2,

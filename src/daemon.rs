@@ -186,7 +186,6 @@ pub fn is_socket_unix<S: CStrArgument>(fd: Fd,
 
 /// Identifies whether the passed file descriptor is a POSIX message queue. If a
 /// path is supplied, it will also verify the name.
-#[cfg(not(feature = "elogind"))]
 pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
     let result = sd_try!(ffi::sd_is_mq(fd, path.map_or(null(), |x| x.as_ref().as_ptr())));

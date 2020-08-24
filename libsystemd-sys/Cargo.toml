@@ -12,8 +12,10 @@ edition = "2018"
 build = "build.rs"
 
 [features]
+default = ["bus", "journal"]
+
 bus = []
-elogind = []
+journal = []
 
 [dependencies]
 libc = "0.2.76"
