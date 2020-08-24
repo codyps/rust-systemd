@@ -36,7 +36,7 @@ fn test() {
 
 #[test]
 fn cursor() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
 
@@ -48,7 +48,7 @@ fn cursor() {
 
 #[test]
 fn ts() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
 
@@ -65,11 +65,10 @@ fn ts() {
     assert_eq!(u1, u2);
 }
 
-
 #[test]
 fn test_seek() {
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
     log!(log::Level::Info, "rust-systemd test_seek entry");
@@ -83,7 +82,9 @@ fn test_seek() {
     let c3 = j.cursor().unwrap();
     let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
     j.seek(valid_cursor).unwrap();
-    let invalid_cursor = journal::JournalSeek::Cursor { cursor: "".to_string() };
+    let invalid_cursor = journal::JournalSeek::Cursor {
+        cursor: "".to_string(),
+    };
     assert!(j.seek(invalid_cursor).is_err());
 }
 
@@ -101,7 +102,7 @@ fn test_simple_match() {
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
 
     // check for positive matches
-    
+
     // seek tail
     j.seek(journal::JournalSeek::Tail).unwrap();
     j.match_add(key, value).unwrap();

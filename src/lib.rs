@@ -6,11 +6,12 @@ extern crate enumflags2;
 extern crate enumflags2_derive;
 */
 
-use libc::{c_char, c_void, free, strlen};
-pub use std::io::{Result, Error};
 #[cfg(feature = "journal")]
-pub use journal::{Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
-
+pub use journal::{
+    Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult,
+};
+use libc::{c_char, c_void, free, strlen};
+pub use std::io::{Error, Result};
 
 #[cfg(any(feature = "journal", feature = "bus"))]
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
@@ -19,8 +20,7 @@ fn usec_from_duration(duration: std::time::Duration) -> u64 {
 }
 
 /// Convert a systemd ffi return value into a Result
-pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int>
-{
+pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int> {
     if ret < 0 {
         Err(Error::from_raw_os_error(-ret))
     } else {
@@ -50,9 +50,9 @@ unsafe fn free_cstring(ptr: *mut c_char) -> Option<String> {
 /// the FFI call.
 #[macro_export]
 macro_rules! sd_try {
-    ($e:expr) => ({
-        $crate::ffi_result(unsafe{ $e})?
-    })
+    ($e:expr) => {{
+        $crate::ffi_result(unsafe { $e })?
+    }};
 }
 
 /// High-level interface to the systemd journal.

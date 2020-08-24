@@ -18,11 +18,11 @@
  *   potentially the most convenient.
  */
 
-use utf8_cstr::Utf8CStr;
-use std::ffi::CStr;
-use super::{MessageRef, MessageIter};
+use super::{MessageIter, MessageRef};
 use crate::bus;
-use ffi::{c_int, c_char};
+use ffi::{c_char, c_int};
+use std::ffi::CStr;
+use utf8_cstr::Utf8CStr;
 
 /**
  * When impled for a Type, promises that a reference to the type cast to a pointer can be encoded
@@ -57,7 +57,8 @@ pub trait ToSdBusMessage {
  */
 pub trait FromSdBusMessage<'a> {
     fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized;
+    where
+        Self: Sized;
 }
 
 impl<T: SdBusMessageDirect> ToSdBusMessage for T {
@@ -68,10 +69,11 @@ impl<T: SdBusMessageDirect> ToSdBusMessage for T {
 
 impl<'a, T: SdBusMessageDirect + 'a> FromSdBusMessage<'a> for T {
     fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         let t = Self::dbus_type();
-        unsafe { m.read_basic_raw(t, |x| x)}
+        unsafe { m.read_basic_raw(t, |x| x) }
     }
 }
 
@@ -114,8 +116,7 @@ macro_rules! msg_basic {
     }
 }
 
-
-msg_basic!{
+msg_basic! {
     u8: b'y',
     i16: b'n',
     u16: b'q',
@@ -128,7 +129,7 @@ msg_basic!{
 
 impl ToSdBusMessage for bool {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
-        let i : c_int = if *self { 1 } else { 0 };
+        let i: c_int = if *self { 1 } else { 0 };
         unsafe { m.append_basic_raw(b'b', &i as *const _ as *const _) }?;
         Ok(())
     }
@@ -136,7 +137,8 @@ impl ToSdBusMessage for bool {
 
 impl<'a> FromSdBusMessage<'a> for bool {
     fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         unsafe { m.read_basic_raw(b'b', |x: c_int| x != 0) }
     }
@@ -150,15 +152,16 @@ pub struct UnixFd(pub c_int);
 
 impl ToSdBusMessage for UnixFd {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
-        let i : c_int = self.0;
-        unsafe { m.append_basic_raw(b'h', &i as *const _ as *const _)}?;
+        let i: c_int = self.0;
+        unsafe { m.append_basic_raw(b'h', &i as *const _ as *const _) }?;
         Ok(())
     }
 }
 
 impl<'a> FromSdBusMessage<'a> for UnixFd {
     fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         unsafe { m.read_basic_raw(b'h', |x: c_int| UnixFd(x)) }
     }
@@ -166,7 +169,7 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
 
 impl<'a> ToSdBusMessage for &'a bus::ObjectPath {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
-        unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _)}?;
+        unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _) }?;
         Ok(())
     }
 }
@@ -178,9 +181,14 @@ impl<'a> ToSdBusMessage for &'a bus::ObjectPath {
 // If we could use &MessageRef instead this could be useful.
 impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
     fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized
+    where
+        Self: Sized,
     {
-        unsafe {m.read_basic_raw(b'o', |x: *const c_char| bus::ObjectPath::from_ptr_unchecked(x))}
+        unsafe {
+            m.read_basic_raw(b'o', |x: *const c_char| {
+                bus::ObjectPath::from_ptr_unchecked(x)
+            })
+        }
     }
 }
 
@@ -192,9 +200,14 @@ impl<'a> ToSdBusMessage for &'a Utf8CStr {
 
 impl<'a> FromSdBusMessage<'a> for &'a Utf8CStr {
     fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
-        where Self: Sized
+    where
+        Self: Sized,
     {
-        unsafe {m.read_basic_raw(b's', |x: *const c_char| Utf8CStr::from_cstr_unchecked(CStr::from_ptr(x)))}
+        unsafe {
+            m.read_basic_raw(b's', |x: *const c_char| {
+                Utf8CStr::from_cstr_unchecked(CStr::from_ptr(x))
+            })
+        }
     }
 }
 

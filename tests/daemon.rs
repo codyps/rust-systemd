@@ -22,10 +22,14 @@ fn test_watchdog_enabled() {
 
 #[test]
 fn test_notify() {
-    let result = daemon::notify(false, [
-        (daemon::STATE_READY, "1"),
-        (daemon::STATE_STATUS, "Running test_notify()"),
-    ].iter());
+    let result = daemon::notify(
+        false,
+        [
+            (daemon::STATE_READY, "1"),
+            (daemon::STATE_STATUS, "Running test_notify()"),
+        ]
+        .iter(),
+    );
     assert!(result.is_ok());
     assert_eq!(result.ok().unwrap(), false); // should fail, since this is not systemd-launched.
 }

@@ -10,10 +10,11 @@ fn main() {
     println!("got name {:?}", bn);
 
     let op = bus::ObjectPath::from_bytes(b"/com/codyps/systemd_test\0").unwrap();
-    bus.add_object(op, |m|{
+    bus.add_object(op, |m| {
         println!("message: {:?}", m);
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     println!("added object: {:?}", op);
 
     loop {
