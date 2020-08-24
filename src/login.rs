@@ -1,8 +1,8 @@
-use std::ptr;
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
-use ffi::login as ffi;
-use super::{Result, free_cstring};
+use super::{free_cstring, Result};
 use cstr_argument::CStrArgument;
+use ffi::login as ffi;
+use std::ptr;
 
 /// Systemd slice and unit types
 pub enum UnitType {
@@ -22,7 +22,7 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
     let p: pid_t = pid.unwrap_or(0);
     match unit_type {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_unit(p, &mut c_unit_name)),
-        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name))
+        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name)),
     };
     let unit_name = unsafe { free_cstring(c_unit_name).unwrap() };
     Ok(unit_name)
@@ -38,7 +38,7 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
     let p: pid_t = pid.unwrap_or(0);
     match slice_type {
         UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_slice(p, &mut c_slice_name)),
-        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name))
+        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name)),
     };
     let slice_id = unsafe { free_cstring(c_slice_name).unwrap() };
     Ok(slice_id)
@@ -94,7 +94,10 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
 pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
     let session = session.into_cstr();
     let mut c_seat: *mut c_char = ptr::null_mut();
-    sd_try!(ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat));
+    sd_try!(ffi::sd_session_get_seat(
+        session.as_ref().as_ptr(),
+        &mut c_seat
+    ));
     let ss = unsafe { free_cstring(c_seat).unwrap() };
     Ok(ss)
 }

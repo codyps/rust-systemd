@@ -1,10 +1,10 @@
-use std::mem::{transmute, zeroed};
-use std::default::Default;
 use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t, sd_bus_property_get_t, sd_bus_property_set_t};
+use std::default::Default;
+use std::mem::{transmute, zeroed};
 
 // XXX: check this repr, might vary based on platform type sizes
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u32)]
 pub enum SdBusVtableType {
     Start = '<' as u32,

@@ -4,12 +4,12 @@
 //! (`sd_*`) man pages.
 
 extern crate libc;
-pub use libc::{size_t, pid_t, uid_t, gid_t, signalfd_siginfo, siginfo_t, clockid_t};
-pub use std::os::raw::{c_char, c_int, c_void, c_uint};
+pub use libc::{clockid_t, gid_t, pid_t, siginfo_t, signalfd_siginfo, size_t, uid_t};
+pub use std::os::raw::{c_char, c_int, c_uint, c_void};
 
-pub mod id128;
-pub mod event;
 pub mod daemon;
+pub mod event;
+pub mod id128;
 #[cfg(feature = "journal")]
 pub mod journal;
 pub mod login;
@@ -28,11 +28,9 @@ pub struct const_iovec {
 
 pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
     args.iter()
-        .map(|d| {
-            const_iovec {
-                iov_base: d.as_ptr() as *const c_void,
-                iov_len: d.len() as size_t,
-            }
+        .map(|d| const_iovec {
+            iov_base: d.as_ptr() as *const c_void,
+            iov_len: d.len() as size_t,
         })
         .collect()
 }
