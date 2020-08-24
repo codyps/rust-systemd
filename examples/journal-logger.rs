@@ -1,3 +1,5 @@
+#[cfg(feature = "journal")]
+mod x {
 //! Follow future journal log messages and print up to 100 of them.
 
 extern crate systemd;
@@ -12,7 +14,7 @@ const KEY_MESSAGE: &str = "MESSAGE";
 
 const MAX_MESSAGES: usize = 100;
 
-fn main() {
+pub fn main() {
     println!("Starting journal-logger");
 
     // Open the journal
@@ -45,4 +47,17 @@ fn main() {
     });
 
     println!("End of example.");
+}
+
+}
+
+#[cfg(not(feature = "journal"))]
+mod x {
+    pub fn main() {
+        println!("pass `--features journal`");
+    }
+}
+
+fn main() {
+    x::main()
 }

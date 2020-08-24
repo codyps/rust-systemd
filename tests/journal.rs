@@ -1,11 +1,11 @@
-#[macro_use]
-extern crate systemd;
-#[macro_use]
-extern crate log;
+#![cfg(feature = "journal")]
+
+use log::log;
+use systemd::sd_journal_log;
 
 use std::path::Path;
-use systemd::journal;
 use systemd::id128;
+use systemd::journal;
 
 // Some systems don't have a running journal, which causes our tests to fail currently
 //
