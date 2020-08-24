@@ -19,5 +19,3 @@ cargo test --all --no-default-features --features journal
 # neither
 cargo build --all --no-default-features
 cargo test --all --no-default-features
-
-cargo fmt --all -- --check
