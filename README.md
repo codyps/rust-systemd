@@ -10,14 +10,7 @@ rust-systemd
 In `Cargo.toml`:
 ```toml
 [dependencies]
-systemd = "~0.4"
-```
-
-Or
-
-```toml,no_sync
-[dependencies]
-systemd = { git = "https://github.com/jmesmon/rust-systemd" }
+systemd = "0.5"
 ```
 
 Build Environment variables
@@ -47,7 +40,7 @@ avaliable. If your application does not need these features, depend on
 
 ```toml
 [dependencies]
-systemd = { version = "0.4", default-features = false }
+systemd = { version = "0.5", default-features = false }
 ```
 
 journal
