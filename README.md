@@ -34,14 +34,18 @@ elogind support
 Either set `SYSTEMD_PKG_NAME=elogind` or set both `SYSTEMD_LIBS=elogind` and
 set `SYSTEMD_LIB_DIR` to the appropriate directory.
 
-When using elogind, the apis needed for `journal` and `bus` features are not
-avaliable. If your application does not need these features, depend on
-`systemd` this way to allow it to be used with elogind:
+When using elogind, the apis needed for `journal` and `bus` features may not be completely
+avaliable (elogind forked from an older version of systemd that may lack some
+of these APIs). If your application does not need these features, depend on
+`systemd` without the default features to allow maximum compatibility:
 
 ```toml
 [dependencies]
 systemd = { version = "0.5", default-features = false }
 ```
+
+Note that there still may be some missing symbols. If you discover a link
+error, report it so that we can tweak the `systemd` crate to support it.
 
 journal
 -------
