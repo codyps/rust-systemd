@@ -52,9 +52,7 @@ impl sd_bus_vtable {
 
         val[0] = typ as u8;
         let flags_raw: [u8; 8] = unsafe { transmute(flags) };
-        for i in 0..7 {
-            val[i + 1] = flags_raw[i];
-        }
+        val[1..(7 + 1)].clone_from_slice(&flags_raw[..7]);
 
         unsafe { transmute(val) }
     }
@@ -75,7 +73,7 @@ impl sd_bus_vtable {
         unsafe {
             let raw: *const u8 = transmute(&self.type_and_flags);
             for i in 1..8 {
-                val[i - 1] = *raw.offset(i as isize);
+                val[i - 1] = *raw.add(i);
             }
             transmute(val)
         }
