@@ -10,9 +10,6 @@ rust:
   - beta
   - nightly
 
-install:
-  - rustup component add rustfmt
-
 script:
   - ci/script
 
