@@ -560,7 +560,7 @@ impl Journal {
     /// Using a `wait_time` of `None` will wait for an unlimited period for new entries.
     ///
     /// Corresponds to `sd_journal_wait()`.
-    fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
+    pub fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
         let time = wait_time.map(usec_from_duration).unwrap_or(u64::MAX);
 
         match sd_try!(ffi::sd_journal_wait(self.as_ptr(), time)) {
