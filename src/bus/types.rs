@@ -163,7 +163,7 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
     where
         Self: Sized,
     {
-        unsafe { m.read_basic_raw(b'h', |x: c_int| UnixFd(x)) }
+        unsafe { m.read_basic_raw(b'h', UnixFd) }
     }
 }
 

@@ -489,16 +489,11 @@ impl Journal {
 
         self.restart_data();
 
-        loop {
-            match self.enumerate_data()? {
-                Some(d) => {
-                    ret.insert(
-                        String::from_utf8_lossy(d.name()).into(),
-                        String::from_utf8_lossy(d.value().unwrap()).into(),
-                    );
-                }
-                None => break,
-            }
+        while let Some(d) = self.enumerate_data()? {
+            ret.insert(
+                String::from_utf8_lossy(d.name()).into(),
+                String::from_utf8_lossy(d.value().unwrap()).into(),
+            );
         }
 
         Ok(ret)
@@ -507,6 +502,8 @@ impl Journal {
     /// Iterate over journal entries.
     ///
     /// Corresponds to `sd_journal_next()`
+    // TODO: consider renaming
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<u64> {
         crate::ffi_result(unsafe { ffi::sd_journal_next(self.as_ptr()) })
             .map(|v| v.try_into().unwrap())
@@ -626,7 +623,7 @@ impl Journal {
     /// Corresponds to `sd_journal_seek_monotonic_usec()`
     pub fn seek_monotonic_usec(&mut self, boot_id: Id128, usec: u64) -> Result<()> {
         crate::ffi_result(unsafe {
-            ffi::sd_journal_seek_monotonic_usec(self.as_ptr(), boot_id.as_raw().clone(), usec)
+            ffi::sd_journal_seek_monotonic_usec(self.as_ptr(), *boot_id.as_raw(), usec)
         })?;
 
         Ok(())
