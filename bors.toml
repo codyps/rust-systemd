@@ -1,6 +1,6 @@
 status = [
 	"continuous-integration/travis-ci/push",
-	"check"
+	"ci"
 ]
 cut_body_after = "---"
 delete_merged_branches = true
