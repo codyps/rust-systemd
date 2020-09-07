@@ -96,7 +96,6 @@ macro_rules! sd_journal_log{
     ($lvl:expr, $($arg:tt)+) => ($crate::log_with!(@raw ::systemd::journal::log, $lvl, $($arg)+))
 }
 
-/// High-level interface to the systemd daemon module.
 pub mod daemon;
 
 pub mod id128;
