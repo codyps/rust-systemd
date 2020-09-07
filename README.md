@@ -10,7 +10,7 @@ rust-systemd
 In `Cargo.toml`:
 ```toml
 [dependencies]
-systemd = "0.5"
+systemd = "0.6"
 ```
 
 Build Environment variables

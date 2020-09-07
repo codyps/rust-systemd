@@ -74,7 +74,7 @@ checksum = "755456fae044e6fa1ebbbd1b3e902ae19e73097ed4ed87bb79934a867c007bc3"
 
 [[package]]
 name = "libsystemd-sys"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "build-env",
  "libc",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cstr-argument",
  "foreign-types",
