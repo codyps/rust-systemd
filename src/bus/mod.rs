@@ -16,12 +16,11 @@
 //    than what is possible with sd-bus directly.
 
 //use enumflags2_derive::EnumFlags;
-use ffi;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use std::ffi::CStr;
 use std::marker::PhantomData;
-use std::mem::{forget, transmute, MaybeUninit};
+use std::mem::{forget, MaybeUninit};
 use std::ops::Deref;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
@@ -70,11 +69,11 @@ impl ObjectPath {
      * are met.
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Path must have at least 1 character ('/')");
         }
 
-        if b[0] != b'/' as u8 {
+        if b[0] != b'/' {
             return Err("Path must begin with '/'");
         }
 
@@ -104,14 +103,23 @@ impl ObjectPath {
             }
         }
 
-        return Err("Path must be terminated in a '\\0' byte (for use by sd-bus)");
+        Err("Path must be terminated in a '\\0' byte (for use by sd-bus)")
     }
 
+    /// # Safety
+    ///
+    /// - `b` must be nul (`'\0'`) terminated
+    /// - `b` must be a valid object path string
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &ObjectPath {
-        transmute(b)
+        &*(b as *const [u8] as *const ObjectPath)
     }
 
+    /// # Safety
+    ///
+    /// - `b` must have a lifetime of at least `'b`
+    /// - `b` must be nul (`'\0'`) terminated
+    /// - `b` must be a valid object path string
     #[inline]
     pub unsafe fn from_ptr_unchecked<'b>(b: *const c_char) -> &'b ObjectPath {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
@@ -165,7 +173,7 @@ impl InterfaceName {
      * sd-bus additionally requires nul ('\0') termination of the interface name.
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Name must have more than 0 characters");
         }
 
@@ -217,23 +225,23 @@ impl InterfaceName {
             }
         }
 
-        return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
+        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
     }
 
-    /// Unsafety:
+    /// # Safety
     ///
     ///  - `b` must be a nul terminated string
-    ///  - `b` must contain a valid interface
+    ///  - `b` must contain a valid interface string
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &InterfaceName {
-        transmute(b)
+        &*(b as *const [u8] as *const InterfaceName)
     }
 
-    /// Unsafety:
+    /// # Safety
     ///
-    ///  - lifetime `'a` must be valid
+    ///  - `b` must have a lifetime of at least `'a`
     ///  - `b` must be a nul terminated string
-    ///  - `b` must contain a valid interface
+    ///  - `b` must contain a valid interface string
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
@@ -285,7 +293,7 @@ impl BusName {
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
     pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
-        if b.len() < 1 {
+        if b.is_empty() {
             return Err("Name must have more than 0 characters");
         }
 
@@ -344,14 +352,23 @@ impl BusName {
             }
         }
 
-        return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
+        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
     }
 
+    /// # Safety
+    ///
+    /// - `b` must be nul (`'\0'`) terminated
+    /// - `b` must be a valid bus name string
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
-        transmute(b)
+        &*(b as *const [u8] as *const BusName)
     }
 
+    /// # Safety
+    ///
+    /// - `b` must have a lifetime of at least `'a`
+    /// - `b` must be nul (`'\0'`) terminated
+    /// - `b` must be a valid bus name string
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
@@ -428,14 +445,20 @@ impl MemberName {
             }
         }
 
-        return Err("Name must be terminated in a '\\0' byte (for use by sd-bus)");
+        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
     }
 
+    /// # Safety
+    ///
+    /// `b` must be a valid c-string (ie: it must be `\0` (nul) terminated).
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
-        transmute(b)
+        &*(b as *const [u8] as *const MemberName)
     }
 
+    /// # Safety
+    ///
+    /// `b` must point to a valid c-string, with lifetime at least `'a`
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
@@ -546,13 +569,16 @@ pub struct RawError {
 }
 
 impl RawError {
+    /// # Safety
+    ///
+    /// `ptr` must point to a valid `sd_bus_error` which has a lifetime of at least `'a`.
     pub unsafe fn from_ptr<'a>(ptr: *const ffi::bus::sd_bus_error) -> &'a Self {
         // this is incredibly questionable: we're casting it through to a wrapper struct. It's
         // unclear if we're providing everything necessary for this to work right.
         //
         // This probably indincates we should get rid of the concrete/cached `Error` as we can't
         // make this into an `Error` without coping it.
-        transmute(ptr as *const _)
+        &*(ptr as *const _ as *const RawError)
     }
 }
 
@@ -563,7 +589,7 @@ pub struct Error {
 }
 
 impl Error {
-    /// Unsafety:
+    /// # Safety
     ///
     /// - `raw` must be populated with valid pointers, is it is if returned by another sd_bus api.
     unsafe fn from_raw(raw: RawError) -> Error {
@@ -575,7 +601,7 @@ impl Error {
         };
 
         Error {
-            raw: raw,
+            raw,
             name_len: n,
             message_len: m,
         }
@@ -1757,6 +1783,10 @@ impl MessageRef {
     ///
     /// This corresponds to [`sd_bus_message_append_basic`]
     ///
+    /// # Safety
+    ///
+    /// The pointer `v` must point to valid data corresponding to the type indicated by `dbus_type`.
+    ///
     /// [`sd_bus_message_append_basic`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_append_basic.html
     // XXX: unclear if this should operate directly on the message or be split out to the iterator
     // mechanism
@@ -1821,13 +1851,12 @@ impl<'a> MessageIter<'a> {
     /// only occur while the message is sealed. Unclear if we can track lifetimes against message
     /// sealing.
     ///
-    /// Unsafety:
-    ///
-    ///  - `dbus_type` when given to `sd_bus_message_read_basic()` must result in something that
-    ///    can be reinterpreted as `R`.
-    ///
-    ///
     /// This corresponds to [`sd_bus_message_read_basic`]
+    ///
+    /// # Safety
+    ///
+    /// - The type `*mut R` must match the pointer expected by `sd_bus_message_read_basic()`
+    ///   when it is given `dbus_type`.
     ///
     /// [`sd_bus_message_read_basic`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_read_basic.html
     #[inline]
@@ -1889,7 +1918,8 @@ impl<'a> MessageIter<'a> {
     }
 
     // XXX: handle containers
-
+    // FIXME: consider renaming
+    #[allow(clippy::should_implement_trait)]
     pub fn next<V: types::FromSdBusMessage<'a>>(&'a mut self) -> crate::Result<Option<V>> {
         V::from_message(self)
     }
