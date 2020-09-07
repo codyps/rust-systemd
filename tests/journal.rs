@@ -43,6 +43,7 @@ fn cursor() {
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
     j.seek(journal::JournalSeek::Head).unwrap();
+    j.next().unwrap();
     let _s = j.cursor().unwrap();
 }
 
@@ -55,8 +56,10 @@ fn ts() {
     let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
     j.seek(journal::JournalSeek::Head).unwrap();
+    j.next().unwrap();
     let _s = j.timestamp().unwrap();
     j.seek(journal::JournalSeek::Tail).unwrap();
+    j.previous().unwrap();
     let (u1, entry_boot_id) = j.monotonic_timestamp().unwrap();
     assert!(u1 > 0);
     let boot_id = id128::Id128::from_boot().unwrap();
@@ -73,12 +76,12 @@ fn test_seek() {
     }
     log!(log::Level::Info, "rust-systemd test_seek entry");
     j.seek(journal::JournalSeek::Head).unwrap();
-    j.next_record().unwrap();
-    let c1 = j.seek(journal::JournalSeek::Current);
-    let c2 = j.seek(journal::JournalSeek::Current);
-    assert_eq!(c1.unwrap(), c2.unwrap());
+    j.next_entry().unwrap();
+    let c1 = j.cursor().unwrap();
+    let c2 = j.cursor().unwrap();
+    assert_eq!(c1, c2);
     j.seek(journal::JournalSeek::Tail).unwrap();
-    j.next_record().unwrap();
+    j.next_entry().unwrap();
     let c3 = j.cursor().unwrap();
     let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
     j.seek(valid_cursor).unwrap();
@@ -88,11 +91,9 @@ fn test_seek() {
     assert!(j.seek(invalid_cursor).is_err());
 }
 
-/*
-// currently broken
 #[test]
 fn test_simple_match() {
-    if ! have_journal() {
+    if !have_journal() {
         return;
     }
     let key = "RUST_TEST_MARKER";
@@ -105,19 +106,61 @@ fn test_simple_match() {
 
     // seek tail
     j.seek(journal::JournalSeek::Tail).unwrap();
-    j.match_add(key, value).unwrap();
-    let r = j.next_record().unwrap();
     journal::send(&[&filter, &msg]);
-    assert!(r.is_some());
-    let entry = r.unwrap();
-    let entryval = entry.get(key);
-    assert!(entryval.is_some());
-    assert_eq!(entryval.unwrap(), value);
+    j.match_add(key, value).unwrap();
+    loop {
+        if j.next().unwrap() == 0 {
+            panic!("got to end of journal without finding our entry");
+        }
+
+        let entryval = j.get_data(key).unwrap();
+        println!("k,v: {:?}, {:?}", key, entryval);
+        if entryval.is_none() {
+            println!("E: {}", j.display_entry_data());
+            continue;
+        }
+
+        assert_eq!(entryval.unwrap().value().unwrap(), value.as_bytes());
+        break;
+    }
 
     // check for negative matches
     j.seek(journal::JournalSeek::Tail).unwrap();
-    j.match_flush().unwrap().match_add("NOKEY", "NOVALUE").unwrap();
+    j.match_flush()
+        .unwrap()
+        .match_add("NOKEY", "NOVALUE")
+        .unwrap();
     journal::send(&[&msg]);
-    assert!(j.next_record().unwrap().is_none());
+    while j.next().unwrap() != 0 {
+        assert!(j.get_data("NO_KEY").unwrap().is_none())
+    }
 }
-*/
+
+#[test]
+fn get_data() {
+    if !have_journal() {
+        return;
+    }
+
+    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    j.seek_tail().unwrap();
+    journal::send(&["RUST_TEST_MARKER=1"]);
+    j.match_add("RUST_TEST_MARKER", "1").unwrap();
+
+    loop {
+        if j.next().unwrap() == 0 {
+            break;
+        }
+
+        assert_eq!(j.get_data("THIS_DOES_NOT_EXIST").unwrap(), None);
+    }
+}
+
+#[test]
+fn journal_entry_data_1() {
+    let jrd: journal::JournalEntryField<'_> = b"HI=foo"[..].into();
+
+    assert_eq!(jrd.data(), &b"HI=foo"[..]);
+    assert_eq!(jrd.name(), &b"HI"[..]);
+    assert_eq!(jrd.value(), Some(&b"foo"[..]));
+}

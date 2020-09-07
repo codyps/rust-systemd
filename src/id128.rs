@@ -8,7 +8,7 @@ use std::ffi::CStr;
 use std::fmt;
 
 /// A 128-bit ID for systemd.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Id128 {
     pub(crate) inner: ffi::id128::sd_id128_t,
 }

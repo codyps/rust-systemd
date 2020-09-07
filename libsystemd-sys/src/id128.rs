@@ -1,7 +1,9 @@
 use super::{c_char, c_int};
 
+/// Note: this is marked `Copy` because the libsystemd apis pass it by value without implying an
+/// ownership transfer.
 #[repr(C)]
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct sd_id128_t {
     pub bytes: [u8; 16],
 }

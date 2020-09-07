@@ -1,18 +1,21 @@
 use super::{free_cstring, usec_from_duration, Result};
 use crate::ffi::array_to_iovecs;
-use crate::ffi::id128::sd_id128_t;
 use crate::ffi::journal as ffi;
 use crate::id128::Id128;
+use cstr_argument::CStrArgument;
 use foreign_types::{foreign_type, ForeignType};
 use libc::{c_char, c_int, size_t};
 use log::{self, Level, Log, Record, SetLoggerError};
+use memchr::memchr;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
+use std::mem::MaybeUninit;
 use std::os::raw::c_void;
-use std::time;
 use std::u64;
-use std::{fmt, io, ptr, result};
+use std::{fmt, io, ptr, result, slice, time};
 
 /// Send preformatted fields to systemd.
 ///
@@ -114,18 +117,101 @@ fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
     time::UNIX_EPOCH + d
 }
 
-// A single log entry from journal.
-pub type JournalRecord = BTreeMap<String, String>;
-
 foreign_type! {
     /// A reader for systemd journal.
     ///
     /// Supports read, next, previous, and seek operations.
+    ///
+    /// Note that the `Journal` is not `Send` nor `Sync`: it cannot be used in any thread other
+    /// than the one which creates it.
     pub unsafe type Journal {
         type CType = ffi::sd_journal;
         fn drop = ffi::sd_journal_close;
     }
 }
+
+/// A (name, value) pair formatted as a "NAME=value" byte string
+///
+/// Internally, each journal entry includes a variety of these data entries.
+#[derive(Debug, PartialEq, Eq)]
+pub struct JournalEntryField<'a> {
+    // TODO: this could be a CStr, which might be useful for downstream consumers
+    data: &'a [u8],
+    eq_offs: usize,
+}
+
+impl<'a> JournalEntryField<'a> {
+    /// The entire data element
+    pub fn data(&self) -> &[u8] {
+        self.data
+    }
+
+    /// The name (part before the `=`). The `=` is not included
+    ///
+    /// Note that depending on how this is retrieved, it might be truncated (ie: incomplete), see
+    /// `set_data_threshold()` for details.
+    pub fn name(&self) -> &[u8] {
+        &self.data[..self.eq_offs]
+    }
+
+    /// The value, part after the `=`, if present. The `=` is not included.
+    ///
+    /// Note that depending on how this is retrieved, it might be truncated (ie: incomplete), see
+    /// `set_data_threshold()` for details.
+    pub fn value(&self) -> Option<&[u8]> {
+        if self.eq_offs != self.data.len() {
+            Some(&self.data[(self.eq_offs + 1)..])
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> From<&'a [u8]> for JournalEntryField<'a> {
+    fn from(data: &'a [u8]) -> Self {
+        // find the `=`
+        let eq_offs = match memchr(b'=', data) {
+            Some(v) => v,
+            None => data.len(),
+        };
+
+        Self { data, eq_offs }
+    }
+}
+
+/*
+impl Iterator for JournalEntry<'a> {
+    type Item = Result<JournalEntryEntry<'a>>;
+
+    pub fn next(&mut self) -> Option<Self::Item> {
+        let r = crate::ffi_result(unsafe { ffi::sd_journal_enumerate_data(
+            self.as_ptr(),
+            &mut data,
+            &mut sz)});
+
+        let v = match r {
+            Err(e) => return Some(Err(e)),
+            Ok(v) => v,
+        };
+
+        if v == 0 {
+            return None;
+        }
+
+        // WARNING: slice is only valid until next call to one of `sd_journal_enumerate_data`,
+        // `sd_journal_get_data`, or `sd_journal_enumerate_avaliable_data`.
+        let b = unsafe { std::slice::from_raw_parts(data, sz as usize) };
+        let field = String::from_utf8_lossy(b);
+        let mut name_value = field.splitn(2, '=');
+        let name = name_value.next().unwrap();
+        let value = name_value.next().unwrap();
+        }
+    }
+}
+*/
+
+// A single log entry from journal.
+pub type JournalRecord = BTreeMap<String, String>;
 
 /// Represents the set of journal files to read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -149,11 +235,57 @@ impl JournalFiles {
     }
 }
 
+/// A wrapper type that allows displaying a single entry in the journal
+pub struct DisplayEntryData<'a> {
+    // RULES:
+    //  - we can't move the cursor/postion in the journal (no seeking, no
+    //   iteration/next/previous)
+    //  - we have _total_ ownership over data iteration. Do what ever necessary to get all the data
+    //    we want
+    journal: RefCell<&'a mut Journal>,
+}
+
+impl<'a> fmt::Display for DisplayEntryData<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(fmt, "{{")?;
+
+        let mut j = self.journal.borrow_mut();
+        j.restart_data();
+        loop {
+            match j.enumerate_data() {
+                Ok(Some(v)) => {
+                    writeln!(fmt, " \"{}\",", std::str::from_utf8(v.data()).unwrap())?;
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    writeln!(fmt, "E: {:?}", e)?;
+                    break;
+                }
+            }
+        }
+
+        writeln!(fmt, "}}")
+    }
+}
+
+impl<'a> From<&'a mut Journal> for DisplayEntryData<'a> {
+    fn from(v: &'a mut Journal) -> Self {
+        Self {
+            journal: RefCell::new(v),
+        }
+    }
+}
+
 /// Seeking position in journal.
+///
+/// Note: variants coresponding to [`Journal::next_skip()`] and [`Journal::previous_skip()`] are
+/// omitted because those are treated by sd-journal as pieces of journal iteration in that when
+/// they complete the journal is at a specific entry. All the seek type operations don't behave as
+/// part of iteration, and don't place the journal at a specific entry (iteration must be used to
+/// move to a journal entry).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JournalSeek {
     Head,
-    Current,
     Tail,
     ClockMonotonic { boot_id: Id128, usec: u64 },
     ClockRealtime { usec: u64 },
@@ -191,9 +323,7 @@ impl Journal {
 
         let mut jp = ptr::null_mut();
         sd_try!(ffi::sd_journal_open(&mut jp, flags));
-        let journal = unsafe { Journal::from_ptr(jp) };
-        sd_try!(ffi::sd_journal_seek_head(journal.as_ptr()));
-        Ok(journal)
+        Ok(unsafe { Journal::from_ptr(jp) })
     }
 
     /// Open the systemd journal located in a specific folder for reading.
@@ -219,11 +349,7 @@ impl Journal {
         if os_root {
             flags |= ffi::SD_JOURNAL_OS_ROOT;
         }
-        flags |= match files {
-            JournalFiles::System => ffi::SD_JOURNAL_SYSTEM,
-            JournalFiles::CurrentUser => ffi::SD_JOURNAL_CURRENT_USER,
-            JournalFiles::All => 0,
-        };
+        flags |= files.as_flags();
 
         let mut jp = ptr::null_mut();
         sd_try!(ffi::sd_journal_open_directory(
@@ -231,9 +357,8 @@ impl Journal {
             c_path.as_ptr(),
             flags
         ));
-        let journal = unsafe { Journal::from_ptr(jp) };
-        sd_try!(ffi::sd_journal_seek_head(journal.as_ptr()));
-        Ok(journal)
+
+        Ok(unsafe { Journal::from_ptr(jp) })
     }
 
     /// Open the systemd journal located in a specific folder for reading.
@@ -254,64 +379,189 @@ impl Journal {
         // let c_path = CString::new(path.to_str().unwrap()).unwrap();
         let mut jp = ptr::null_mut();
         sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), 0));
-        let journal = unsafe { Journal::from_ptr(jp) };
-        sd_try!(ffi::sd_journal_seek_head(journal.as_ptr()));
-        Ok(journal)
+        Ok(unsafe { Journal::from_ptr(jp) })
     }
 
-    /// Get and parse the currently journal record from the journal
-    /// It returns Result<Option<...>> out of convenience for calling
-    /// functions. It always returns Ok(Some(...)) if successful.
-    fn get_record(&mut self) -> Result<Option<JournalRecord>> {
-        unsafe { ffi::sd_journal_restart_data(self.as_ptr()) }
+    /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
+    /// instance.
+    ///
+    /// Use [`set_data_threshold()`] to adjust.
+    pub fn data_threshold(&mut self) -> Result<usize> {
+        let mut curr_thresh = MaybeUninit::uninit();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_get_data_threshold(self.as_ptr(), curr_thresh.as_mut_ptr())
+        })?;
 
+        Ok(unsafe { curr_thresh.assume_init() })
+    }
+
+    /// Set the number of bytes after which returned fields _may_ be truncated when retrieved by
+    /// this [`Journal`] instance.
+    ///
+    /// Setting this as small as possible for your application can allow the library to avoid
+    /// decompressing large objects in full.
+    pub fn set_data_threshold(&mut self, new_theshold: usize) -> Result<()> {
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_set_data_threshold(self.as_ptr(), new_theshold)
+        })?;
+
+        Ok(())
+    }
+
+    /// Get the data associated with a particular field from the current journal entry
+    ///
+    /// Note that this may be affected by the current data threshold, see `data_threshold()` and
+    /// `set_data_threshold()`.
+    ///
+    /// Note: the use of `&mut` here is because calls to some (though not all) other journal
+    /// functions can invalidate the reference returned within [`JournalEntryField`]. In particular:
+    /// any other obtaining of data (enumerate, etc) or any adjustment of the read pointer
+    /// (seeking, etc) invalidates the returned reference.
+    ///
+    /// Corresponds to `sd_journal_get_data()`.
+    pub fn get_data<A: CStrArgument>(&mut self, field: A) -> Result<Option<JournalEntryField<'_>>> {
+        let mut data = MaybeUninit::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let f = field.into_cstr();
+        match crate::ffi_result(unsafe {
+            ffi::sd_journal_get_data(
+                self.as_ptr(),
+                f.as_ref().as_ptr(),
+                data.as_mut_ptr(),
+                data_len.as_mut_ptr(),
+            )
+        }) {
+            Ok(_) => Ok(Some(
+                unsafe { slice::from_raw_parts(data.assume_init(), data_len.assume_init()) }.into(),
+            )),
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Restart the iteration done by [`enumerate_data()`] and [`enumerate_avaliable_data()`] over
+    /// fields of the current entry.
+    ///
+    /// Corresponds to `sd_journal_restart_data()`
+    pub fn restart_data(&mut self) {
+        unsafe { ffi::sd_journal_restart_data(self.as_ptr()) }
+    }
+
+    /// Obtain the next data
+    ///
+    /// Corresponds to `sd_journal_enumerate_data()`
+    pub fn enumerate_data(&mut self) -> Result<Option<JournalEntryField<'_>>> {
+        let mut data = MaybeUninit::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let r = crate::ffi_result(unsafe {
+            ffi::sd_journal_enumerate_data(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
+        });
+
+        let v = match r {
+            Err(e) => return Err(e),
+            Ok(v) => v,
+        };
+
+        if v == 0 {
+            return Ok(None);
+        }
+
+        // WARNING: slice is only valid until next call to one of `sd_journal_enumerate_data`,
+        // `sd_journal_get_data`, or `sd_journal_enumerate_avaliable_data`. This invariant is
+        // maintained by our use of `&mut` above.
+        let b = unsafe { std::slice::from_raw_parts(data.assume_init(), data_len.assume_init()) };
+        Ok(Some(b.into()))
+    }
+
+    /// Obtain a display-able that display's the current entrie's fields
+    pub fn display_entry_data(&mut self) -> DisplayEntryData<'_> {
+        self.into()
+    }
+
+    /// Collect all fields of the current journal entry into a map
+    ///
+    /// A convenience wrapper around [`enumerate_data()`] and [`restart_data()`].
+    ///
+    /// This allocates/copies a lot of data. Consider using [`enumerate_data()`], etc, directly if
+    /// your use case doesn't require obtaining a copy of all fields.
+    fn collect_entry(&mut self) -> Result<JournalRecord> {
         let mut ret: JournalRecord = BTreeMap::new();
 
-        let mut sz: size_t = 0;
-        let mut data: *const u8 = ptr::null_mut();
-        while sd_try!(ffi::sd_journal_enumerate_data(
-            self.as_ptr(),
-            &mut data,
-            &mut sz
-        )) > 0
-        {
-            unsafe {
-                let b = std::slice::from_raw_parts(data, sz as usize);
-                let field = String::from_utf8_lossy(b);
-                let mut name_value = field.splitn(2, '=');
-                let name = name_value.next().unwrap();
-                let value = name_value.next().unwrap();
-                ret.insert(From::from(name), From::from(value));
+        self.restart_data();
+
+        loop {
+            match self.enumerate_data()? {
+                Some(d) => {
+                    ret.insert(
+                        String::from_utf8_lossy(d.name()).into(),
+                        String::from_utf8_lossy(d.value().unwrap()).into(),
+                    );
+                }
+                None => break,
             }
         }
 
-        Ok(Some(ret))
+        Ok(ret)
     }
 
-    /// Read the next record from the journal. Returns `Ok(None)` if there
-    /// are no more records to read.
-    pub fn next_record(&mut self) -> Result<Option<JournalRecord>> {
-        if sd_try!(ffi::sd_journal_next(self.as_ptr())) == 0 {
+    /// Iterate over journal entries.
+    ///
+    /// Corresponds to `sd_journal_next()`
+    pub fn next(&mut self) -> Result<u64> {
+        crate::ffi_result(unsafe { ffi::sd_journal_next(self.as_ptr()) })
+            .map(|v| v.try_into().unwrap())
+    }
+
+    /// Iterate over journal entries, skipping `skip_count` of them
+    ///
+    /// Corresponds to `sd_journal_next_skip()`
+    pub fn next_skip(&mut self, skip_count: u64) -> Result<u64> {
+        crate::ffi_result(unsafe { ffi::sd_journal_next_skip(self.as_ptr(), skip_count) })
+            .map(|v| v.try_into().unwrap())
+    }
+
+    /// Iterate in reverse over journal entries
+    ///
+    /// Corresponds to `sd_journal_previous()`
+    pub fn previous(&mut self) -> Result<u64> {
+        crate::ffi_result(unsafe { ffi::sd_journal_previous(self.as_ptr()) })
+            .map(|v| v.try_into().unwrap())
+    }
+
+    /// Iterate in reverse over journal entries, skipping `skip_count` of them.
+    ///
+    /// Corresponds to `sd_journal_previous_skip()`
+    pub fn previous_skip(&mut self, skip_count: u64) -> Result<usize> {
+        crate::ffi_result(unsafe { ffi::sd_journal_previous_skip(self.as_ptr(), skip_count) })
+            .map(|v| v.try_into().unwrap())
+    }
+
+    /// Read the next entry from the journal. Returns `Ok(None)` if there
+    /// are no more entries to read.
+    pub fn next_entry(&mut self) -> Result<Option<JournalRecord>> {
+        if self.next()? == 0 {
             return Ok(None);
         }
 
-        self.get_record()
+        self.collect_entry().map(Some)
     }
 
-    /// Read the previous record from the journal. Returns `Ok(None)` if there
-    /// are no more records to read.
-    pub fn previous_record(&mut self) -> Result<Option<JournalRecord>> {
-        if sd_try!(ffi::sd_journal_previous(self.as_ptr())) == 0 {
+    /// Read the previous entry from the journal. Returns `Ok(None)` if there
+    /// are no more entries to read.
+    pub fn previous_entry(&mut self) -> Result<Option<JournalRecord>> {
+        if self.previous()? == 0 {
             return Ok(None);
         }
 
-        self.get_record()
+        self.collect_entry().map(Some)
     }
 
-    /// Wait for next record to arrive.
-    /// Pass wait_time `None` to wait for an unlimited period for new records.
+    /// Wait for next entry to arrive.
+    /// Using a `wait_time` of `None` will wait for an unlimited period for new entries.
+    ///
+    /// Corresponds to `sd_journal_wait()`.
     fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
-        let time = wait_time.map(usec_from_duration).unwrap_or(::std::u64::MAX);
+        let time = wait_time.map(usec_from_duration).unwrap_or(u64::MAX);
 
         match sd_try!(ffi::sd_journal_wait(self.as_ptr(), time)) {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
@@ -321,36 +571,36 @@ impl Journal {
         }
     }
 
-    /// Wait for the next record to appear. Returns `Ok(None)` if there were no
-    /// new records in the given wait time.
-    /// Pass wait_time `None` to wait for an unlimited period for new records.
-    pub fn await_next_record(
+    /// Wait for the next entry to appear. Returns `Ok(None)` if there were no
+    /// new entries in the given wait time.
+    /// Pass wait_time `None` to wait for an unlimited period for new entries.
+    pub fn await_next_entry(
         &mut self,
         wait_time: Option<time::Duration>,
     ) -> Result<Option<JournalRecord>> {
         match self.wait(wait_time)? {
             JournalWaitResult::Nop => Ok(None),
-            JournalWaitResult::Append => self.next_record(),
+            JournalWaitResult::Append => self.next_entry(),
 
             // This is possibly wrong, but I can't generate a scenario with
             // ..::Invalidate and neither systemd's journalctl,
             // systemd-journal-upload, and other utilities handle that case.
-            JournalWaitResult::Invalidate => self.next_record(),
+            JournalWaitResult::Invalidate => self.next_entry(),
         }
     }
 
     /// Iterate through all elements from the current cursor, then await the
-    /// next record(s) and wait again.
+    /// next entry(s) and wait again.
     pub fn watch_all_elements<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(JournalRecord) -> Result<()>,
     {
         loop {
-            let candidate = self.next_record()?;
+            let candidate = self.next_entry()?;
             let rec = match candidate {
                 Some(rec) => rec,
                 None => loop {
-                    if let Some(r) = self.await_next_record(None)? {
+                    if let Some(r) = self.await_next_entry(None)? {
                         break r;
                     }
                 },
@@ -359,46 +609,70 @@ impl Journal {
         }
     }
 
-    /// Seek to a specific position in journal. On success, returns a cursor
-    /// to the current entry.
-    pub fn seek(&mut self, seek: JournalSeek) -> Result<String> {
-        let mut tail = false;
+    /// Corresponds to `sd_journal_seek_head()`
+    pub fn seek_head(&mut self) -> Result<()> {
+        crate::ffi_result(unsafe { ffi::sd_journal_seek_head(self.as_ptr()) })?;
+
+        Ok(())
+    }
+
+    /// Corresponds to `sd_journal_seek_tail()`
+    pub fn seek_tail(&mut self) -> Result<()> {
+        crate::ffi_result(unsafe { ffi::sd_journal_seek_tail(self.as_ptr()) })?;
+
+        Ok(())
+    }
+
+    /// Corresponds to `sd_journal_seek_monotonic_usec()`
+    pub fn seek_monotonic_usec(&mut self, boot_id: Id128, usec: u64) -> Result<()> {
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_seek_monotonic_usec(self.as_ptr(), boot_id.as_raw().clone(), usec)
+        })?;
+
+        Ok(())
+    }
+
+    /// Corresponds to `sd_journal_seek_realtime_usec()`
+    pub fn seek_realtime_usec(&mut self, usec: u64) -> Result<()> {
+        crate::ffi_result(unsafe { ffi::sd_journal_seek_realtime_usec(self.as_ptr(), usec) })?;
+
+        Ok(())
+    }
+
+    /// Corresponds to `sd_journal_seek_cursor()`
+    pub fn seek_cursor<A: CStrArgument>(&mut self, cursor: A) -> Result<()> {
+        let c = cursor.into_cstr();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ref().as_ptr())
+        })?;
+
+        Ok(())
+    }
+
+    /// Seek to a specific position in journal using a general `JournalSeek`
+    ///
+    /// Note: after seeking, this [`Journal`] does not refer to any entry (and consequently can not
+    /// obtain information about an entry, like [`cursor()`], etc). Use the iteration functions
+    /// ([`next()`], [`previous()`], [`next_skip()`], and [`previous_skip()`]) to move onto an
+    /// entry.
+    pub fn seek(&mut self, seek: JournalSeek) -> Result<()> {
         match seek {
-            JournalSeek::Head => sd_try!(ffi::sd_journal_seek_head(self.as_ptr())),
-            JournalSeek::Current => 0,
+            JournalSeek::Head => self.seek_head()?,
             JournalSeek::Tail => {
-                tail = true;
-                sd_try!(ffi::sd_journal_seek_tail(self.as_ptr()))
+                self.seek_tail()?;
             }
             JournalSeek::ClockMonotonic { boot_id, usec } => {
-                sd_try!(ffi::sd_journal_seek_monotonic_usec(
-                    self.as_ptr(),
-                    sd_id128_t {
-                        bytes: *boot_id.as_bytes(),
-                    },
-                    usec
-                ))
+                self.seek_monotonic_usec(boot_id, usec)?;
             }
             JournalSeek::ClockRealtime { usec } => {
-                sd_try!(ffi::sd_journal_seek_realtime_usec(self.as_ptr(), usec))
+                self.seek_realtime_usec(usec)?;
             }
             JournalSeek::Cursor { cursor } => {
-                let c = CString::new(cursor)?;
-                sd_try!(ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ptr()))
+                self.seek_cursor(cursor)?;
             }
         };
-        let mut c: *const c_char = ptr::null_mut();
-        if unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &mut c) != 0 } {
-            // Cursor may need to be re-aligned on a real entry first.
-            if tail {
-                sd_try!(ffi::sd_journal_previous(self.as_ptr()));
-            } else {
-                sd_try!(ffi::sd_journal_next(self.as_ptr()));
-            }
-            sd_try!(ffi::sd_journal_get_cursor(self.as_ptr(), &mut c));
-        }
-        let cs = unsafe { free_cstring(c as *mut _).unwrap() };
-        Ok(cs)
+
+        Ok(())
     }
 
     /// Returns the cursor of current journal entry.
@@ -410,7 +684,18 @@ impl Journal {
         Ok(cursor)
     }
 
-    /// Returns timestamp at which current journal entry is recorded.
+    /// Test if a given cursor matches the current postition in the journal
+    ///
+    /// Corresponds to `sd_journal_test_cursor()`.
+    pub fn test_cursor<A: CStrArgument>(&self, cursor: A) -> Result<bool> {
+        let c = cursor.into_cstr();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr())
+        })
+        .map(|v| v != 0)
+    }
+
+    /// Returns timestamp at which current journal entry was recorded.
     pub fn timestamp(&self) -> Result<time::SystemTime> {
         let mut timestamp_us: u64 = 0;
         sd_try!(ffi::sd_journal_get_realtime_usec(
@@ -420,7 +705,7 @@ impl Journal {
         Ok(system_time_from_realtime_usec(timestamp_us))
     }
 
-    /// Returns monotonic timestamp and boot ID at which current journal entry is recorded.
+    /// Returns monotonic timestamp and boot ID at which current journal entry was recorded.
     pub fn monotonic_timestamp(&self) -> Result<(u64, Id128)> {
         let mut monotonic_timestamp_us: u64 = 0;
         let mut id = Id128::default();
@@ -432,7 +717,7 @@ impl Journal {
         Ok((monotonic_timestamp_us, id))
     }
 
-    /// Returns monotonic timestamp at which current journal entry is recorded. Returns an error if
+    /// Returns monotonic timestamp at which current journal entry was recorded. Returns an error if
     /// the current entry is not from the current system boot.
     pub fn monotonic_timestamp_current_boot(&self) -> Result<u64> {
         let mut monotonic_timestamp_us: u64 = 0;
