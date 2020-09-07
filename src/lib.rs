@@ -1,3 +1,5 @@
+#![warn(rust_2018_idioms)]
+
 extern crate libsystemd_sys as ffi;
 
 /*

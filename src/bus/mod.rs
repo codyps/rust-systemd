@@ -625,7 +625,7 @@ impl ::std::error::Error for Error {
 }
 
 impl fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Error")
             .field("name", &self.name())
             .field("message", &self.message())
@@ -636,7 +636,7 @@ impl fmt::Debug for Error {
 
 // TODO: make this display nicer
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.message() {
             Some(m) => write!(fmt, "Dbus Error: {}: {}", self.name(), m),
             None => write!(fmt, "Dbus Error: {}", self.name()),
@@ -764,7 +764,7 @@ impl Clone for RawError {
 }
 
 impl fmt::Debug for RawError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("RawError")
             .field("name", &self.name())
             .field("message", &self.message())
@@ -775,7 +775,7 @@ impl fmt::Debug for RawError {
 
 // TODO: make this display nicer
 impl fmt::Display for RawError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("RawError")
             .field("name", &self.name())
             .field("message", &self.message())
@@ -858,7 +858,7 @@ impl Bus {
 }
 
 impl fmt::Debug for BusRef {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("BusRef")
             .field("unique_name", &self.unique_name())
             .field("bus_id", &self.bus_id())
@@ -1339,7 +1339,7 @@ pub struct MessageIter<'a> {
 }
 
 impl fmt::Debug for MessageRef {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Message")
             .field("type", &self.type_())
             .field("signature", &self.signature())

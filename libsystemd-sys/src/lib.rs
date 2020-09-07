@@ -3,7 +3,8 @@
 //! Items in this module correspond to systemd functions/types that are documented by the systemd
 //! (`sd_*`) man pages.
 
-extern crate libc;
+#![warn(rust_2018_idioms)]
+
 pub use libc::{clockid_t, gid_t, pid_t, siginfo_t, signalfd_siginfo, size_t, uid_t};
 pub use std::os::raw::{c_char, c_int, c_uint, c_void};
 

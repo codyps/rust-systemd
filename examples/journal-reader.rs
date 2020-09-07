@@ -1,3 +1,5 @@
+#![warn(rust_2018_idioms)]
+
 #[cfg(feature = "journal")]
 mod x {
     //! Follow future journal log messages and print up to 100 of them.

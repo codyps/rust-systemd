@@ -14,13 +14,15 @@ pub struct Id128 {
 }
 
 impl fmt::Debug for Id128 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        <Self as fmt::Display>::fmt(self, fmt)
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "Id128 {{ ")?;
+        <Self as fmt::Display>::fmt(self, fmt)?;
+        write!(fmt, " }}")
     }
 }
 
 impl fmt::Display for Id128 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         for b in self.inner.bytes.iter() {
             write!(fmt, "{:02x}", b)?;
         }
