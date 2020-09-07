@@ -2,7 +2,6 @@
 ///
 /// Note that most, if not all, of these APIs can be found in the pure-rust
 /// [libsystemd](https://crates.io/crates/libsystemd) crate, and you may prefer to use it instead.
-
 use super::ffi::{c_int, pid_t, size_t};
 use super::{Error, Result};
 use cstr_argument::CStrArgument;
