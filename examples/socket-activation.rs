@@ -1,34 +1,37 @@
+//! # Using systemd:
+//!
+//! `example.socket`:
+//! ```
+//! [Socket]
+//! ListenStream=5000 # pick your port
+//!
+//! [Install]
+//! WantedBy=sockets.target
+//! ```
+//!
+//! `example.service`:
+//! ```
+//! [Unit]
+//! Requires=example.socket
+//!
+//! [Service]
+//! ExecStart=/opt/rust-systemd/bin/example-socket-activation
+//!
+//! [Install]
+//! WantedBy=multi-user.target
+//! ```
+//!
+//!
+//! # Alternately, using `systemfd`
+//!
+//! ```
+//! systemfd -s 5000 -- cargo run --example socket-activation
+//! ```
+
+#![warn(rust_2018_idioms)]
+
 use std::io::Write;
 use std::net::TcpStream;
-/// # Using systemd:
-///
-/// `example.socket`:
-/// ```
-/// [Socket]
-/// ListenStream=5000 # pick your port
-///
-/// [Install]
-/// WantedBy=sockets.target
-/// ```
-///
-/// `example.service`:
-/// ```
-/// [Unit]
-/// Requires=example.socket
-///
-/// [Service]
-/// ExecStart=/opt/rust-systemd/bin/example-socket-activation
-///
-/// [Install]
-/// WantedBy=multi-user.target
-/// ```
-///
-///
-/// # Alternately, using `systemfd`
-///
-/// ```
-/// systemfd -s 5000 -- cargo run --example socket-activation
-/// ```
 use systemd::daemon;
 
 fn handle_client(mut stream: TcpStream) {

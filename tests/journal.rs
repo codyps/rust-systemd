@@ -1,4 +1,5 @@
 #![cfg(feature = "journal")]
+#![warn(rust_2018_idioms)]
 
 use log::log;
 use systemd::sd_journal_log;

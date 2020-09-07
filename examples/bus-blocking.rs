@@ -1,4 +1,4 @@
-extern crate systemd;
+#![warn(rust_2018_idioms)]
 
 #[cfg(feature = "bus")]
 fn main() {

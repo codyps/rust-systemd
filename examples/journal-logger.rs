@@ -1,9 +1,8 @@
+#![warn(rust_2018_idioms)]
+
 #[cfg(feature = "journal")]
 mod x {
     //! Follow future journal log messages and print up to 100 of them.
-
-    extern crate systemd;
-
     use std::io::ErrorKind;
 
     use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};

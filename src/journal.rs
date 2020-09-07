@@ -43,7 +43,7 @@ enum SyslogLevel {
 }
 
 /// Record a log entry, with custom priority and location.
-pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments) {
+pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
     send(&[
         &format!("PRIORITY={}", level),
         &format!("MESSAGE={}", args),
@@ -54,7 +54,7 @@ pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::A
 }
 
 /// Send a `log::Record` to systemd-journald.
-pub fn log_record(record: &Record) {
+pub fn log_record(record: &Record<'_>) {
     let lvl = match record.level() {
         Level::Error => SyslogLevel::Err,
         Level::Warn => SyslogLevel::Warning,
@@ -85,11 +85,11 @@ pub fn log_record(record: &Record) {
 /// Logger implementation over systemd-journald.
 pub struct JournalLog;
 impl Log for JournalLog {
-    fn enabled(&self, _metadata: &log::Metadata) -> bool {
+    fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
         true
     }
 
-    fn log(&self, record: &Record) {
+    fn log(&self, record: &Record<'_>) {
         log_record(record);
     }
 
