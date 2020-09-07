@@ -77,3 +77,31 @@ the process by systemd on socket activation. Since raw filehandles are not well
 supported in Rust, it's likely these functions will mostly be helpful in
 managing program flow; actual socket code will have to use the libc crate.
 
+
+License
+-------
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+Contributions
+-------------
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you shall be dual licensed as above, without any
+additional terms or conditions. You also agree to apply the following exception:
+
+In addition to the permissions in the GNU Lesser General Public License, the
+authors give you unlimited permission to link the compiled version of this
+library into combinations with other programs, and to distribute those programs
+without any restriction coming from the use of this library. (The Lesser
+General Public License restrictions do apply in other respects; for example,
+they cover modification of the library, and distribution when not linked into
+another program.)
