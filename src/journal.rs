@@ -3,7 +3,7 @@ use crate::ffi::array_to_iovecs;
 use crate::ffi::journal as ffi;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
-use foreign_types::{foreign_type, ForeignType};
+use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use libc::{c_char, c_int, size_t};
 use log::{self, Level, Log, Record, SetLoggerError};
 use memchr::memchr;
@@ -242,7 +242,7 @@ pub struct DisplayEntryData<'a> {
     //   iteration/next/previous)
     //  - we have _total_ ownership over data iteration. Do what ever necessary to get all the data
     //    we want
-    journal: RefCell<&'a mut Journal>,
+    journal: RefCell<&'a mut JournalRef>,
 }
 
 impl<'a> fmt::Display for DisplayEntryData<'a> {
@@ -268,8 +268,8 @@ impl<'a> fmt::Display for DisplayEntryData<'a> {
     }
 }
 
-impl<'a> From<&'a mut Journal> for DisplayEntryData<'a> {
-    fn from(v: &'a mut Journal) -> Self {
+impl<'a> From<&'a mut JournalRef> for DisplayEntryData<'a> {
+    fn from(v: &'a mut JournalRef) -> Self {
         Self {
             journal: RefCell::new(v),
         }
@@ -381,7 +381,9 @@ impl Journal {
         sd_try!(ffi::sd_journal_open_files(&mut jp, c_paths_ptr.as_ptr(), 0));
         Ok(unsafe { Journal::from_ptr(jp) })
     }
+}
 
+impl JournalRef {
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
     /// instance.
     ///
@@ -728,7 +730,7 @@ impl Journal {
 
     /// Adds a match by which to filter the entries of the journal.
     /// If a match is applied, only entries with this field set will be iterated.
-    pub fn match_add<T: Into<Vec<u8>>>(&mut self, key: &str, val: T) -> Result<&mut Journal> {
+    pub fn match_add<T: Into<Vec<u8>>>(&mut self, key: &str, val: T) -> Result<&mut JournalRef> {
         let mut filter = Vec::<u8>::from(key);
         filter.push(b'=');
         filter.extend(val.into());
@@ -739,13 +741,13 @@ impl Journal {
     }
 
     /// Inserts a disjunction (i.e. logical OR) in the match list.
-    pub fn match_or(&mut self) -> Result<&mut Journal> {
+    pub fn match_or(&mut self) -> Result<&mut JournalRef> {
         sd_try!(ffi::sd_journal_add_disjunction(self.as_ptr()));
         Ok(self)
     }
 
     /// Inserts a conjunction (i.e. logical AND) in the match list.
-    pub fn match_and(&mut self) -> Result<&mut Journal> {
+    pub fn match_and(&mut self) -> Result<&mut JournalRef> {
         sd_try!(ffi::sd_journal_add_conjunction(self.as_ptr()));
         Ok(self)
     }
@@ -753,7 +755,7 @@ impl Journal {
     /// Flushes all matches, disjunction and conjunction terms.
     /// After this call all filtering is removed and all entries in
     /// the journal will be iterated again.
-    pub fn match_flush(&mut self) -> Result<&mut Journal> {
+    pub fn match_flush(&mut self) -> Result<&mut JournalRef> {
         unsafe { ffi::sd_journal_flush_matches(self.as_ptr()) };
         Ok(self)
     }
