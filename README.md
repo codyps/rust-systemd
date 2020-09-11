@@ -17,7 +17,7 @@ Build Environment variables
 ---------------------------
 
 By default, `libsystemd-sys` will use `pkg-config` to find `libsystemd`. It
-defaults to using the `systemd` package. To change the package looked up in
+defaults to using the `libsystemd` package. To change the package looked up in
 pkg-config, set the `SYSTEMD_PKG_NAME` environment variable.
 
 If you want to override the source of the `libsystemd` directly, set the env
