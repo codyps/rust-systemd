@@ -14,6 +14,7 @@ use std::ffi::CString;
 use std::io::ErrorKind::InvalidData;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
+use std::os::unix::io::AsRawFd;
 use std::u64;
 use std::{fmt, io, ptr, result, slice, time};
 
@@ -384,6 +385,20 @@ impl Journal {
 }
 
 impl JournalRef {
+    /// Returns a file descriptor  a file descriptor that may be
+    /// asynchronously polled in an external event loop and is signaled as
+    /// soon as the journal changes, because new entries or files were added,
+    /// rotation took place, or files have been deleted, and similar. The
+    /// file descriptor is suitable for usage in poll(2).
+    ///
+    /// This corresponds to [`sd_journal_get_fd`]
+    ///
+    /// [`sd_journal_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_journal_get_fd.html
+    #[inline]
+    pub fn fd(&self) -> Result<c_int> {
+        Ok(sd_try!(ffi::sd_journal_get_fd(self.as_ptr())))
+    }
+
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
     /// instance.
     ///
@@ -758,5 +773,12 @@ impl JournalRef {
     pub fn match_flush(&mut self) -> Result<&mut JournalRef> {
         unsafe { ffi::sd_journal_flush_matches(self.as_ptr()) };
         Ok(self)
+    }
+}
+
+impl AsRawFd for JournalRef {
+    #[inline]
+    fn as_raw_fd(&self) -> c_int {
+        self.fd().unwrap()
     }
 }
