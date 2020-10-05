@@ -1,7 +1,7 @@
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use super::{free_cstring, Result};
+use ::ffi::login as ffi;
 use cstr_argument::CStrArgument;
-use ffi::login as ffi;
 use std::ptr;
 
 /// Systemd slice and unit types

@@ -4,8 +4,8 @@
 /// [libsystemd](https://crates.io/crates/libsystemd) crate, and you may prefer to use it instead.
 use super::ffi::{c_int, pid_t, size_t};
 use super::{Error, Result};
+use ::ffi::daemon as ffi;
 use cstr_argument::CStrArgument;
-use ffi::daemon as ffi;
 use libc::{c_char, c_uint};
 use libc::{SOCK_DGRAM, SOCK_RAW, SOCK_STREAM};
 use std::io::ErrorKind;
