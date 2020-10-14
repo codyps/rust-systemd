@@ -29,11 +29,15 @@ fn main() {
             let library = pkg_config::find_library(&library_name);
 
             match library {
-                Ok(_) => return,
-                Err(error) => eprintln!("pkg_config could not find {:?}: {}", library_name, error),
+                Ok(_) => {
+                    // pkg-config says it has it, so we'll trust it to have done the right thing
+                    return;
+                }
+                Err(error) => {
+                    eprintln!("pkg_config could not find {:?}: {}", library_name, error);
+                    std::process::exit(1);
+                }
             };
-
-            return;
         }
     };
 
