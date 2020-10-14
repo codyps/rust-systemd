@@ -19,6 +19,9 @@ jobs:
           override: true
           components: rustfmt, clippy
 
+      - name: Install libsystemd-dev
+        run: sudo apt-get install libsystemd-dev
+
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
