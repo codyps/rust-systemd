@@ -1,6 +1,6 @@
 [package]
 name = "systemd"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1+"
 description = "A rust interface to libsystemd/libelogind provided APIs"
@@ -28,7 +28,7 @@ serde = { version = "1.0", default-features = false, features=["derive"], option
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
-version = "0.6"
+version = "0.7"
 
 [dev-dependencies]
 version-sync = "0.9.1"
