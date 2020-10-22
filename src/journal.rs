@@ -216,7 +216,6 @@ pub type JournalRecord = BTreeMap<String, String>;
 
 /// Represents the set of journal files to read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JournalFiles {
     /// The system-wide journal.
     System,
