@@ -2,7 +2,7 @@
 name = "systemd"
 version = "0.7.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
-license = "LGPL-2.1+"
+license = "LGPL-2.1-or-later"
 description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/crate/systemd"
