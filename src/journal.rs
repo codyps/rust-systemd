@@ -299,18 +299,17 @@ pub enum JournalWaitResult {
 }
 
 impl Journal {
-    /// Open the systemd journal for reading.
+    /// Open a `Journal` corresponding to `files` for reading
     ///
-    /// Params:
+    /// If the calling process doesn't have permission to read the system journal, a call to
+    /// `Journal::open` with `System` or `All` will succeed, but system journal entries won't be
+    /// included. This behavior is due to systemd.
     ///
-    /// * files: the set of journal files to read. If the calling process
-    ///   doesn't have permission to read the system journal, a call to
-    ///   `Journal::open` with `System` or `All` will succeed, but system
-    ///   journal entries won't be included. This behavior is due to systemd.
-    /// * runtime_only: if true, include only journal entries from the current
-    ///   boot. If false, include all entries.
-    /// * local_only: if true, include only journal entries originating from
-    ///   localhost. If false, include all entries.
+    /// If `runtime_only` is true, include only journal entries from the current boot. If false,
+    /// include all entries.
+    ///
+    /// If `local_only` is true, include only journal entries originating from localhost. If false,
+    /// include all entries.
     pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
         let mut flags = files.as_flags();
         if runtime_only {
@@ -320,9 +319,11 @@ impl Journal {
             flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
         }
 
-        let mut jp = ptr::null_mut();
-        sd_try!(ffi::sd_journal_open(&mut jp, flags));
-        Ok(unsafe { Journal::from_ptr(jp) })
+        let mut jp = MaybeUninit::uninit();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_open(jp.as_mut_ptr(), flags)
+        })?;
+        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 }
 
