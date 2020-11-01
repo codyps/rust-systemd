@@ -1,6 +1,6 @@
 [package]
 name = "libsystemd-sys"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1-or-later"
 description = "FFI bindings to libsystemd and libelogind"
