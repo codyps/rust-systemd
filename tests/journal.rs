@@ -41,7 +41,7 @@ fn cursor() {
         return;
     }
 
-    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::OpenOptions::default().open().unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
@@ -54,7 +54,7 @@ fn ts() {
         return;
     }
 
-    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::OpenOptions::default().open().unwrap();
     log!(log::Level::Info, "rust-systemd test_seek entry");
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
@@ -71,7 +71,7 @@ fn ts() {
 
 #[test]
 fn test_seek() {
-    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::OpenOptions::default().open().unwrap();
     if !have_journal() {
         return;
     }
@@ -101,7 +101,7 @@ fn test_simple_match() {
     let value = "RUST_SYSTEMD_SIMPLE_MATCH";
     let msg = "MESSAGE=rust-systemd test_match";
     let filter = format!("{}={}", key, value);
-    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::OpenOptions::default().open().unwrap();
 
     // check for positive matches
 
@@ -143,7 +143,7 @@ fn get_data() {
         return;
     }
 
-    let mut j = journal::Journal::open(journal::JournalFiles::All, false, false).unwrap();
+    let mut j = journal::OpenOptions::default().open().unwrap();
     j.seek_tail().unwrap();
     journal::send(&["RUST_TEST_MARKER=1"]);
     j.match_add("RUST_TEST_MARKER", "1").unwrap();

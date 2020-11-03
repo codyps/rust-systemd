@@ -214,6 +214,10 @@ impl Iterator for JournalEntry<'a> {
 pub type JournalRecord = BTreeMap<String, String>;
 
 /// Represents the set of journal files to read.
+#[deprecated(
+    since = "0.8.0",
+    note = "Use `OpenOptions` instead. `JournalFiles` doesn't completely represent the filtering/inclusion options"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JournalFiles {
     /// The system-wide journal.
@@ -224,6 +228,7 @@ pub enum JournalFiles {
     All,
 }
 
+#[allow(deprecated)]
 impl JournalFiles {
     fn as_flags(self) -> c_int {
         match self {
@@ -298,7 +303,295 @@ pub enum JournalWaitResult {
     Invalidate,
 }
 
+/// Open a [`Journal`], using custom options.
+///
+/// This corresponds to [`sd_journal_open_namespace()`] and [`sd_journal_open()`].
+///
+/// `sd_journal_open()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
+/// `sd_journal_open_namespace()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
+///
+/// # Examples
+///
+/// ```
+/// use systemd::{Journal, journal};
+/// let _ : Journal = journal::OpenOptions::default()
+///     .current_user(true)
+///     .open().unwrap();
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct OpenOptions {
+    current_user: bool,
+    system: bool,
+    local_only: bool,
+    runtime_only: bool,
+    all_namespaces: bool,
+    include_default_namespace: bool,
+    extra_raw_flags: libc::c_int,
+}
+
+impl OpenOptions {
+    /// Open the journal files of the current user.
+    ///
+    /// If neither this nor `system` is `true`, all files will be opened.
+    ///
+    /// This corresponds to `SD_JOURNAL_CURRENT_USER`
+    pub fn current_user(&mut self, current_user: bool) -> &mut Self {
+        self.current_user = current_user;
+        self
+    }
+
+    /// Open the journal files of system services and the kernel
+    ///
+    /// If neither this nor `current_user` is `true`, all files will be opened
+    ///
+    /// This corresponds to `SD_JOURNAL_SYSTEM`
+    pub fn system(&mut self, system: bool) -> &mut Self {
+        self.system = system;
+        self
+    }
+
+    /// Only journal files generated on the local machine will be opened
+    ///
+    /// This corresponds to `SD_JOURNAL_LOCAL_ONLY`
+    pub fn local_only(&mut self, local_only: bool) -> &mut Self {
+        self.local_only = local_only;
+        self
+    }
+
+    /// Only volatile journal files will be opened, excluding those stored on persistent storage
+    ///
+    /// This corresponds to `SD_JOURNAL_RUNTIME_ONLY`
+    pub fn runtime_only(&mut self, runtime_only: bool) -> &mut Self {
+        self.runtime_only = runtime_only;
+        self
+    }
+
+    /// Access all defined namespaces simultaniously (`namespace` is ignored if this is `true`)
+    ///
+    /// This corresponds to `SD_JOURNAL_ALL_NAMESPACES`
+    pub fn all_namespaces(&mut self, all_namespaces: bool) -> &mut Self {
+        self.all_namespaces = all_namespaces;
+        self
+    }
+
+    /// The specified `namespace` and the default namespace are accessed but no others
+    ///
+    /// If `namespace` is not provided, this has no effect.
+    ///
+    /// This corresponds to `SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE`
+    pub fn include_default_namespace(&mut self, include_default_namespace: bool) -> &mut Self {
+        self.include_default_namespace = include_default_namespace;
+        self
+    }
+
+    /// Supply any additional flags to the `open*()` function
+    pub fn extra_raw_flags(&mut self, extra_raw_flags: libc::c_int) -> &mut Self {
+        self.extra_raw_flags = extra_raw_flags;
+        self
+    }
+
+    /// Open the log journal for reading. Entries included are dependent on options.
+    ///
+    /// This corresponds to [`sd_journal_open()`]
+    ///
+    /// `sd_journal_open()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
+    pub fn open(&self) -> Result<Journal> {
+        Journal::open_with_opts_ns::<&std::ffi::CStr>(None, self)
+    }
+
+    /// Open the log journal for reading in the given namespace. Entries included are dependent on
+    /// options.
+    ///
+    /// Note that some options (`SD_JOURNAL_ALL_NAMESPACES`) affect whether `namespace` is
+    /// considered. Our API doesn't check for unused data here, but users are encouraged to avoid
+    /// passing unused data by using [`OpenOptions::open()`] instead when a namespace argument is
+    /// not required.
+    ///
+    /// This corresponds to [`sd_journal_open_namespace()`]
+    ///
+    /// `sd_journal_open_namespace()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
+    pub fn open_namespace<A: CStrArgument>(&self, namespace: A) -> Result<Journal> {
+        Journal::open_with_opts_ns(Some(namespace), self)
+    }
+}
+
+/// Open a journal, sepcifying a directory
+#[derive(Clone, Debug, Default)]
+pub struct OpenDirectoryOptions {
+    os_root: bool,
+    current_user: bool,
+    system: bool,
+    extra_raw_flags: libc::c_int,
+}
+
+impl OpenDirectoryOptions {
+    /// If true, journal files are searched for below the usual `/var/log/journal` and
+    /// `/run/log/journal` relative to the specified directory instead of directly beneath it
+    pub fn os_root(&mut self, os_root: bool) -> &mut Self {
+        self.os_root = os_root;
+        self
+    }
+
+    /// Open the journal files of the current user.
+    ///
+    /// If neither this nor `system` is `true`, all files will be opened.
+    ///
+    /// This corresponds to `SD_JOURNAL_CURRENT_USER`
+    pub fn current_user(&mut self, current_user: bool) -> &mut Self {
+        self.current_user = current_user;
+        self
+    }
+
+    /// Open the journal files of system services and the kernel
+    ///
+    /// If neither this nor `current_user` is `true`, all files will be opened
+    ///
+    /// This corresponds to `SD_JOURNAL_SYSTEM`
+    pub fn system(&mut self, system: bool) -> &mut Self {
+        self.system = system;
+        self
+    }
+
+    /// Supply any additional flags to the `open*()` function
+    pub fn extra_raw_flags(&mut self, extra_raw_flags: libc::c_int) -> &mut Self {
+        self.extra_raw_flags = extra_raw_flags;
+        self
+    }
+
+    /// Open the journal corresponding to this directory path
+    pub fn open_directory<A: CStrArgument>(&self, directory: A) -> Result<Journal> {
+        Journal::open_with_opts_dir(directory, self)
+    }
+
+    /*
+    unsafe pub fn open_directory_fd<A: AsRawFd>(&self, directory: A) -> Result<Journal> {
+        todo!()
+    }
+    */
+}
+
+/// Open a journal, specifying one or more files
+///
+/// Note that when used on a live journal, files may be rotated at any time and as a result the
+/// opening of specific files is inherently racy.
+#[derive(Clone, Debug, Default)]
+pub struct OpenFilesOptions {
+    extra_raw_flags: libc::c_int,
+}
+
+impl OpenFilesOptions {
+    /// Supply any additional flags to the `open*()` function
+    ///
+    /// Note that as of writing, no flags are accepted by the underlying function in sd-journal
+    pub fn extra_raw_flags(&mut self, extra_raw_flags: libc::c_int) -> &mut Self {
+        self.extra_raw_flags = extra_raw_flags;
+        self
+    }
+
+    /// Open a journal, giving one or more paths to files
+    pub fn open_files<A: CStrArgument, I: IntoIterator<Item = A>>(
+        &self,
+        files: I,
+    ) -> Result<Journal> {
+        Journal::open_with_opts_files(files, self)
+    }
+
+    /*
+    /// Open a journal, giving one or more file descriptors referring to open files
+    unsafe pub fn open_files_fd<A: AsRawFd, I: IntoIterator<Item = A>> (
+        &self,
+        files: I,
+    ) -> Result<Journal> {
+        todo!()
+    }
+    */
+}
+
 impl Journal {
+    fn open_with_opts_ns<A: CStrArgument>(
+        namespace: Option<A>,
+        opts: &OpenOptions,
+    ) -> Result<Journal> {
+        let mut flags = opts.extra_raw_flags;
+        if opts.current_user {
+            flags |= ffi::SD_JOURNAL_CURRENT_USER;
+        }
+        if opts.system {
+            flags |= ffi::SD_JOURNAL_SYSTEM;
+        }
+        if opts.local_only {
+            flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
+        }
+        if opts.local_only {
+            flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
+        }
+        if opts.runtime_only {
+            flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
+        }
+        if opts.all_namespaces {
+            flags |= ffi::SD_JOURNAL_ALL_NAMESPACES;
+        }
+        if opts.include_default_namespace {
+            flags |= ffi::SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE;
+        }
+
+        let ns = namespace.map(|a| a.into_cstr());
+        let ns_p = ns
+            .as_ref()
+            .map(|a| a.as_ref().as_ptr())
+            .unwrap_or(ptr::null());
+        let mut jp = MaybeUninit::uninit();
+        crate::ffi_result(unsafe { ffi::sd_journal_open_namespace(jp.as_mut_ptr(), ns_p, flags) })?;
+        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
+    }
+
+    fn open_with_opts_dir<A: CStrArgument>(
+        directory: A,
+        opts: &OpenDirectoryOptions,
+    ) -> Result<Journal> {
+        let mut flags = opts.extra_raw_flags;
+        if opts.os_root {
+            flags |= ffi::SD_JOURNAL_OS_ROOT;
+        }
+        if opts.current_user {
+            flags |= ffi::SD_JOURNAL_CURRENT_USER;
+        }
+        if opts.system {
+            flags |= ffi::SD_JOURNAL_SYSTEM;
+        }
+
+        let d_path = directory.into_cstr();
+        let mut jp = MaybeUninit::uninit();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_open_directory(jp.as_mut_ptr(), d_path.as_ref().as_ptr(), flags)
+        })?;
+        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
+    }
+
+    fn open_with_opts_files<A: CStrArgument, I: IntoIterator<Item = A>>(
+        files: I,
+        opts: &OpenFilesOptions,
+    ) -> Result<Journal> {
+        let mut file_cstrs = Vec::new();
+        for i in files {
+            file_cstrs.push(i.into_cstr());
+        }
+
+        let mut file_ptrs = Vec::new();
+        for i in file_cstrs {
+            file_ptrs.push(i.as_ref().as_ptr());
+        }
+
+        file_ptrs.push(ptr::null());
+
+        let mut jp = MaybeUninit::uninit();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_open_files(jp.as_mut_ptr(), file_ptrs.as_ptr(), opts.extra_raw_flags)
+        })?;
+
+        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
+    }
+
     /// Open a `Journal` corresponding to `files` for reading
     ///
     /// If the calling process doesn't have permission to read the system journal, a call to
@@ -310,20 +603,17 @@ impl Journal {
     ///
     /// If `local_only` is true, include only journal entries originating from localhost. If false,
     /// include all entries.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Use `OpenOptions` instead. It removes the blind boolean options, and allows complete specification of the selected/filtered files"
+    )]
+    #[allow(deprecated)]
     pub fn open(files: JournalFiles, runtime_only: bool, local_only: bool) -> Result<Journal> {
-        let mut flags = files.as_flags();
-        if runtime_only {
-            flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
-        }
-        if local_only {
-            flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
-        }
-
-        let mut jp = MaybeUninit::uninit();
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_open(jp.as_mut_ptr(), flags)
-        })?;
-        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
+        OpenOptions::default()
+            .extra_raw_flags(files.as_flags())
+            .local_only(local_only)
+            .runtime_only(runtime_only)
+            .open()
     }
 }
 

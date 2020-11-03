@@ -9,9 +9,10 @@ extern crate enumflags2_derive;
 */
 
 #[cfg(feature = "journal")]
-pub use journal::{
-    Journal, JournalFiles, JournalLog, JournalRecord, JournalSeek, JournalWaitResult,
-};
+#[allow(deprecated)]
+pub use journal::JournalFiles;
+#[cfg(feature = "journal")]
+pub use journal::{Journal, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Error, Result};
 
