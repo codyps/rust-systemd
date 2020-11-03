@@ -3,7 +3,7 @@
 #[cfg(feature = "journal")]
 mod x {
     //! Follow future journal log messages and print up to 100 of them.
-    use systemd::journal::{Journal, JournalFiles, JournalSeek};
+    use systemd::journal::{self, JournalSeek};
 
     const KEY_UNIT: &str = "_SYSTEMD_UNIT";
     const KEY_MESSAGE: &str = "MESSAGE";
@@ -14,9 +14,8 @@ mod x {
         println!("Starting journal-logger");
 
         // Open the journal
-        let runtime_only = false;
-        let local_only = false;
-        let mut reader = Journal::open(JournalFiles::All, runtime_only, local_only)
+        let mut reader = journal::OpenOptions::default()
+            .open()
             .expect("Could not open journal");
 
         // Seek to end of current log to prevent old messages from being printed

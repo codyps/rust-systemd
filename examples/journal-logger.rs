@@ -5,7 +5,7 @@ mod x {
     //! Follow future journal log messages and print up to 100 of them.
     use std::io::ErrorKind;
 
-    use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
+    use systemd::journal::{self, JournalRecord, JournalSeek};
     use systemd::Error;
 
     const KEY_UNIT: &str = "_SYSTEMD_UNIT";
@@ -17,9 +17,8 @@ mod x {
         println!("Starting journal-logger");
 
         // Open the journal
-        let runtime_only = false;
-        let local_only = false;
-        let mut reader = Journal::open(JournalFiles::All, runtime_only, local_only)
+        let mut reader = journal::OpenOptions::default()
+            .open()
             .expect("Could not open journal");
 
         // Seek to end of current log to prevent old messages from being printed
