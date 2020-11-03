@@ -1,0 +1,40 @@
+on:
+  push:
+    branches-ignore:
+      - '**.tmp'
+
+name: features
+
+jobs:
+  features:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: beta
+          override: true
+
+      - name: Install libsystemd-dev
+        run: sudo apt-get install libsystemd-dev
+
+      - name: Check with no-default-features
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all --no-default-features
+
+      - name: Check with only bus
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all --no-default-features --features bus
+
+      - name: Check with only journal
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all --no-default-features --features journal
