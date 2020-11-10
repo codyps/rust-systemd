@@ -79,7 +79,17 @@ fn test_get_session() {
     match has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
         true => {
-            ss.unwrap();
+            // even in this case, we might get a "no data avaliable" (github actions runners return
+            // this)
+            match ss {
+                Err(e) => {
+                    match e.raw_os_error() {
+                        Some(libc::ENODATA) => { /* ok */ }
+                        _ => panic!(e),
+                    }
+                }
+                _ => { /* ok */ }
+            }
         }
         // Nothing meaningful to check here
         false => {}
