@@ -55,9 +55,8 @@ functionality) wrapper around the read API.
 An example of the journal writing api:
 
 ```rust
-#[macro_use] extern crate log;
-#[macro_use] extern crate systemd;
-use systemd::journal;
+use log::warn;
+use systemd::{journal, sd_journal_log};
 
 fn main() {
    use systemd::journal;
