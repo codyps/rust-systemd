@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "cstr-argument",
  "doc-comment",
