@@ -25,6 +25,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v1
+
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
       - name: Install libsystemd-dev
