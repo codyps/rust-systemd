@@ -29,6 +29,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "doc-comment"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -186,6 +192,7 @@ name = "systemd"
 version = "0.7.1"
 dependencies = [
  "cstr-argument",
+ "doc-comment",
  "foreign-types",
  "libc",
  "libsystemd-sys",

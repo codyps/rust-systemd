@@ -31,6 +31,7 @@ version = "0.7"
 
 [dev-dependencies]
 version-sync = "0.9.1"
+doc-comment = "0.3"
 
 [profile.release]
 debug = true
