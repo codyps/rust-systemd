@@ -118,6 +118,7 @@ fn test_simple_match() {
 
             waits += 1;
             j.wait(Some(std::time::Duration::from_secs(1))).unwrap();
+            continue;
         }
 
         let entryval = j.get_data(key).unwrap();
