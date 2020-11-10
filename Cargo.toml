@@ -1,6 +1,6 @@
 [package]
 name = "systemd"
-version = "0.7.1"
+version = "0.8.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1-or-later WITH GCC-exception-2.0"
 description = "A rust interface to libsystemd/libelogind provided APIs"
@@ -27,7 +27,7 @@ foreign-types = "0.5.0"
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
-version = "0.7"
+version = "0.8"
 
 [dev-dependencies]
 version-sync = "0.9.1"
