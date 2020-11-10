@@ -31,8 +31,9 @@ libraries to link against. Libraries in the variable `SYSTEMD_LIBS` are colon
 elogind support
 ---------------
 
-Either set `SYSTEMD_PKG_NAME=elogind` or set both `SYSTEMD_LIBS=elogind` and
-set `SYSTEMD_LIB_DIR` to the appropriate directory.
+Either set `SYSTEMD_PKG_NAME=libelogind` (name of the pkg-config file) or set
+both `SYSTEMD_LIBS=elogind` and set `SYSTEMD_LIB_DIR` to the appropriate
+directory.
 
 When using elogind, the apis needed for `journal` and `bus` features may not be completely
 avaliable (elogind forked from an older version of systemd that may lack some
