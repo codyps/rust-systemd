@@ -109,9 +109,15 @@ fn test_simple_match() {
     j.seek(journal::JournalSeek::Tail).unwrap();
     journal::send(&[&filter, &msg]);
     j.match_add(key, value).unwrap();
+    let mut waits = 0;
     loop {
         if j.next().unwrap() == 0 {
-            panic!("got to end of journal without finding our entry");
+            if waits > 5 {
+                panic!("got to end of journal without finding our entry");
+            }
+
+            waits += 1;
+            j.wait(Some(std::time::Duration::from_secs(1))).unwrap();
         }
 
         let entryval = j.get_data(key).unwrap();
