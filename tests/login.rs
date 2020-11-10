@@ -78,7 +78,9 @@ fn test_get_session() {
     assert!(has_systemd.is_ok());
     match has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
-        true => assert!(ss.is_ok()),
+        true => {
+            ss.unwrap();
+        }
         // Nothing meaningful to check here
         false => {}
     };
