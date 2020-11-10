@@ -36,7 +36,9 @@ fn test_get_slice() {
         // This is running in a system slice, and perhaps
         // in an user one too
         true => {
-            assert!(ss.is_ok() || us.is_ok());
+            if !ss.is_ok() && !us.is_ok() {
+                panic!("ss: {:?}, us: {:?}", ss, us);
+            }
         }
     };
 }
@@ -89,7 +91,7 @@ fn test_get_owner_uid() {
     assert!(has_systemd.is_ok());
     match has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
-        true => assert!(ou.is_ok()),
+        true => { ou.unwrap(); },
         // Nothing meaningful to check here
         false => {}
     };
