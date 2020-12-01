@@ -578,7 +578,7 @@ impl Journal {
         }
 
         let mut file_ptrs = Vec::new();
-        for i in file_cstrs {
+        for i in &file_cstrs {
             file_ptrs.push(i.as_ref().as_ptr());
         }
 
