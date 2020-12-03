@@ -1818,7 +1818,7 @@ impl MessageRef {
     ///
     /// Requires that message is sealed.
     #[inline]
-    pub fn iter<'a>(&'a mut self) -> crate::Result<MessageIter<'a>> {
+    pub fn iter(&mut self) -> crate::Result<MessageIter<'_>> {
         /* probe the `Message` to check if we can iterate on it */
         sd_try!(ffi::bus::sd_bus_message_peek_type(
             self.as_ptr(),
