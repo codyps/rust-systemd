@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.85"
+version = "0.2.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ccac4b00700875e6a07c6cde370d44d32fa01c5a65cdd2fca6858c479d28bb3"
+checksum = "265d751d31d6780a3f956bb5b8022feba2d94eeee5a84ba64f4212eedca42213"
 
 [[package]]
 name = "libsystemd-sys"
