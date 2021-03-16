@@ -34,7 +34,7 @@ pub enum Listening {
 }
 
 /// Number of the first passed file descriptor
-pub const LISTEN_FDS_START: Fd = 3;
+const LISTEN_FDS_START: Fd = 3;
 
 /// Tells systemd whether daemon startup is finished
 pub const STATE_READY: &str = "READY";
@@ -64,18 +64,70 @@ pub const STATE_FDSTOREREMOVE: &str = "FDSTOREREMOVE";
 /// Name the group of file descriptors sent to the service manager.
 pub const STATE_FDNAME: &str = "FDNAME";
 
-/// Returns how many file descriptors have been passed. Removes the
+/// Represents the result returned by the socket dameon's sd_listen_fds
+#[derive(Debug)]
+pub struct ListenFds {
+    num_fds: c_int,
+}
+
+impl ListenFds {
+    // Constructs a new set from the number of file_descriptors
+    fn new(unset_environment: bool) -> Result<Self> {
+        // in order to use rust's locking of the environment, do the env var unsetting ourselves
+        let num_fds = sd_try!(ffi::sd_listen_fds(0));
+        if unset_environment {
+            env::remove_var("LISTEN_FDS");
+            env::remove_var("LISTEN_PID");
+            env::remove_var("LISTEN_FDNAMES");
+        }
+        Ok(Self { num_fds })
+    }
+
+    /// Returns the total number of file descriptors represented by the range
+    pub fn len(&self) -> c_int {
+        self.num_fds
+    }
+
+    /// Returns if no file descriptors were returned
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns an iterable range over the returned file descriptors
+    pub fn iter(&self) -> ListenFdsRange {
+        ListenFdsRange {
+            current: 0,
+            num_fds: self.num_fds,
+        }
+    }
+}
+
+/// Provides an iterable range over the passed file descriptors.
+#[derive(Clone, Debug)]
+pub struct ListenFdsRange {
+    current: c_int,
+    num_fds: c_int,
+}
+
+impl Iterator for ListenFdsRange {
+    type Item = Fd;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.num_fds {
+            let fd = LISTEN_FDS_START + self.current;
+            self.current += 1;
+            Some(fd)
+        } else {
+            None
+        }
+    }
+}
+
+/// Returns a struct that can iterate over the passed file descriptors.  Removes the
 /// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
 /// `unset_environment` is `true`
-pub fn listen_fds(unset_environment: bool) -> Result<Fd> {
-    // in order to use rust's locking of the environment, do the env var unsetting ourselves
-    let fds = sd_try!(ffi::sd_listen_fds(0));
-    if unset_environment {
-        env::remove_var("LISTEN_FDS");
-        env::remove_var("LISTEN_PID");
-        env::remove_var("LISTEN_FDNAMES");
-    }
-    Ok(fds)
+pub fn listen_fds(unset_environment: bool) -> Result<ListenFds> {
+    ListenFds::new(unset_environment)
 }
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is

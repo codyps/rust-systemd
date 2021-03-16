@@ -4,7 +4,7 @@ use systemd::daemon;
 
 #[test]
 fn test_listen_fds() {
-    assert_eq!(daemon::listen_fds(false).ok().unwrap(), 0);
+    assert!(daemon::listen_fds(false).ok().unwrap().is_empty());
 }
 
 #[test]
