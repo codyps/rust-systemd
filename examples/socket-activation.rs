@@ -39,12 +39,12 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let lfds = daemon::listen_fds(false).unwrap_or(0);
-    if lfds != 1 {
-        panic!("Must have exactly 1 fd to listen on, got {}", lfds);
+    let lfds = daemon::listen_fds(false)?;
+    if lfds.len() != 1 {
+        panic!("Must have exactly 1 fd to listen on, got {}", lfds.len());
     }
 
-    let listener = daemon::tcp_listener(daemon::LISTEN_FDS_START).unwrap();
+    let listener = daemon::tcp_listener(lfds.iter().next().unwrap()).unwrap();
 
     // accept connections and process them serially
     for stream in listener.incoming() {
