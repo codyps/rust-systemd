@@ -5,7 +5,7 @@
 
 #![warn(rust_2018_idioms)]
 
-pub use libc::{clockid_t, gid_t, pid_t, siginfo_t, signalfd_siginfo, size_t, uid_t};
+pub use libc::{clockid_t, gid_t, iovec, pid_t, siginfo_t, signalfd_siginfo, size_t, uid_t};
 pub use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 pub mod daemon;
@@ -15,25 +15,28 @@ pub mod id128;
 pub mod journal;
 pub mod login;
 
-#[repr(C)]
-pub struct iovec {
-    pub iov_base: *mut c_void,
-    pub iov_len: size_t,
-}
-
+/// Helper type to mark functions systemd functions that promise not to modify the underying iovec
+/// data.  There is no corresponding type in libc, so their function signatures take *const iovec,
+/// which technically allow iov_base to be modified.  However, const_iovec provides the same ABI, so
+/// it can be used to make the function interface easier to work with.
 #[repr(C)]
 pub struct const_iovec {
     pub iov_base: *const c_void,
     pub iov_len: size_t,
 }
 
-pub fn array_to_iovecs(args: &[&str]) -> Vec<const_iovec> {
-    args.iter()
-        .map(|d| const_iovec {
-            iov_base: d.as_ptr() as *const c_void,
-            iov_len: d.len() as size_t,
-        })
-        .collect()
+impl const_iovec {
+    /// Unsafe because it holds onto a pointer to the data which is passed in.  The caller must
+    /// guarantee the lifetime of the underlying data.
+    pub unsafe fn from_str<T>(arg: T) -> Self
+    where
+        T: AsRef<str>,
+    {
+        const_iovec {
+            iov_base: arg.as_ref().as_ptr() as *const c_void,
+            iov_len: arg.as_ref().len() as size_t,
+        }
+    }
 }
 
 #[cfg(feature = "bus")]
