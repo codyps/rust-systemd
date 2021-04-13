@@ -58,9 +58,27 @@ impl Id128 {
         Ok(r)
     }
 
+    pub fn from_machine_app_specific(app_id: &Id128) -> Result<Id128> {
+        let mut r = Id128::default();
+        sd_try!(ffi::id128::sd_id128_get_machine_app_specific(
+            *app_id.as_raw(),
+            &mut r.inner
+        ));
+        Ok(r)
+    }
+
     pub fn from_boot() -> Result<Id128> {
         let mut r = Id128::default();
         sd_try!(ffi::id128::sd_id128_get_boot(&mut r.inner));
+        Ok(r)
+    }
+
+    pub fn from_boot_app_specific(app_id: &Id128) -> Result<Id128> {
+        let mut r = Id128::default();
+        sd_try!(ffi::id128::sd_id128_get_boot_app_specific(
+            *app_id.as_raw(),
+            &mut r.inner
+        ));
         Ok(r)
     }
 
