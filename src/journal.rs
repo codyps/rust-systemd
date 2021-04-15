@@ -1,5 +1,5 @@
 use super::{free_cstring, usec_from_duration, Result};
-use crate::ffi::array_to_iovecs;
+use crate::ffi::const_iovec;
 use crate::ffi::journal as ffi;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
@@ -17,13 +17,25 @@ use std::os::unix::io::AsRawFd;
 use std::u64;
 use std::{fmt, io, ptr, result, slice, time};
 
+fn collect_and_send<T, S>(args: T) -> c_int
+where
+    T: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let iovecs: Vec<const_iovec> = args
+        // SAFETY: we manually guarantee that the lifetime of const_iovec does not exceed that of
+        // the data it's referencing in order to avoid additional allocations.
+        .map(|x| unsafe { const_iovec::from_str(x) })
+        .collect();
+    unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+}
+
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
 pub fn send(args: &[&str]) -> c_int {
-    let iovecs = array_to_iovecs(args);
-    unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+    collect_and_send(args.iter())
 }
 
 /// Send a simple message to systemd-journald.
@@ -42,6 +54,17 @@ enum SyslogLevel {
     Debug = 7,
 }
 
+impl From<log::Level> for SyslogLevel {
+    fn from(level: log::Level) -> Self {
+        match level {
+            Level::Error => SyslogLevel::Err,
+            Level::Warn => SyslogLevel::Warning,
+            Level::Info => SyslogLevel::Info,
+            Level::Debug | Level::Trace => SyslogLevel::Debug,
+        }
+    }
+}
+
 /// Record a log entry, with custom priority and location.
 pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
     send(&[
@@ -55,31 +78,20 @@ pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::A
 
 /// Send a `log::Record` to systemd-journald.
 pub fn log_record(record: &Record<'_>) {
-    let lvl = match record.level() {
-        Level::Error => SyslogLevel::Err,
-        Level::Warn => SyslogLevel::Warning,
-        Level::Info => SyslogLevel::Info,
-        Level::Debug | Level::Trace => SyslogLevel::Debug,
-    } as usize;
-
-    let mut keys = vec![
-        format!("PRIORITY={}", lvl),
+    let keys = [
+        format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
         format!("MESSAGE={}", record.args()),
         format!("TARGET={}", record.target()),
     ];
+    let opt_keys = [
+        record.line().map(|line| format!("CODE_LINE={}", line)),
+        record.file().map(|file| format!("CODE_FILE={}", file)),
+        record
+            .module_path()
+            .map(|path| format!("CODE_FUNC={}", path)),
+    ];
 
-    if let Some(line) = record.line() {
-        keys.push(format!("CODE_LINE={}", line))
-    }
-    if let Some(file) = record.file() {
-        keys.push(format!("CODE_FILE={}", file))
-    }
-    if let Some(module_path) = record.module_path() {
-        keys.push(format!("CODE_FUNCTION={}", module_path))
-    }
-
-    let str_keys = keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
-    send(&str_keys);
+    collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
 }
 
 /// Logger implementation over systemd-journald.

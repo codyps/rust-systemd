@@ -1,8 +1,7 @@
 #![allow(non_camel_case_types)]
 
-use super::const_iovec;
 use super::size_t;
-use super::{c_char, c_int, c_void};
+use super::{c_char, c_int, c_void, const_iovec};
 
 pub const SD_JOURNAL_LOCAL_ONLY: c_int = 1 << 0;
 pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 1 << 1;
