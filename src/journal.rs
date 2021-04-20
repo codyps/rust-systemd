@@ -191,37 +191,6 @@ impl<'a> From<&'a [u8]> for JournalEntryField<'a> {
     }
 }
 
-/*
-impl Iterator for JournalEntry<'a> {
-    type Item = Result<JournalEntryEntry<'a>>;
-
-    pub fn next(&mut self) -> Option<Self::Item> {
-        let r = crate::ffi_result(unsafe { ffi::sd_journal_enumerate_data(
-            self.as_ptr(),
-            &mut data,
-            &mut sz)});
-
-        let v = match r {
-            Err(e) => return Some(Err(e)),
-            Ok(v) => v,
-        };
-
-        if v == 0 {
-            return None;
-        }
-
-        // WARNING: slice is only valid until next call to one of `sd_journal_enumerate_data`,
-        // `sd_journal_get_data`, or `sd_journal_enumerate_avaliable_data`.
-        let b = unsafe { std::slice::from_raw_parts(data, sz as usize) };
-        let field = String::from_utf8_lossy(b);
-        let mut name_value = field.splitn(2, '=');
-        let name = name_value.next().unwrap();
-        let value = name_value.next().unwrap();
-        }
-    }
-}
-*/
-
 // A single log entry from journal.
 pub type JournalRecord = BTreeMap<String, String>;
 
@@ -266,13 +235,11 @@ impl<'a> fmt::Display for DisplayEntryData<'a> {
         writeln!(fmt, "{{")?;
 
         let mut j = self.journal.borrow_mut();
-        j.restart_data();
-        loop {
-            match j.enumerate_data() {
-                Ok(Some(v)) => {
+        for field in j.entry().restart().iter() {
+            match field {
+                Ok(v) => {
                     writeln!(fmt, " \"{}\",", std::str::from_utf8(v.data()).unwrap())?;
                 }
-                Ok(None) => break,
                 Err(e) => {
                     writeln!(fmt, "E: {:?}", e)?;
                     break;
@@ -682,23 +649,7 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_get_data()`.
     pub fn get_data<A: CStrArgument>(&mut self, field: A) -> Result<Option<JournalEntryField<'_>>> {
-        let mut data = MaybeUninit::uninit();
-        let mut data_len = MaybeUninit::uninit();
-        let f = field.into_cstr();
-        match crate::ffi_result(unsafe {
-            ffi::sd_journal_get_data(
-                self.as_ptr(),
-                f.as_ref().as_ptr(),
-                data.as_mut_ptr(),
-                data_len.as_mut_ptr(),
-            )
-        }) {
-            Ok(_) => Ok(Some(
-                unsafe { slice::from_raw_parts(data.assume_init(), data_len.assume_init()) }.into(),
-            )),
-            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
-        }
+        self.entry().get(field)
     }
 
     /// Restart the iteration done by [`enumerate_data()`] and [`enumerate_avaliable_data()`] over
@@ -713,31 +664,17 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_enumerate_data()`
     pub fn enumerate_data(&mut self) -> Result<Option<JournalEntryField<'_>>> {
-        let mut data = MaybeUninit::uninit();
-        let mut data_len = MaybeUninit::uninit();
-        let r = crate::ffi_result(unsafe {
-            ffi::sd_journal_enumerate_data(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
-        });
-
-        let v = match r {
-            Err(e) => return Err(e),
-            Ok(v) => v,
-        };
-
-        if v == 0 {
-            return Ok(None);
-        }
-
-        // WARNING: slice is only valid until next call to one of `sd_journal_enumerate_data`,
-        // `sd_journal_get_data`, or `sd_journal_enumerate_avaliable_data`. This invariant is
-        // maintained by our use of `&mut` above.
-        let b = unsafe { std::slice::from_raw_parts(data.assume_init(), data_len.assume_init()) };
-        Ok(Some(b.into()))
+        self.entry().next_field()
     }
 
-    /// Obtain a display-able that display's the current entrie's fields
+    /// Obtain a display-able that display's the current entry's fields
     pub fn display_entry_data(&mut self) -> DisplayEntryData<'_> {
         self.into()
+    }
+
+    /// Returns an a struct that is iterable
+    pub fn entry(&mut self) -> JournalEntry<'_> {
+        JournalEntry { journal: self }
     }
 
     /// Collect all fields of the current journal entry into a map
@@ -747,18 +684,7 @@ impl JournalRef {
     /// This allocates/copies a lot of data. Consider using [`enumerate_data()`], etc, directly if
     /// your use case doesn't require obtaining a copy of all fields.
     fn collect_entry(&mut self) -> Result<JournalRecord> {
-        let mut ret: JournalRecord = BTreeMap::new();
-
-        self.restart_data();
-
-        while let Some(d) = self.enumerate_data()? {
-            ret.insert(
-                String::from_utf8_lossy(d.name()).into(),
-                String::from_utf8_lossy(d.value().unwrap()).into(),
-            );
-        }
-
-        Ok(ret)
+        self.entry().restart().collect()
     }
 
     /// Iterate over journal entries.
@@ -1025,5 +951,123 @@ impl AsRawFd for JournalRef {
     #[inline]
     fn as_raw_fd(&self) -> c_int {
         self.fd().unwrap()
+    }
+}
+
+pub struct JournalEntry<'a> {
+    journal: &'a mut JournalRef,
+}
+
+impl<'a> JournalEntry<'a> {
+    /// Restart the iteration done by [`next()`] and [`enumerate_avaliable_data()`] over
+    /// fields of the current entry.
+    ///
+    /// Corresponds to `sd_journal_restart_data()`
+    pub fn restart(&mut self) -> &mut Self {
+        self.journal.restart_data();
+        self
+    }
+
+    /// Obtain the next data
+    ///
+    /// Corresponds to `sd_journal_enumerate_data()`
+    pub fn next_field(&mut self) -> Result<Option<JournalEntryField<'a>>> {
+        let mut data = MaybeUninit::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let r = crate::ffi_result(unsafe {
+            ffi::sd_journal_enumerate_data(
+                self.journal.as_ptr(),
+                data.as_mut_ptr(),
+                data_len.as_mut_ptr(),
+            )
+        });
+
+        let v = match r {
+            Err(e) => return Err(e),
+            Ok(v) => v,
+        };
+
+        if v == 0 {
+            return Ok(None);
+        }
+
+        // WARNING: slice is only valid until next call to one of `sd_journal_enumerate_data`,
+        // `sd_journal_get_data`, or `sd_journal_enumerate_unique`. This invariant is maintained by
+        // our use of `&mut` above.
+        let b = unsafe { std::slice::from_raw_parts(data.assume_init(), data_len.assume_init()) };
+        Ok(Some(b.into()))
+    }
+
+    /// Collect all remaining fields of the current journal entry into a map
+    ///
+    /// A convenience wrapper around [`next_field()`].  This *doesn't* restart from the beginning of
+    /// the entry, so prior calls to [`get()`] or [`next_field()`] will affect its output.
+    ///
+    /// This allocates/copies a lot of data. Consider using [`enumerate_data()`], etc, directly if
+    /// your use case doesn't require obtaining a copy of all fields.
+    fn collect(&mut self) -> Result<JournalRecord> {
+        self.iter()
+            .map(|result| {
+                let field = result?;
+                Ok((
+                    String::from_utf8_lossy(field.name()).into(),
+                    String::from_utf8_lossy(field.value().unwrap_or(&[])).into(),
+                ))
+            })
+            .collect::<Result<JournalRecord>>()
+    }
+
+    /// Get the data associated with a particular field from the current journal entry
+    ///
+    /// Note that this may be affected by the current data threshold, see `data_threshold()` and
+    /// `set_data_threshold()`.
+    ///
+    /// Note: the use of `&mut` here is because calls to some (though not all) other journal
+    /// functions can invalidate the reference returned within [`JournalEntryField`]. In particular:
+    /// any other obtaining of data (enumerate, etc) or any adjustment of the read pointer
+    /// (seeking, etc) invalidates the returned reference.
+    ///
+    /// Corresponds to `sd_journal_get_data()`.
+    pub fn get<A: CStrArgument>(&mut self, field: A) -> Result<Option<JournalEntryField<'a>>> {
+        let mut data = MaybeUninit::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let f = field.into_cstr();
+        match crate::ffi_result(unsafe {
+            ffi::sd_journal_get_data(
+                self.journal.as_ptr(),
+                f.as_ref().as_ptr(),
+                data.as_mut_ptr(),
+                data_len.as_mut_ptr(),
+            )
+        }) {
+            Ok(_) => Ok(Some(
+                unsafe { slice::from_raw_parts(data.assume_init(), data_len.assume_init()) }.into(),
+            )),
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Returns an iterable struct that can be used to walk through all of the fields provided by
+    /// `sd_journal_enumerate_data`.  It *doesn't* restart the data.
+    pub fn iter(&mut self) -> EntryIter<'a, '_> {
+        EntryIter { entry: self }
+    }
+}
+
+/// An iterable struct that can be used to walk through all of the fields provided by
+/// `sd_journal_enumerate_data`.
+///
+/// Iterator is implemented for [`EntryIter`], rather than [`JournalEntry`], to allow for
+/// different types of iteration, like `sd_journal_enumerate_unique`.
+pub struct EntryIter<'a, 'b> {
+    entry: &'b mut JournalEntry<'a>,
+}
+
+impl<'a, 'b> Iterator for EntryIter<'a, 'b> {
+    type Item = Result<JournalEntryField<'a>>;
+
+    fn next(&mut self) -> Option<Result<JournalEntryField<'a>>> {
+        self.entry.next_field().transpose()
     }
 }
