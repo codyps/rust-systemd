@@ -5,7 +5,8 @@ authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1-or-later WITH GCC-exception-2.0"
 description = "FFI bindings to libsystemd and libelogind"
 repository = "https://github.com/jmesmon/rust-systemd"
-include = ["Cargo.toml", "**/*.rs", "build.rs" ]
+include = ["Cargo.toml", "**/*.rs", "build.rs", "COPYING", "README.md"]
+readme = "README.md"
 documentation = "https://docs.rs/crates/libsystemd-sys"
 edition = "2018"
 
