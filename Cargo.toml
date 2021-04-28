@@ -6,7 +6,8 @@ license = "LGPL-2.1-or-later WITH GCC-exception-2.0"
 description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/jmesmon/rust-systemd"
 documentation = "https://docs.rs/crate/systemd"
-include = ["Cargo.toml", "src/**/*.rs", "README.md" ]
+include = ["Cargo.toml", "src/**/*.rs", "COPYING", "README.md"]
+readme = "README.md"
 edition = "2018"
 
 [features]
