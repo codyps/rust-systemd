@@ -26,6 +26,7 @@ extern "C" {
     // (we don't need to do c-style format strings)
 
     pub fn sd_journal_open(ret: *mut *mut sd_journal, flags: c_int) -> c_int;
+    #[cfg(feature = "systemd_v245")]
     pub fn sd_journal_open_namespace(
         ret: *mut *mut sd_journal,
         namespace: *const c_char,

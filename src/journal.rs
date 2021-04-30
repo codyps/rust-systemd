@@ -408,7 +408,7 @@ impl OpenOptions {
     ///
     /// `sd_journal_open()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
     pub fn open(&self) -> Result<Journal> {
-        Journal::open_with_opts_ns::<&std::ffi::CStr>(None, self)
+        Journal::open_with_opts::<&std::ffi::CStr>(self)
     }
 
     /// Open the log journal for reading in the given namespace. Entries included are dependent on
@@ -422,6 +422,8 @@ impl OpenOptions {
     /// This corresponds to [`sd_journal_open_namespace()`]
     ///
     /// `sd_journal_open_namespace()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
+    #[cfg(feature = "systemd_v245")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "systemd_v245")))]
     pub fn open_namespace<A: CStrArgument>(&self, namespace: A) -> Result<Journal> {
         Journal::open_with_opts_ns(Some(namespace), self)
     }
@@ -520,6 +522,36 @@ impl OpenFilesOptions {
 }
 
 impl Journal {
+    fn open_with_opts<A: CStrArgument>(opts: &OpenOptions) -> Result<Journal> {
+        let mut flags = opts.extra_raw_flags;
+        if opts.current_user {
+            flags |= ffi::SD_JOURNAL_CURRENT_USER;
+        }
+        if opts.system {
+            flags |= ffi::SD_JOURNAL_SYSTEM;
+        }
+        if opts.local_only {
+            flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
+        }
+        if opts.local_only {
+            flags |= ffi::SD_JOURNAL_LOCAL_ONLY;
+        }
+        if opts.runtime_only {
+            flags |= ffi::SD_JOURNAL_RUNTIME_ONLY;
+        }
+        if opts.all_namespaces {
+            flags |= ffi::SD_JOURNAL_ALL_NAMESPACES;
+        }
+        if opts.include_default_namespace {
+            flags |= ffi::SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE;
+        }
+
+        let mut jp = MaybeUninit::uninit();
+        crate::ffi_result(unsafe { ffi::sd_journal_open(jp.as_mut_ptr(), flags) })?;
+        Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
+    }
+
+    #[cfg(feature = "systemd_v245")]
     fn open_with_opts_ns<A: CStrArgument>(
         namespace: Option<A>,
         opts: &OpenOptions,
