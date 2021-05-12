@@ -214,6 +214,7 @@ dependencies = [
  "libsystemd-sys",
  "log",
  "memchr",
+ "serde",
  "utf8-cstr",
  "version-sync",
 ]

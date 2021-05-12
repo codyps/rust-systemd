@@ -39,6 +39,27 @@ impl Default for Id128 {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Id128 {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Id128 {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let cstr: Box<CStr> = serde::Deserialize::deserialize(deserializer)?;
+        Id128::from_cstr(&cstr).map_err(serde::de::Error::custom)
+    }
+}
+
 impl Id128 {
     pub fn from_cstr(s: &CStr) -> Result<Id128> {
         let mut r = Id128::default();
