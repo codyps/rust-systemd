@@ -110,3 +110,6 @@ pub mod login;
 ///
 #[cfg(feature = "bus")]
 pub mod bus;
+
+/// Utilities for working with systemd units.
+pub mod unit;
