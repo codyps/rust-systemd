@@ -73,7 +73,7 @@ pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::A
         &format!("MESSAGE={}", args),
         &format!("CODE_LINE={}", line),
         &format!("CODE_FILE={}", file),
-        &format!("CODE_FUNCTION={}", module_path),
+        &format!("CODE_MODULE={}", module_path),
     ]);
 }
 
