@@ -13,12 +13,6 @@ edition = "2018"
 [features]
 default = ["bus", "journal"]
 
-full = [
-  "bus",
-  "journal",
-  "systemd_v245"
-]
-
 bus = ["libsystemd-sys/bus"]
 journal = ["libsystemd-sys/journal"]
 systemd_v245 = ["libsystemd-sys/systemd_v245"]
