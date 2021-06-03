@@ -49,7 +49,7 @@ enum SyslogLevel {
     // Crit = 2,
     Err = 3,
     Warning = 4,
-    // Notice = 5,
+    Notice = 5,
     Info = 6,
     Debug = 7,
 }
@@ -59,8 +59,9 @@ impl From<log::Level> for SyslogLevel {
         match level {
             Level::Error => SyslogLevel::Err,
             Level::Warn => SyslogLevel::Warning,
-            Level::Info => SyslogLevel::Info,
-            Level::Debug | Level::Trace => SyslogLevel::Debug,
+            Level::Info => SyslogLevel::Notice,
+            Level::Debug => SyslogLevel::Info,
+            Level::Trace => SyslogLevel::Debug,
         }
     }
 }
@@ -72,7 +73,7 @@ pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::A
         &format!("MESSAGE={}", args),
         &format!("CODE_LINE={}", line),
         &format!("CODE_FILE={}", file),
-        &format!("CODE_FUNCTION={}", module_path),
+        &format!("CODE_MODULE={}", module_path),
     ]);
 }
 
