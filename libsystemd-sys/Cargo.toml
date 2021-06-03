@@ -17,6 +17,7 @@ default = ["bus", "journal"]
 
 bus = []
 journal = []
+systemd_v245 = []
 
 [dependencies]
 libc = "0.2.76"

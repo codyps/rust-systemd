@@ -15,6 +15,7 @@ default = ["bus", "journal"]
 
 bus = ["libsystemd-sys/bus"]
 journal = ["libsystemd-sys/journal"]
+systemd_v245 = ["libsystemd-sys/systemd_v245"]
 
 [dependencies]
 log = "~0.4"
@@ -37,3 +38,7 @@ doc-comment = "0.3"
 
 [profile.release]
 debug = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
