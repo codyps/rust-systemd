@@ -1,0 +1,2 @@
+tag-name = "{{prefix}}{{version}}"
+disable-push = true

@@ -26,8 +26,11 @@ pub struct const_iovec {
 }
 
 impl const_iovec {
-    /// Unsafe because it holds onto a pointer to the data which is passed in.  The caller must
-    /// guarantee the lifetime of the underlying data.
+    ///
+    /// # Safety
+    ///
+    /// Lifetime of `arg` must be long enough to cover future dereferences of the internal
+    /// `Self::iov_base` pointer.
     pub unsafe fn from_str<T>(arg: T) -> Self
     where
         T: AsRef<str>,

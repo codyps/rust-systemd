@@ -42,3 +42,9 @@ debug = true
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[workspace]
+members = ["libsystemd-sys"]
+
+[package.metadata.release]
+tag-prefix = "systemd-"

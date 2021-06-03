@@ -1,7 +1,9 @@
 on:
   push:
-    branches-ignore:
-      - '**.tmp'
+    branches:
+      - 'master'
+      - 'staging'
+      - 'trying'
   pull_request:
 
 name: build
