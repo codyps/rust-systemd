@@ -1,4 +1,4 @@
-use super::const_iovec;
+use super::ConstIovec;
 use super::event::sd_event;
 use super::id128::sd_id128_t;
 use super::{c_char, c_int, c_uint, c_void, gid_t, pid_t, size_t, uid_t};
@@ -439,7 +439,7 @@ extern "C" {
     pub fn sd_bus_message_append_array_iovec(
         m: *mut sd_bus_message,
         typ: c_char,
-        iov: *const const_iovec,
+        iov: *const ConstIovec,
         n: c_uint,
     ) -> c_int;
     pub fn sd_bus_message_append_array_memfd(
@@ -456,7 +456,7 @@ extern "C" {
     ) -> c_int;
     pub fn sd_bus_message_append_string_iovec(
         m: *mut sd_bus_message,
-        iov: *const const_iovec,
+        iov: *const ConstIovec,
         n: c_uint,
     ) -> c_int;
     pub fn sd_bus_message_append_string_memfd(

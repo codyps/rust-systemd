@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 
 use super::size_t;
-use super::{c_char, c_int, c_void, const_iovec};
+use super::{c_char, c_int, c_void, ConstIovec};
 
 pub const SD_JOURNAL_LOCAL_ONLY: c_int = 1 << 0;
 pub const SD_JOURNAL_RUNTIME_ONLY: c_int = 1 << 1;
@@ -21,7 +21,7 @@ pub enum sd_journal {}
 
 extern "C" {
     // sd-journal
-    pub fn sd_journal_sendv(iv: *const const_iovec, n: c_int) -> c_int;
+    pub fn sd_journal_sendv(iv: *const ConstIovec, n: c_int) -> c_int;
     // There are a bunch of other send methods, but for rust it doesn't make sense to call them
     // (we don't need to do c-style format strings)
 

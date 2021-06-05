@@ -1,5 +1,5 @@
 use super::{free_cstring, usec_from_duration, Result};
-use crate::ffi::const_iovec;
+use crate::ffi::ConstIovec;
 use crate::ffi::journal as ffi;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
@@ -21,10 +21,10 @@ where
     T: Iterator<Item = S>,
     S: AsRef<str>,
 {
-    let iovecs: Vec<const_iovec> = args
-        // SAFETY: we manually guarantee that the lifetime of const_iovec does not exceed that of
+    let iovecs: Vec<ConstIovec> = args
+        // SAFETY: we manually guarantee that the lifetime of ConstIovec does not exceed that of
         // the data it's referencing in order to avoid additional allocations.
-        .map(|x| unsafe { const_iovec::from_str(x) })
+        .map(|x| unsafe { ConstIovec::from_str(x) })
         .collect();
     unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
 }

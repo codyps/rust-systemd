@@ -3,7 +3,7 @@ use libsystemd_sys as sd;
 #[test]
 fn raw_send() {
     let a = ["MESSAGE=raw rust-systemd send"];
-    let v = [sd::const_iovec {
+    let v = [sd::ConstIovec {
         iov_base: a[0].as_ptr() as *const _,
         iov_len: a[0].len(),
     }];

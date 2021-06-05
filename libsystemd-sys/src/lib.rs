@@ -17,15 +17,15 @@ pub mod login;
 
 /// Helper type to mark functions systemd functions that promise not to modify the underlying iovec
 /// data.  There is no corresponding type in libc, so their function signatures take *const iovec,
-/// which technically allow iov_base to be modified.  However, const_iovec provides the same ABI, so
+/// which technically allow iov_base to be modified.  However, ConstIovec provides the same ABI, so
 /// it can be used to make the function interface easier to work with.
 #[repr(C)]
-pub struct const_iovec {
+pub struct ConstIovec {
     pub iov_base: *const c_void,
     pub iov_len: size_t,
 }
 
-impl const_iovec {
+impl ConstIovec {
     ///
     /// # Safety
     ///
@@ -35,7 +35,7 @@ impl const_iovec {
     where
         T: AsRef<str>,
     {
-        const_iovec {
+        ConstIovec {
             iov_base: arg.as_ref().as_ptr() as *const c_void,
             iov_len: arg.as_ref().len() as size_t,
         }
