@@ -1,2 +1,7 @@
 tag-name = "{{prefix}}{{version}}"
 disable-push = true
+
+pre-release-replacements = [
+  {file="README.md", search="systemd = \"[-_0-9\\.a-z]+\"", replace="systemd = \"{{version}}\""} ,
+  {file="README.md", search="systemd = \\{ version = \".*\", default-features = false \\}", replace="systemd = { version = \"{{version}}\", default-features = false }"} ,
+]
