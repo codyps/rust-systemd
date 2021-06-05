@@ -10,9 +10,9 @@ pub fn escape_name(s: &str) -> String {
             b'/' => escaped.push('-'),
             // Do not escape '.' unless it's the first character
             b'.' if 0 < index => escaped.push(char::from(b)),
-            // Do not escaoe _ and : and
+            // Do not escape _ and : and
             b'_' | b':' => escaped.push(char::from(b)),
-            // all ASCII alpha numeric characters
+            // all ASCII alphanumeric characters
             _ if b.is_ascii_alphanumeric() => escaped.push(char::from(b)),
             _ => escaped.push_str(&format!("\\x{:02x}", b)),
         }
