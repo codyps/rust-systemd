@@ -24,7 +24,7 @@ If you want to override the source of the `libsystemd` directly, set the env
 var `SYSTEMD_LIB_DIR` to a path which contains the `libsystemd` to link
 against. Optionally, you may also set `SYSTEMD_LIBS` to indicate which
 libraries to link against. Libraries in the variable `SYSTEMD_LIBS` are colon
-(`:`) seperated and may include a `KIND`. For example:
+(`:`) separated and may include a `KIND`. For example:
 `SYSTEMD_LIBS="static=foo:bar"`.
 
 
@@ -36,7 +36,7 @@ both `SYSTEMD_LIBS=elogind` and set `SYSTEMD_LIB_DIR` to the appropriate
 directory.
 
 When using elogind, the apis needed for `journal` and `bus` features may not be completely
-avaliable (elogind forked from an older version of systemd that may lack some
+available (elogind forked from an older version of systemd that may lack some
 of these APIs). If your application does not need these features, depend on
 `systemd` without the default features to allow maximum compatibility:
 
