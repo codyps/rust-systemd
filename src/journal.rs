@@ -255,7 +255,7 @@ impl JournalFiles {
 /// A wrapper type that allows displaying a single entry in the journal
 pub struct DisplayEntryData<'a> {
     // RULES:
-    //  - we can't move the cursor/postion in the journal (no seeking, no
+    //  - we can't move the cursor/position in the journal (no seeking, no
     //   iteration/next/previous)
     //  - we have _total_ ownership over data iteration. Do what ever necessary to get all the data
     //    we want
@@ -295,7 +295,7 @@ impl<'a> From<&'a mut JournalRef> for DisplayEntryData<'a> {
 
 /// Seeking position in journal.
 ///
-/// Note: variants coresponding to [`Journal::next_skip()`] and [`Journal::previous_skip()`] are
+/// Note: variants corresponding to [`Journal::next_skip()`] and [`Journal::previous_skip()`] are
 /// omitted because those are treated by sd-journal as pieces of journal iteration in that when
 /// they complete the journal is at a specific entry. All the seek type operations don't behave as
 /// part of iteration, and don't place the journal at a specific entry (iteration must be used to
@@ -379,7 +379,7 @@ impl OpenOptions {
         self
     }
 
-    /// Access all defined namespaces simultaniously (`namespace` is ignored if this is `true`)
+    /// Access all defined namespaces simultaneously (`namespace` is ignored if this is `true`)
     ///
     /// This corresponds to `SD_JOURNAL_ALL_NAMESPACES`
     pub fn all_namespaces(&mut self, all_namespaces: bool) -> &mut Self {
@@ -430,7 +430,7 @@ impl OpenOptions {
     }
 }
 
-/// Open a journal, sepcifying a directory
+/// Open a journal, specifying a directory
 #[derive(Clone, Debug, Default)]
 pub struct OpenDirectoryOptions {
     os_root: bool,

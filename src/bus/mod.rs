@@ -41,8 +41,8 @@ pub mod types;
  * failures, including those cause by bus failures (not necessarily errors sent by the called
  * method).
  *
- * To clairfy: getting this error does not necessarily mean it comes from a remote service. It
- * might be a local failure (resource exaustion, programmer error, service unreachable) as well.
+ * To clarify: getting this error does not necessarily mean it comes from a remote service. It
+ * might be a local failure (resource exhaustion, programmer error, service unreachable) as well.
  */
 pub type Result<T> = result::Result<T, Error>;
 
@@ -164,7 +164,7 @@ impl InterfaceName {
      * requirements are met:
      *
      * dbus spec 0.26 requires:
-     *  composed of 1 or more elements seperated by a period ('.') character.
+     *  composed of 1 or more elements separated by a period ('.') character.
      *  Elements contain at least 1 character
      *  Elements must contain only the ASCII characters '[A-Z][a-z][0-9]_' and must not begin with
      *    a digit
@@ -281,7 +281,7 @@ impl BusName {
      *
      * dbus spec 0.26 requires:
      *  unique names start with a ':'. well-known names do not.
-     *  composed of one or more elemenets seperated by a period '.'
+     *  composed of one or more elements separated by a period '.'
      *  all elements must be at least 1 character
      *  elements can contain only the ASCII characters '[A-Z][a-z][0-9]_-'.
      *  elements part of a unique name may begin with a digit. elements in all other bus names must
@@ -509,8 +509,8 @@ impl Slot {
 #[derive(EnumFlags,Copy,Clone,Debug,PartialEq,Eq)]
 #[repr(u64)]
 pub enum NameFlags {
-    /// After acquiring the name succesfully, premit other peers to take over the name when they
-    /// try to aquire it with `ReplaceExisting`.
+    /// After acquiring the name successfully, permit other peers to take over the name when they
+    /// try to acquire it with `ReplaceExisting`.
     // XXX: add dbus meaning
     AllowReplacement = 1<<0,
 
@@ -576,7 +576,7 @@ impl RawError {
         // this is incredibly questionable: we're casting it through to a wrapper struct. It's
         // unclear if we're providing everything necessary for this to work right.
         //
-        // This probably indincates we should get rid of the concrete/cached `Error` as we can't
+        // This probably indicates we should get rid of the concrete/cached `Error` as we can't
         // make this into an `Error` without coping it.
         &*(ptr as *const _ as *const RawError)
     }
@@ -1345,7 +1345,7 @@ impl Track {
  */
 
 foreign_type! {
-    /// A message to be sent or that was recieved over dbus
+    /// A message to be sent or that was received over dbus
     ///
     /// This is reference counted, cloned objects refer to the same root object.
     pub unsafe type Message {
@@ -1673,7 +1673,7 @@ impl MessageRef {
         Ok(())
     }
 
-    /// Use this message to call a dbus method. Blocks until a reply is recieved or `usec`
+    /// Use this message to call a dbus method. Blocks until a reply is received or `usec`
     /// microseconds elapse (ie: this times out)
     ///
     /// XXX: document blocking forever
@@ -1704,7 +1704,7 @@ impl MessageRef {
     // strict)
     //
     /// Use this message to call a dbus method. Returns immediately and will call the callback when
-    /// a reply is recieved.
+    /// a reply is received.
     ///
     /// XXX: document how timeout affects this
     /// Seals `self`.
@@ -1845,7 +1845,7 @@ impl<'a> MessageIter<'a> {
      */
     /// Read an element from the message and advance the internal cursor
     /// References returned by this function are valid until the iterator itself is dropped (just
-    /// to garuntee they don't change).
+    /// to guarantee they don't change).
     ///
     /// XXX: really, they are valid until the message is un-sealed: reading from the message can
     /// only occur while the message is sealed. Unclear if we can track lifetimes against message
@@ -1887,7 +1887,7 @@ impl<'a> MessageIter<'a> {
     /// Using &mut allows us to prevent #2.
     ///
     /// FIXME/WARNING: Message might have been cloned, in which case we can't rely on the lifetime of
-    /// &str! As `Message` isn't `Send` or `Sync`, we can garuntee we're not racing with someone
+    /// &str! As `Message` isn't `Send` or `Sync`, we can guarantee we're not racing with someone
     /// else to free it though. Probably need to allocate space for it here rather than return a
     /// ref.
     ///
