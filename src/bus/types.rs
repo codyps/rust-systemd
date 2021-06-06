@@ -29,8 +29,8 @@ use utf8_cstr::Utf8CStr;
  * using the given `dbus_type()` using `sd_bus_message_append_basic` and decoded similarly using
  * `sd_bus_message_read_basic`
  *
- * It is unlikely that this is something you want to impliment, all the basic types are already
- * implimented internally.
+ * It is unlikely that this is something you want to implement, all the basic types are already
+ * implemented internally.
  *
  * NOTE: Ideally, we'd use an associated const here. When those land on stable this may change to
  * that.
@@ -40,7 +40,7 @@ pub unsafe trait SdBusMessageDirect {
 }
 
 /**
- * Allows types to provide a convertion to a dbus message
+ * Allows types to provide a conversion to a dbus message
  */
 pub trait ToSdBusMessage {
     // type signature?
@@ -50,7 +50,7 @@ pub trait ToSdBusMessage {
 }
 
 /**
- * Allows types to provide a convertion from a dbus message
+ * Allows types to provide a conversion from a dbus message
  *
  * NOTE: the restriction of `Self: Sized` may cause us to have less than ideal impls sometimes. We
  * may need to add a `from_message_to()` that takes a reference, much like `Clone`.

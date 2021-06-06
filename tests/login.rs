@@ -79,7 +79,7 @@ fn test_get_session() {
     match has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
         true => {
-            // even in this case, we might get a "no data avaliable" (github actions runners return
+            // even in this case, we might get a "no data available" (github actions runners return
             // this)
             match ss {
                 Err(e) => {
@@ -104,7 +104,7 @@ fn test_get_owner_uid() {
     match has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
         true => {
-            // even in this case, we might get a "no data avaliable" (github actions runners return
+            // even in this case, we might get a "no data available" (github actions runners return
             // this)
             match ou {
                 Err(e) => {

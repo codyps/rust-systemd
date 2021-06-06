@@ -15,7 +15,7 @@ pub mod id128;
 pub mod journal;
 pub mod login;
 
-/// Helper type to mark functions systemd functions that promise not to modify the underying iovec
+/// Helper type to mark functions systemd functions that promise not to modify the underlying iovec
 /// data.  There is no corresponding type in libc, so their function signatures take *const iovec,
 /// which technically allow iov_base to be modified.  However, const_iovec provides the same ABI, so
 /// it can be used to make the function interface easier to work with.

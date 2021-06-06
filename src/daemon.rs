@@ -57,9 +57,9 @@ pub const STATE_WATCHDOG: &str = "WATCHDOG";
 pub const STATE_WATCHDOG_USEC: &str = "WATCHDOG_USEC";
 /// Extend the timeout for the current state.
 pub const STATE_EXTEND_TIMEOUT_USEC: &str = "EXTEND_TIMEOUT_USEC";
-/// Store file discriptors in the service manager.
+/// Store file descriptors in the service manager.
 pub const STATE_FDSTORE: &str = "FDSTORE";
-/// Remove file discriptors from the service manager store.
+/// Remove file descriptors from the service manager store.
 pub const STATE_FDSTOREREMOVE: &str = "FDSTOREREMOVE";
 /// Name the group of file descriptors sent to the service manager.
 pub const STATE_FDNAME: &str = "FDNAME";
