@@ -1,6 +1,6 @@
-use super::ConstIovec;
 use super::event::sd_event;
 use super::id128::sd_id128_t;
+use super::ConstIovec;
 use super::{c_char, c_int, c_uint, c_void, gid_t, pid_t, size_t, uid_t};
 
 mod protocol;

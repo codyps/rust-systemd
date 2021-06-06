@@ -1,6 +1,6 @@
 use super::{free_cstring, usec_from_duration, Result};
-use crate::ffi::ConstIovec;
 use crate::ffi::journal as ffi;
+use crate::ffi::ConstIovec;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
