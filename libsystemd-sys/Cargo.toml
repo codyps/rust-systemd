@@ -20,7 +20,7 @@ journal = []
 systemd_v245 = []
 
 [dependencies]
-libc = "0.2.76"
+libc = "0.2.98"
 
 [build-dependencies]
 pkg-config = "0.3.18"
