@@ -122,9 +122,9 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "memchr"
-version = "2.4.0"
+version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b16bd47d9e329435e309c58469fe0791c2d0d1ba96ec0954152a5ae2b04387dc"
+checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
 name = "percent-encoding"
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.9.1-alpha.0"
+version = "0.9.0"
 dependencies = [
  "cstr-argument",
  "doc-comment",
