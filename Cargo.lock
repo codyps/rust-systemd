@@ -190,9 +190,9 @@ checksum = "b46e1121e8180c12ff69a742aabc4f310542b6ccb69f1691689ac17fdf8618aa"
 
 [[package]]
 name = "serde"
-version = "1.0.126"
+version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec7505abeacaec74ae4778d9d9328fe5a5d04253220a85c4ee022239fc996d03"
+checksum = "f12d06de37cf59146fbdecab66aa99f9fe4f78722e3607577a5375d66bd0c913"
 
 [[package]]
 name = "syn"
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.9.1-alpha.0"
+version = "0.9.0"
 dependencies = [
  "cstr-argument",
  "doc-comment",
