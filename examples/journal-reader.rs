@@ -23,6 +23,10 @@ mod x {
             .seek(JournalSeek::Tail)
             .expect("Could not seek to end of journal");
 
+        // JournalSeek::Tail goes to the position after the most recent entry so step back to
+        // point to the most recent entry.
+        reader.previous()?;
+
         // Print up to MAX_MESSAGES incoming messages
         let mut i = 0;
         loop {
