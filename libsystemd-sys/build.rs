@@ -41,12 +41,12 @@ fn main() {
         }
     };
 
-    if !Path::new(&lib_dir).exists() {
-        panic!(
-            "{} refers to {:?}, which does not exist",
-            lib_dir_var, lib_dir
-        );
-    }
+    assert!(
+        Path::new(&lib_dir).exists(),
+        "{} refers to {:?}, which does not exist",
+        lib_dir_var,
+        lib_dir
+    );
 
     println!(
         "cargo:rustc-link-search=native={}",

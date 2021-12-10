@@ -39,7 +39,7 @@ unsafe fn free_cstring(ptr: *mut c_char) -> Option<String> {
     }
     let len = strlen(ptr);
     let char_slice = std::slice::from_raw_parts(ptr as *mut u8, len);
-    let s = String::from_utf8_lossy(&char_slice).into_owned();
+    let s = String::from_utf8_lossy(char_slice).into_owned();
     free(ptr as *mut c_void);
     Some(s)
 }

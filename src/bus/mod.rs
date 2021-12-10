@@ -1449,9 +1449,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_path`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_path.html
     pub fn path(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_path(self.as_ptr()) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
@@ -1461,9 +1459,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_interface`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_interface.html
     pub fn interface(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_interface(self.as_ptr()) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
@@ -1473,9 +1469,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_member`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_member.html
     pub fn member(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_member(self.as_ptr()) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
@@ -1485,9 +1479,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_sender`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_sender.html
     pub fn sender(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_sender(self.as_ptr()) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
@@ -1497,9 +1489,7 @@ impl MessageRef {
     /// [`sd_bus_message_get_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_destination.html
     pub fn destination(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_destination(self.as_ptr()) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
@@ -1510,9 +1500,7 @@ impl MessageRef {
     // XXX: doesn't allow partial signatures
     pub fn signature(&self) -> &CStr {
         let p = unsafe { ffi::bus::sd_bus_message_get_signature(self.as_ptr(), 1) };
-        if p.is_null() {
-            panic!();
-        }
+        assert!(!p.is_null());
 
         unsafe { CStr::from_ptr(p) }
     }
