@@ -34,6 +34,15 @@ use utf8_cstr::Utf8CStr;
  *
  * NOTE: Ideally, we'd use an associated const here. When those land on stable this may change to
  * that.
+ *
+ * # Safety
+ *
+ * If implimented inaccurately, the `ToSdBusMessage` and `FromSdBusMessage` wrapper impls may read
+ * or write unexpected regions of memory (as they call sd_bus functions which expect the size of
+ * the memory region referred to by the type).
+ *
+ * Ensure the types implimenting `SdBusMessageDirect` can be safely converted to a pointer and
+ * passed to `sd_bus_message_read_basic` and `sd_bus_message_append_basic`.
  */
 pub unsafe trait SdBusMessageDirect {
     fn dbus_type() -> u8;
