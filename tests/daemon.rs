@@ -31,5 +31,5 @@ fn test_notify() {
         .iter(),
     );
     assert!(result.is_ok());
-    assert_eq!(result.ok().unwrap(), false); // should fail, since this is not systemd-launched.
+    assert!(!result.ok().unwrap()); // should fail, since this is not systemd-launched.
 }

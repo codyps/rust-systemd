@@ -107,7 +107,7 @@ fn test_simple_match() {
 
     // seek tail
     j.seek(journal::JournalSeek::Tail).unwrap();
-    journal::send(&[&filter, &msg]);
+    journal::send(&[&filter, msg]);
     j.match_add(key, value).unwrap();
     let mut waits = 0;
     loop {
@@ -138,7 +138,7 @@ fn test_simple_match() {
         .unwrap()
         .match_add("NOKEY", "NOVALUE")
         .unwrap();
-    journal::send(&[&msg]);
+    journal::send(&[msg]);
     while j.next().unwrap() != 0 {
         assert!(j.get_data("NO_KEY").unwrap().is_none())
     }

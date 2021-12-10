@@ -51,7 +51,7 @@ impl sd_bus_vtable {
         assert!(flags <= ((1 << 56) - 1));
 
         val[0] = typ as u8;
-        let flags_raw: [u8; 8] = unsafe { transmute(flags) };
+        let flags_raw = flags.to_ne_bytes();
         val[1..(7 + 1)].clone_from_slice(&flags_raw[..7]);
 
         unsafe { transmute(val) }
