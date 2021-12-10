@@ -424,7 +424,7 @@ impl OpenOptions {
     ///
     /// `sd_journal_open_namespace()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
     #[cfg(feature = "systemd_v245")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "systemd_v245")))]
+    #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v245")))]
     pub fn open_namespace<A: CStrArgument>(&self, namespace: A) -> Result<Journal> {
         Journal::open_with_opts_ns(Some(namespace), self)
     }

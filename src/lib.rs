@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "unstable-doc-cfg", feature = "doc_cfg")]
 #![warn(rust_2018_idioms)]
 
 extern crate libsystemd_sys as ffi;

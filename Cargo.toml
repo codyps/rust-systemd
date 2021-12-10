@@ -16,6 +16,7 @@ default = ["bus", "journal"]
 bus = ["libsystemd-sys/bus"]
 journal = ["libsystemd-sys/journal"]
 systemd_v245 = ["libsystemd-sys/systemd_v245"]
+unstable-doc-cfg = []
 
 [dependencies]
 log = "~0.4"
@@ -41,7 +42,6 @@ debug = true
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
 members = ["libsystemd-sys"]
