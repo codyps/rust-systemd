@@ -14,7 +14,6 @@ use std::io::ErrorKind::InvalidData;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
-use std::u64;
 use std::{fmt, io, ptr, result, slice, time};
 
 fn collect_and_send<T, S>(args: T) -> c_int
