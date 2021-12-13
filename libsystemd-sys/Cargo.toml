@@ -23,5 +23,5 @@ systemd_v245 = []
 libc = "0.2.76"
 
 [build-dependencies]
-pkg-config = "0.3.18"
+pkg-config = "0.3.24"
 build-env = "0.3.0"
