@@ -1,12 +1,11 @@
-use std::ops::Deref;
-
-use utf8_cstr::Utf8CStr;
-
+#![warn(rust_2018_idioms)]
 // WARNING: you may want to use a more tested/complete dbus library, or one that is pure rust.
 // `zbus` may be a reasonable choice, and there are others too
 
+use utf8_cstr::Utf8CStr;
 // approximately this command:
 //     busctl --system call  org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit "ss" "foo.service" "fail"
+#[cfg(feature = "bus")]
 fn main() {
     let mut bus = systemd::bus::Bus::default_system().unwrap();
 
@@ -29,5 +28,10 @@ fn main() {
 
     let res = method_call.call(0).unwrap();
 
-    eprintln!("done, result={:?}", res.deref());
+    eprintln!("done, result={:?}", *res);
+}
+
+#[cfg(not(feature = "bus"))]
+fn main() {
+    println!("bus disabled");
 }
