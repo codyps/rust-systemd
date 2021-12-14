@@ -1447,31 +1447,37 @@ impl MessageRef {
     /// This corresponds to [`sd_bus_message_get_path`]
     ///
     /// [`sd_bus_message_get_path`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_path.html
-    pub fn path(&self) -> &CStr {
+    pub fn path(&self) -> Option<&CStr> {
         let p = unsafe { ffi::bus::sd_bus_message_get_path(self.as_ptr()) };
-        assert!(!p.is_null());
-
-        unsafe { CStr::from_ptr(p) }
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(p) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_interface`]
     ///
     /// [`sd_bus_message_get_interface`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_interface.html
-    pub fn interface(&self) -> &CStr {
+    pub fn interface(&self) -> Option<&CStr> {
         let p = unsafe { ffi::bus::sd_bus_message_get_interface(self.as_ptr()) };
-        assert!(!p.is_null());
-
-        unsafe { CStr::from_ptr(p) }
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(p) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_member`]
     ///
     /// [`sd_bus_message_get_member`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_member.html
-    pub fn member(&self) -> &CStr {
+    pub fn member(&self) -> Option<&CStr> {
         let p = unsafe { ffi::bus::sd_bus_message_get_member(self.as_ptr()) };
-        assert!(!p.is_null());
-
-        unsafe { CStr::from_ptr(p) }
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(p) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_sender`]
