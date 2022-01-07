@@ -3,17 +3,21 @@ use crate::ffi::const_iovec;
 use crate::ffi::journal as ffi;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
-use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use libc::{c_char, c_int, size_t};
 use log::{self, Level, Log, Record, SetLoggerError};
 use memchr::memchr;
+use std::borrow::Borrow;
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io::ErrorKind::InvalidData;
 use std::mem::MaybeUninit;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
+use std::ptr::NonNull;
 use std::{fmt, io, ptr, result, slice, time};
 
 fn collect_and_send<T, S>(args: T) -> c_int
@@ -127,19 +131,6 @@ fn duration_from_usec(usec: u64) -> time::Duration {
 fn system_time_from_realtime_usec(usec: u64) -> time::SystemTime {
     let d = duration_from_usec(usec);
     time::UNIX_EPOCH + d
-}
-
-foreign_type! {
-    /// A reader for systemd journal.
-    ///
-    /// Supports read, next, previous, and seek operations.
-    ///
-    /// Note that the `Journal` is not `Send` nor `Sync`: it cannot be used in any thread other
-    /// than the one which creates it.
-    pub unsafe type Journal {
-        type CType = ffi::sd_journal;
-        fn drop = ffi::sd_journal_close;
-    }
 }
 
 /// A (name, value) pair formatted as a "NAME=value" byte string
@@ -521,7 +512,27 @@ impl OpenFilesOptions {
     */
 }
 
+/// A reader for systemd journal.
+///
+/// Supports read, next, previous, and seek operations.
+///
+/// Note that the `Journal` is not `Send` nor `Sync`: it cannot be used in any thread other
+/// than the one which creates it.
+#[repr(transparent)]
+pub struct Journal(NonNull<ffi::sd_journal>);
+
 impl Journal {
+    #[inline]
+    unsafe fn from_ptr(ptr: *mut ffi::sd_journal) -> Journal {
+        debug_assert!(!ptr.is_null());
+        Journal(<NonNull<_>>::new_unchecked(ptr))
+    }
+
+    #[inline]
+    fn as_ptr(&self) -> *mut ffi::sd_journal {
+        <NonNull<_>>::as_ptr(self.0)
+    }
+
     fn open_with_opts<A: CStrArgument>(opts: &OpenOptions) -> Result<Journal> {
         let mut flags = opts.extra_raw_flags;
         if opts.current_user {
@@ -661,7 +672,30 @@ impl Journal {
     }
 }
 
+///A borrowed reference to a [`Journal`](struct.Journal.html).
+pub struct JournalRef(::foreign_types::Opaque);
+
 impl JournalRef {
+    /// Constructs a shared instance of this type from its raw type.
+    #[inline]
+    unsafe fn from_ptr<'a>(ptr: *mut ffi::sd_journal) -> &'a Self {
+        debug_assert!(!ptr.is_null());
+        &*(ptr as *mut _)
+    }
+
+    /// Constructs a mutable reference of this type from its raw type.
+    #[inline]
+    unsafe fn from_ptr_mut<'a>(ptr: *mut ffi::sd_journal) -> &'a mut Self {
+        debug_assert!(!ptr.is_null());
+        &mut *(ptr as *mut _)
+    }
+
+    /// Returns a raw pointer to the wrapped value.
+    #[inline]
+    fn as_ptr(&self) -> *mut ffi::sd_journal {
+        self as *const _ as *mut _
+    }
+
     /// Returns a file descriptor  a file descriptor that may be
     /// asynchronously polled in an external event loop and is signaled as
     /// soon as the journal changes, because new entries or files were added,
@@ -1050,6 +1084,58 @@ impl JournalRef {
     pub fn match_flush(&mut self) -> Result<&mut JournalRef> {
         unsafe { ffi::sd_journal_flush_matches(self.as_ptr()) };
         Ok(self)
+    }
+}
+
+impl Drop for Journal {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            ffi::sd_journal_close(self.as_ptr());
+        }
+    }
+}
+
+impl Deref for Journal {
+    type Target = JournalRef;
+    #[inline]
+    fn deref(&self) -> &JournalRef {
+        unsafe { JournalRef::from_ptr(self.as_ptr()) }
+    }
+}
+
+impl DerefMut for Journal {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut JournalRef {
+        unsafe { JournalRef::from_ptr_mut(self.as_ptr()) }
+    }
+}
+
+impl Borrow<JournalRef> for Journal {
+    #[inline]
+    fn borrow(&self) -> &JournalRef {
+        &**self
+    }
+}
+
+impl BorrowMut<JournalRef> for Journal {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut JournalRef {
+        &mut **self
+    }
+}
+
+impl AsRef<JournalRef> for Journal {
+    #[inline]
+    fn as_ref(&self) -> &JournalRef {
+        &**self
+    }
+}
+
+impl AsMut<JournalRef> for Journal {
+    #[inline]
+    fn as_mut(&mut self) -> &mut JournalRef {
+        &mut **self
     }
 }
 
