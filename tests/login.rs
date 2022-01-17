@@ -15,9 +15,9 @@ fn test_get_unit() {
             assert!(uu.is_err());
             assert!(su.is_err());
         }
-        // This is either running in a system or in a user unit
+        // User units run under a system unit (E.g. user@1000.service)
         true => {
-            assert_eq!(uu.is_err(), su.is_ok());
+            assert!(su.is_ok());
         }
     };
 }
