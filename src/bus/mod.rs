@@ -1153,10 +1153,10 @@ impl BusRef {
         sd_try!(ffi::bus::sd_bus_message_new_method_call(
             self.as_ptr(),
             m.as_mut_ptr(),
-            &*dest as *const _ as *const _,
-            &*path as *const _ as *const _,
-            &*interface as *const _ as *const _,
-            &*member as *const _ as *const _
+            dest as *const _ as *const _,
+            path as *const _ as *const _,
+            interface as *const _ as *const _,
+            member as *const _ as *const _
         ));
         let m = unsafe { m.assume_init() };
         Ok(unsafe { Message::from_ptr(m) })
@@ -1175,7 +1175,7 @@ impl BusRef {
     pub fn request_name(&mut self, name: &BusName, flags: u64) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_request_name(
             self.as_ptr(),
-            &*name as *const _ as *const _,
+            name as *const _ as *const _,
             flags
         ));
         Ok(())
@@ -1203,7 +1203,7 @@ impl BusRef {
             crate::ffi_result(ffi::bus::sd_bus_request_name_async(
                 self.as_ptr(),
                 &mut slot,
-                &*name as *const _ as *const _,
+                name as *const _ as *const _,
                 flags,
                 Some(f),
                 b as *mut c_void,
@@ -1230,7 +1230,7 @@ impl BusRef {
     pub fn release_name(&self, name: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_release_name(
             self.as_ptr(),
-            &*name as *const _ as *const _
+            name as *const _ as *const _
         ));
         Ok(())
     }
@@ -1255,7 +1255,7 @@ impl BusRef {
             ffi::bus::sd_bus_add_object(
                 self.as_ptr(),
                 &mut slot,
-                &*path as *const _ as *const _,
+                path as *const _ as *const _,
                 Some(f),
                 b as *mut c_void,
             )
@@ -1279,7 +1279,7 @@ impl BusRef {
         sd_try!(ffi::bus::sd_bus_add_object_manager(
             self.as_ptr(),
             ptr::null_mut(),
-            &*path as *const _ as *const _
+            path as *const _ as *const _
         ));
         Ok(())
     }
@@ -1402,7 +1402,7 @@ impl MessageRef {
     pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
         sd_try!(ffi::bus::sd_bus_message_set_destination(
             self.as_ptr(),
-            &*dest as *const _ as *const _
+            dest as *const _ as *const _
         ));
         Ok(())
     }
@@ -1641,7 +1641,7 @@ impl MessageRef {
         sd_try!(ffi::bus::sd_bus_send_to(
             ptr::null_mut(),
             self.as_ptr(),
-            &*dest as *const _ as *const _,
+            dest as *const _ as *const _,
             c.as_mut_ptr()
         ));
         let c = unsafe { c.assume_init() };
@@ -1661,7 +1661,7 @@ impl MessageRef {
         sd_try!(ffi::bus::sd_bus_send_to(
             ptr::null_mut(),
             self.as_ptr(),
-            &*dest as *const _ as *const _,
+            dest as *const _ as *const _,
             ptr::null_mut()
         ));
         Ok(())
