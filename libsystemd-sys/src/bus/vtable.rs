@@ -1,7 +1,6 @@
 use super::super::{c_char, size_t};
 use super::{sd_bus_message_handler_t, sd_bus_property_get_t, sd_bus_property_set_t};
-use std::default::Default;
-use std::mem::{transmute, zeroed};
+use cfg_if::cfg_if;
 
 // XXX: check this repr, might vary based on platform type sizes
 #[derive(Clone, Copy, Debug)]
@@ -30,7 +29,7 @@ pub enum SdBusVtableFlag {
     CapabilityMask = 0xFFFF << 40,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 #[repr(C)]
 pub struct sd_bus_vtable {
     type_and_flags: u64,
@@ -38,44 +37,45 @@ pub struct sd_bus_vtable {
     union_data: [usize; 5],
 }
 
-impl Default for sd_bus_vtable {
-    fn default() -> Self {
-        unsafe { zeroed() }
-    }
-}
-
+// FIXME: all this nasty `target_endian` stuff is because we don't have an abstraction for
+// bitfields. `c2rust-bitfields` only supports little endian. None of the other bitfield crates
+// claim compatibility with C (which is what we require here).
 impl sd_bus_vtable {
-    pub fn type_and_flags(typ: u32, flags: u64) -> u64 {
-        let mut val = [0u8; 8];
-        assert!(typ <= ((1 << 8) - 1));
+    pub fn type_and_flags(typ: u8, flags: u64) -> u64 {
         assert!(flags <= ((1 << 56) - 1));
 
-        val[0] = typ as u8;
-        let flags_raw = flags.to_ne_bytes();
-        val[1..(7 + 1)].clone_from_slice(&flags_raw[..7]);
-
-        unsafe { transmute(val) }
+        cfg_if! {
+            if #[cfg(target_endian = "little")] {
+                (flags << 8) | typ as u64
+            } else if #[cfg(target_endian = "big")] {
+                (typ as u64) | (flags << 8)
+            } else {
+                compile_error!("unsupported target_endian")
+            }
+        }
     }
 
-    // type & flags are stored in a bit field, the ordering of which might change depending on the
-    // platform.
-    //
-    pub fn typ(&self) -> u32 {
-        unsafe {
-            let raw: *const u8 = &self.type_and_flags as *const _ as *const u8;
-            *raw as u32
+    pub fn typ(&self) -> u8 {
+        cfg_if! {
+            if #[cfg(target_endian = "little")] {
+                (self.type_and_flags & 0xFF) as u8
+            } else if #[cfg(target_endian = "big")] {
+                (self.type_and_flags >> 56) as u8
+            } else {
+                compile_error!("unsupported target_endian")
+            }
         }
     }
 
     pub fn flags(&self) -> u64 {
-        // treat the first byte as 0 and the next 7 as their actual values
-        let mut val = [0u8; 8];
-        unsafe {
-            let raw: *const u8 = transmute(&self.type_and_flags);
-            for i in 1..8 {
-                val[i - 1] = *raw.add(i);
+        cfg_if! {
+            if #[cfg(target_endian = "little")] {
+                self.type_and_flags >> 8
+            } else if #[cfg(target_endian = "big")] {
+                self.type_and_flags & 0xFFFFFFFFFFFFFF
+            } else {
+                compile_error!("unsupported target_endian")
             }
-            transmute(val)
         }
     }
 }
