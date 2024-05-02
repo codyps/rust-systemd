@@ -9,8 +9,6 @@ documentation = "https://docs.rs/crate/systemd"
 include = ["Cargo.toml", "src/**/*.rs", "COPYING", "README.md"]
 readme = "README.md"
 edition = "2018"
-# Note: will require careful dependency choice to work, 1.61.0 is easier
-rust-version = "1.60.0"
 
 [features]
 default = ["bus", "journal"]
