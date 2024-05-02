@@ -1211,7 +1211,7 @@ impl BusRef {
         } {
             Err(e) => {
                 // try not to leak
-                unsafe { Box::from_raw(b) };
+                let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
             Ok(_) => {
@@ -1261,7 +1261,7 @@ impl BusRef {
             )
         }) {
             Err(e) => {
-                unsafe { Box::from_raw(b) };
+                let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
             Ok(_) => {
@@ -1731,7 +1731,7 @@ impl MessageRef {
         }) {
             Err(e) => {
                 // try not to leak
-                unsafe { Box::from_raw(b) };
+                let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
             Ok(_) => {
