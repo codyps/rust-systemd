@@ -15,6 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@beta
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
