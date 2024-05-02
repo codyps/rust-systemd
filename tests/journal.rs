@@ -83,7 +83,9 @@ fn test_seek() {
     assert_eq!(c1, c2);
 
     j.seek(journal::JournalSeek::Tail).unwrap();
-    assert!(j.next_entry().unwrap().is_none());
+    // NOTE: depending on the libsystemd version we may or may not be able to read an entry
+    // following the "Tail", so ignore it.
+    j.next_entry().unwrap();
 
     let valid_cursor = journal::JournalSeek::Cursor { cursor: c1 };
     j.seek(valid_cursor).unwrap();
