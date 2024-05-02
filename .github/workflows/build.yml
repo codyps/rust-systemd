@@ -48,7 +48,6 @@ jobs:
           - stable
           - beta
           - nightly
-          - 1.47.0
 
     steps:
       - uses: actions/checkout@v4
