@@ -82,9 +82,10 @@ impl sd_bus_vtable {
 
 #[test]
 fn vtable_bitfield() {
-    let mut b: sd_bus_vtable = Default::default();
-
-    b.type_and_flags = sd_bus_vtable::type_and_flags(0xAA, 0xBBCCBB);
+    let b: sd_bus_vtable = sd_bus_vtable {
+        type_and_flags: sd_bus_vtable::type_and_flags(0xAA, 0xBBCCBB),
+        ..Default::default()
+    };
 
     assert_eq!(b.typ(), 0xAA);
     assert_eq!(b.flags(), 0xBBCCBB);
