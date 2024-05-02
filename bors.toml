@@ -1,9 +1,0 @@
-status = [
-	"test (stable)",
-	"test (beta)",
-	"test (1.47.0)",
-	"check",
-	"features",
-]
-cut_body_after = "---"
-delete_merged_branches = true

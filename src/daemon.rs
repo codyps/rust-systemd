@@ -204,7 +204,7 @@ pub fn is_socket_inet(
     let c_family = family.unwrap_or(0) as c_int;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
-    let c_port = port.unwrap_or(0) as u16;
+    let c_port = port.unwrap_or(0);
 
     let result = sd_try!(ffi::sd_is_socket_inet(
         fd,
@@ -289,7 +289,7 @@ where
 {
     let mut state_vec = Vec::new();
     for (key, value) in state {
-        state_vec.push(vec![key.as_ref(), value.as_ref()].join("="));
+        state_vec.push([key.as_ref(), value.as_ref()].join("="));
     }
     let state_str = state_vec.join("\n");
     ::std::ffi::CString::new(state_str.as_bytes()).unwrap()

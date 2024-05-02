@@ -2,11 +2,11 @@
 // WARNING: you may want to use a more tested/complete dbus library, or one that is pure rust.
 // `zbus` may be a reasonable choice, and there are others too
 
-use utf8_cstr::Utf8CStr;
 // approximately this command:
 //     busctl --system call  org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit "ss" "foo.service" "fail"
 #[cfg(feature = "bus")]
 fn main() {
+    use utf8_cstr::Utf8CStr;
     let mut bus = systemd::bus::Bus::default_system().unwrap();
 
     let mut method_call = bus

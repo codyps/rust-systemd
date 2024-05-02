@@ -55,7 +55,7 @@ fn ts() {
     }
 
     let mut j = journal::OpenOptions::default().open().unwrap();
-    log!(log::Level::Info, "rust-systemd test_seek entry");
+    log!(log::Level::Info, "rust-systemd ts entry");
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
     let _s = j.timestamp().unwrap();
@@ -81,13 +81,16 @@ fn test_seek() {
     let c1 = j.cursor().unwrap();
     let c2 = j.cursor().unwrap();
     assert_eq!(c1, c2);
+
     j.seek(journal::JournalSeek::Tail).unwrap();
+    // NOTE: depending on the libsystemd version we may or may not be able to read an entry
+    // following the "Tail", so ignore it.
     j.next_entry().unwrap();
-    let c3 = j.cursor().unwrap();
-    let valid_cursor = journal::JournalSeek::Cursor { cursor: c3 };
+
+    let valid_cursor = journal::JournalSeek::Cursor { cursor: c1 };
     j.seek(valid_cursor).unwrap();
     let invalid_cursor = journal::JournalSeek::Cursor {
-        cursor: "".to_string(),
+        cursor: "invalid".to_string(),
     };
     assert!(j.seek(invalid_cursor).is_err());
 }
@@ -107,8 +110,10 @@ fn test_simple_match() {
 
     // seek tail
     j.seek(journal::JournalSeek::Tail).unwrap();
-    journal::send(&[&filter, msg]);
+    j.previous().unwrap();
     j.match_add(key, value).unwrap();
+
+    journal::send(&[&filter, msg]);
     let mut waits = 0;
     loop {
         if j.next().unwrap() == 0 {
@@ -134,6 +139,7 @@ fn test_simple_match() {
 
     // check for negative matches
     j.seek(journal::JournalSeek::Tail).unwrap();
+    j.previous().unwrap();
     j.match_flush()
         .unwrap()
         .match_add("NOKEY", "NOVALUE")

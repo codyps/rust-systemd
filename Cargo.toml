@@ -4,7 +4,7 @@ version = "0.10.0"
 authors = ["Cody P Schafer <dev@codyps.com>"]
 license = "LGPL-2.1-or-later WITH GCC-exception-2.0"
 description = "A rust interface to libsystemd/libelogind provided APIs"
-repository = "https://github.com/jmesmon/rust-systemd"
+repository = "https://github.com/codyps/rust-systemd"
 documentation = "https://docs.rs/crate/systemd"
 include = ["Cargo.toml", "src/**/*.rs", "COPYING", "README.md"]
 readme = "README.md"
@@ -21,7 +21,7 @@ unstable-doc-cfg = []
 [dependencies]
 log = "~0.4"
 libc = "~0.2"
-memchr = "2.4.0"
+memchr = "2"
 utf8-cstr = "~0.1"
 cstr-argument = "~0.1"
 foreign-types = "0.5.0"

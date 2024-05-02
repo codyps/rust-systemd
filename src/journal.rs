@@ -408,7 +408,7 @@ impl OpenOptions {
     ///
     /// `sd_journal_open()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
     pub fn open(&self) -> Result<Journal> {
-        Journal::open_with_opts::<&std::ffi::CStr>(self)
+        Journal::open_with_opts(self)
     }
 
     /// Open the log journal for reading in the given namespace. Entries included are dependent on
@@ -522,7 +522,7 @@ impl OpenFilesOptions {
 }
 
 impl Journal {
-    fn open_with_opts<A: CStrArgument>(opts: &OpenOptions) -> Result<Journal> {
+    fn open_with_opts(opts: &OpenOptions) -> Result<Journal> {
         let mut flags = opts.extra_raw_flags;
         if opts.current_user {
             flags |= ffi::SD_JOURNAL_CURRENT_USER;

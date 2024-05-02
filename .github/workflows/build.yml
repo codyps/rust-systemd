@@ -10,124 +10,80 @@ name: build
 
 jobs:
   check:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@beta
         with:
-          profile: minimal
-          toolchain: beta
-          override: true
           components: rustfmt, clippy
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
-
+      - uses: Swatinem/rust-cache@v2
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
       - name: Install libsystemd-dev
         run: sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all --all-targets --features serde,default,bus,systemd_v245,journal -- -D warnings
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
   features:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: beta
-          override: true
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
-
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@beta
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-hack
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
       - name: Install libsystemd-dev
         run: sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
-
-      - name: Install cargo-hack
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-hack
-
       - name: Check with all variants
-        uses: actions-rs/cargo@v1
-        with:
-          command: hack
-          args: --feature-powerset --skip unstable-doc-cfg check --workspace --all-targets
+        run: cargo hack --feature-powerset --skip unstable-doc-cfg check --workspace --all-targets
 
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
           - beta
           - nightly
-          - 1.47.0
 
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
-
+        uses: Swatinem/rust-cache@v2
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
       - name: Install libsystemd-dev
         run: sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
-
-      - name: Install cargo-hack
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-hack
-
+      - uses: taiki-e/install-action@cargo-hack
       - name: Build everything
-        uses: actions-rs/cargo@v1
-        if: ${{matrix.rust != 'nightly' }}
-        with:
-          command: hack
-          args: --feature-powerset --skip unstable-doc-cfg build --all --all-targets
+        run: cargo hack --feature-powerset --skip unstable-doc-cfg build --all --all-targets
+        if: matrix.rust != 'nightly'
 
       - name: Run all tests
-        uses: actions-rs/cargo@v1
-        if: ${{matrix.rust != 'nightly' }}
-        with:
-          command: hack
-          args: --feature-powerset --skip unstable-doc-cfg test --all
+        run: cargo hack --feature-powerset --skip unstable-doc-cfg test --all
+        if: matrix.rust != 'nightly'
 
       - name: Build everything
-        uses: actions-rs/cargo@v1
-        if: ${{matrix.rust == 'nightly' }}
-        with:
-          command: hack
-          args: --feature-powerset build --all --all-targets
+        run: cargo hack --feature-powerset build --all --all-targets
+        if: matrix.rust == 'nightly'
 
       - name: Run all tests
-        uses: actions-rs/cargo@v1
-        if: ${{matrix.rust == 'nightly' }}
-        with:
-          command: hack
-          args: --feature-powerset test --all
+        run: cargo hack --feature-powerset test --all
+        if: matrix.rust == 'nightly'
+#  msrv:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: apt-get update
+#        run: sudo apt-get -o Acquire::Retries=3 update
+#      - name: Install libsystemd-dev
+#        run: sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
+#      - uses: taiki-e/install-action@cargo-hack
+#      - uses: Swatinem/rust-cache@v2
+#      - run: cargo hack check --rust-version --workspace --all-targets --ignore-private

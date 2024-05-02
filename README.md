@@ -2,9 +2,12 @@ rust-systemd
 ============
 
 [crate docs (systemd)](http://docs.rs/crate/systemd)
+
 [crate docs (libsystemd-sys)](http://docs.rs/crate/libsystemd-sys)
-[![Crates.io](https://img.shields.io/crates/v/systemd.svg?maxAge=2592000)](https://crates.io/crates/systemd)
-[![Build Status](https://travis-ci.org/jmesmon/rust-systemd.svg?branch=master)](https://travis-ci.org/jmesmon/rust-systemd)
+
+[systemd![Crates.io](https://img.shields.io/crates/v/systemd.svg?maxAge=2592000)](https://crates.io/crates/systemd)
+
+[libsystemd-sys![Crates.io](https://img.shields.io/crates/v/libsystemd-sys.svg?maxAge=2592000)](https://crates.io/crates/libsystemd-sys)
 
 
 In `Cargo.toml`:
