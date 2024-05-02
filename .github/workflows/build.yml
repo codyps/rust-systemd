@@ -23,7 +23,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
@@ -52,7 +52,7 @@ jobs:
           override: true
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
@@ -91,7 +91,7 @@ jobs:
           override: true
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: apt-get update
         run: sudo apt-get -o Acquire::Retries=3 update
@@ -136,4 +136,5 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: taiki-e/install-action@cargo-hack
+    - uses: Swatinem/rust-cache@v2
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
