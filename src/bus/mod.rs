@@ -814,7 +814,7 @@ impl fmt::Display for RawError {
 fn t_raw_error() {
     let name = Utf8CStr::from_bytes(b"name\0").unwrap();
     let message = Utf8CStr::from_bytes(b"error\0").unwrap();
-    let _raw = RawError::new().set(name, Some(message));
+    RawError::new().set(name, Some(message))
 }
 
 /* XXX: fixme: return code does have meaning! */
