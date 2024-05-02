@@ -60,23 +60,23 @@ jobs:
       - uses: taiki-e/install-action@cargo-hack
       - name: Build everything
         run: cargo hack --feature-powerset --skip unstable-doc-cfg build --all --all-targets
-        if: ${{matrix.rust != 'nightly' }}
+        if: matrix.rust != 'nightly'
 
       - name: Run all tests
         run: cargo hack --feature-powerset --skip unstable-doc-cfg test --all
-        if: ${{matrix.rust != 'nightly' }}
+        if: matrix.rust != 'nightly'
 
       - name: Build everything
         run: cargo hack --feature-powerset build --all --all-targets
-        if: ${{matrix.rust == 'nightly' }}
+        if: matrix.rust == 'nightly'
 
       - name: Run all tests
         run: cargo hack --feature-powerset test --all
-        if: ${{matrix.rust == 'nightly' }}
+        if: matrix.rust == 'nightly'
   msrv:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: taiki-e/install-action@cargo-hack
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-hack
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
