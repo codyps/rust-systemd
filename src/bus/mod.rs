@@ -861,6 +861,9 @@ foreign_type! {
 }
 
 impl Bus {
+    // TODO: consider renaming all these methods so we don't have this one named `default()`, which
+    // confuses things with std::default::Default::default.
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn default() -> crate::Result<Bus> {
         let mut b = MaybeUninit::uninit();
@@ -1022,7 +1025,7 @@ impl BusRef {
     pub fn wait(&mut self, timeout: Option<Duration>) -> super::Result<bool> {
         Ok(sd_try!(ffi::bus::sd_bus_wait(
             self.as_ptr(),
-            timeout.map(usec_from_duration).unwrap_or(std::u64::MAX)
+            timeout.map(usec_from_duration).unwrap_or(u64::MAX)
         )) > 0)
     }
 
