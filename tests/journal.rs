@@ -70,6 +70,27 @@ fn ts() {
 }
 
 #[test]
+fn test_timestamp() {
+    if !have_journal() {
+        return;
+    }
+
+    let mut j = journal::OpenOptions::default().open().unwrap();
+    log!(log::Level::Info, "rust-systemd ts entry");
+    j.seek(journal::JournalSeek::Head).unwrap();
+    j.next().unwrap();
+    let timestamp_system_time = j.timestamp().unwrap();
+    let timestamp_usec = j.timestamp_usec().unwrap();
+
+    let since_the_epoch = timestamp_system_time
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards");
+    let timestamp_system_time_usec = since_the_epoch.as_micros() as u64;
+
+    assert_eq!(timestamp_usec, timestamp_system_time_usec);
+}
+
+#[test]
 fn test_seek() {
     let mut j = journal::OpenOptions::default().open().unwrap();
     if !have_journal() {
