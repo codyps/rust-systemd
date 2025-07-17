@@ -5,15 +5,15 @@ fn main() {
     let name_upper = name.to_ascii_uppercase();
     let mut be = build_env::BuildEnv::from_env().unwrap();
 
-    let lib_var = format!("{}_LIBS", name_upper);
-    let lib_dir_var = format!("{}_LIB_DIR", name_upper);
+    let lib_var = format!("{name_upper}_LIBS");
+    let lib_dir_var = format!("{name_upper}_LIB_DIR");
 
     let libs = be.var(lib_var);
     let lib_dir = match be.var(lib_dir_var.clone()) {
         Some(lib_dir) => lib_dir,
         None => {
             // No lib_dir specified, use pkg-config
-            let ln_vn = format!("{}_PKG_NAME", name_upper);
+            let ln_vn = format!("{name_upper}_PKG_NAME");
             let library_name = be
                 .var(&ln_vn)
                 .map(|v| {
@@ -24,7 +24,7 @@ fn main() {
                         )
                     })
                 })
-                .unwrap_or_else(|| format!("lib{}", name));
+                .unwrap_or_else(|| format!("lib{name}"));
 
             let library = pkg_config::find_library(&library_name);
 
@@ -34,7 +34,7 @@ fn main() {
                     return;
                 }
                 Err(error) => {
-                    eprintln!("pkg_config could not find {:?}: {}", library_name, error);
+                    eprintln!("pkg_config could not find {library_name:?}: {error}");
                     std::process::exit(1);
                 }
             };
@@ -57,11 +57,11 @@ fn main() {
         Some(libs) => {
             //let libs = libs.expect(&format!("non utf-8 value provided in {}", lib_var));
             for lib in libs.into_string().unwrap().split(':') {
-                println!("cargo:rustc-link-lib={}", lib);
+                println!("cargo:rustc-link-lib={lib}");
             }
         }
         None => {
-            println!("cargo:rustc-link-lib={}", name);
+            println!("cargo:rustc-link-lib={name}");
         }
     }
 }

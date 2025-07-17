@@ -7,15 +7,15 @@ fn main() {
 
     let bn = bus::BusName::from_bytes(b"com.codyps.systemd-test\0").unwrap();
     bus.request_name(bn, 0).unwrap();
-    println!("got name {:?}", bn);
+    println!("got name {bn:?}");
 
     let op = bus::ObjectPath::from_bytes(b"/com/codyps/systemd_test\0").unwrap();
     bus.add_object(op, |m| {
-        println!("message: {:?}", m);
+        println!("message: {m:?}");
         Ok(())
     })
     .unwrap();
-    println!("added object: {:?}", op);
+    println!("added object: {op:?}");
 
     loop {
         println!("wait?");

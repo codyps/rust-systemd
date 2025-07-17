@@ -1,6 +1,7 @@
 use super::{free_cstring, usec_from_duration, Result};
 use crate::ffi::const_iovec;
 use crate::ffi::journal as ffi;
+use crate::ffi_result;
 use crate::id128::Id128;
 use cstr_argument::CStrArgument;
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
@@ -39,7 +40,7 @@ pub fn send(args: &[&str]) -> c_int {
 
 /// Send a simple message to systemd-journald.
 pub fn print(lvl: u32, s: &str) -> c_int {
-    send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
+    send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
 enum SyslogLevel {
@@ -68,11 +69,11 @@ impl From<log::Level> for SyslogLevel {
 /// Record a log entry, with custom priority and location.
 pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
     send(&[
-        &format!("PRIORITY={}", level),
-        &format!("MESSAGE={}", args),
-        &format!("CODE_LINE={}", line),
-        &format!("CODE_FILE={}", file),
-        &format!("CODE_MODULE={}", module_path),
+        &format!("PRIORITY={level}"),
+        &format!("MESSAGE={args}"),
+        &format!("CODE_LINE={line}"),
+        &format!("CODE_FILE={file}"),
+        &format!("CODE_MODULE={module_path}"),
     ]);
 }
 
@@ -84,11 +85,9 @@ pub fn log_record(record: &Record<'_>) {
         format!("TARGET={}", record.target()),
     ];
     let opt_keys = [
-        record.line().map(|line| format!("CODE_LINE={}", line)),
-        record.file().map(|file| format!("CODE_FILE={}", file)),
-        record
-            .module_path()
-            .map(|path| format!("CODE_FUNC={}", path)),
+        record.line().map(|line| format!("CODE_LINE={line}")),
+        record.file().map(|file| format!("CODE_FILE={file}")),
+        record.module_path().map(|path| format!("CODE_FUNC={path}")),
     ];
 
     collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
@@ -274,7 +273,7 @@ impl<'a> fmt::Display for DisplayEntryData<'a> {
                 }
                 Ok(None) => break,
                 Err(e) => {
-                    writeln!(fmt, "E: {:?}", e)?;
+                    writeln!(fmt, "E: {e:?}")?;
                     break;
                 }
             }
@@ -673,7 +672,7 @@ impl JournalRef {
     /// [`sd_journal_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_journal_get_fd.html
     #[inline]
     pub fn fd(&self) -> Result<c_int> {
-        Ok(sd_try!(ffi::sd_journal_get_fd(self.as_ptr())))
+        ffi_result(unsafe { ffi::sd_journal_get_fd(self.as_ptr()) })
     }
 
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
@@ -751,10 +750,7 @@ impl JournalRef {
             ffi::sd_journal_enumerate_data(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
         });
 
-        let v = match r {
-            Err(e) => return Err(e),
-            Ok(v) => v,
-        };
+        let v = r?;
 
         if v == 0 {
             return Ok(None);
@@ -854,7 +850,7 @@ impl JournalRef {
     pub fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
         let time = wait_time.map(usec_from_duration).unwrap_or(u64::MAX);
 
-        match sd_try!(ffi::sd_journal_wait(self.as_ptr(), time)) {
+        match ffi_result(unsafe { ffi::sd_journal_wait(self.as_ptr(), time) })? {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
             ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
             ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
@@ -970,7 +966,7 @@ impl JournalRef {
     pub fn cursor(&self) -> Result<String> {
         let mut c_cursor: *const c_char = ptr::null_mut();
 
-        sd_try!(ffi::sd_journal_get_cursor(self.as_ptr(), &mut c_cursor));
+        ffi_result(unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &mut c_cursor) })?;
         let cursor = unsafe { free_cstring(c_cursor as *mut _).unwrap() };
         Ok(cursor)
     }
@@ -980,19 +976,14 @@ impl JournalRef {
     /// Corresponds to `sd_journal_test_cursor()`.
     pub fn test_cursor<A: CStrArgument>(&self, cursor: A) -> Result<bool> {
         let c = cursor.into_cstr();
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr())
-        })
-        .map(|v| v != 0)
+        ffi_result(unsafe { ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr()) })
+            .map(|v| v != 0)
     }
 
     /// Returns timestamp at which current journal entry was recorded.
     pub fn timestamp(&self) -> Result<time::SystemTime> {
         let mut timestamp_us: u64 = 0;
-        sd_try!(ffi::sd_journal_get_realtime_usec(
-            self.as_ptr(),
-            &mut timestamp_us
-        ));
+        ffi_result(unsafe { ffi::sd_journal_get_realtime_usec(self.as_ptr(), &mut timestamp_us) })?;
         Ok(system_time_from_realtime_usec(timestamp_us))
     }
 
@@ -1000,11 +991,13 @@ impl JournalRef {
     pub fn monotonic_timestamp(&self) -> Result<(u64, Id128)> {
         let mut monotonic_timestamp_us: u64 = 0;
         let mut id = Id128::default();
-        sd_try!(ffi::sd_journal_get_monotonic_usec(
-            self.as_ptr(),
-            &mut monotonic_timestamp_us,
-            &mut id.inner,
-        ));
+        ffi_result(unsafe {
+            ffi::sd_journal_get_monotonic_usec(
+                self.as_ptr(),
+                &mut monotonic_timestamp_us,
+                &mut id.inner,
+            )
+        })?;
         Ok((monotonic_timestamp_us, id))
     }
 
@@ -1012,11 +1005,13 @@ impl JournalRef {
     /// the current entry is not from the current system boot.
     pub fn monotonic_timestamp_current_boot(&self) -> Result<u64> {
         let mut monotonic_timestamp_us: u64 = 0;
-        sd_try!(ffi::sd_journal_get_monotonic_usec(
-            self.as_ptr(),
-            &mut monotonic_timestamp_us,
-            ptr::null_mut(),
-        ));
+        ffi_result(unsafe {
+            ffi::sd_journal_get_monotonic_usec(
+                self.as_ptr(),
+                &mut monotonic_timestamp_us,
+                ptr::null_mut(),
+            )
+        })?;
         Ok(monotonic_timestamp_us)
     }
 
@@ -1028,19 +1023,19 @@ impl JournalRef {
         filter.extend(val.into());
         let data = filter.as_ptr() as *const c_void;
         let datalen = filter.len() as size_t;
-        sd_try!(ffi::sd_journal_add_match(self.as_ptr(), data, datalen));
+        ffi_result(unsafe { ffi::sd_journal_add_match(self.as_ptr(), data, datalen) })?;
         Ok(self)
     }
 
     /// Inserts a disjunction (i.e. logical OR) in the match list.
     pub fn match_or(&mut self) -> Result<&mut JournalRef> {
-        sd_try!(ffi::sd_journal_add_disjunction(self.as_ptr()));
+        ffi_result(unsafe { ffi::sd_journal_add_disjunction(self.as_ptr()) })?;
         Ok(self)
     }
 
     /// Inserts a conjunction (i.e. logical AND) in the match list.
     pub fn match_and(&mut self) -> Result<&mut JournalRef> {
-        sd_try!(ffi::sd_journal_add_conjunction(self.as_ptr()));
+        ffi_result(unsafe { ffi::sd_journal_add_conjunction(self.as_ptr()) })?;
         Ok(self)
     }
 

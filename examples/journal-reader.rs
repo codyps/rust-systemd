@@ -46,7 +46,7 @@ mod x {
                         .map(|v| v.into_owned())
                 });
 
-                println!("[{:?}] {:?}", unit, message);
+                println!("[{unit:?}] {message:?}");
 
                 i += 1;
                 if i >= MAX_MESSAGES {

@@ -91,7 +91,7 @@ impl<'a, T: SdBusMessageDirect + 'a> FromSdBusMessage<'a> for T {
 //         impl ToSdBusMessage for $typ {
 //             fn to_message(&self, m: &mut MessageRef) -> ::systemdsuper::Result<()> {
 //                 let c_type : [u8;2] = [ $dbus_type, '\0' ];
-//                 sd_try!(ffi::sd_bus_message_append(m, &c_type, self as *const _));
+//                 ffi_result(unsafe { ffi::sd_bus_message_append(m, &c_type, self as *const _)})?;
 //                 Ok(())
 //             }
 //         }
@@ -100,7 +100,7 @@ impl<'a, T: SdBusMessageDirect + 'a> FromSdBusMessage<'a> for T {
 //             fn from_message(m: &mut MessageRef) -> ::systemd::Result<Self> {
 //                 let c_type : [u8;2] = [ $dbus_type, '\0' ];
 //                 let v : Self = unsafe { uninitialized() };
-//                 sd_try!(ffi::sd_bus_message_read(m, &c_type, &v));
+//                 ffi_result(unsafe { ffi::sd_bus_message_read(m, &c_type, &v)})?;
 //                 Ok(v)
 //             }
 //         }
@@ -176,7 +176,7 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
     }
 }
 
-impl<'a> ToSdBusMessage for &'a bus::ObjectPath {
+impl ToSdBusMessage for &bus::ObjectPath {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _) }?;
         Ok(())
@@ -201,7 +201,7 @@ impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
     }
 }
 
-impl<'a> ToSdBusMessage for &'a Utf8CStr {
+impl ToSdBusMessage for &Utf8CStr {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(b's', self.as_ptr() as *const _) }
     }

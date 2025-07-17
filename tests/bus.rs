@@ -64,5 +64,5 @@ fn bad_signature_on_call() {
     m.append(23u64).unwrap();
 
     let r = m.call(0).err().unwrap();
-    println!("{:?}", r);
+    println!("{r:?}");
 }

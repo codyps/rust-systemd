@@ -4,6 +4,7 @@
 //! simpler string format. See `man 3 sd-id128` for more details.
 
 use super::Result;
+use crate::ffi_result;
 use std::ffi::CStr;
 use std::fmt;
 
@@ -24,7 +25,7 @@ impl fmt::Debug for Id128 {
 impl fmt::Display for Id128 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         for b in self.inner.bytes.iter() {
-            write!(fmt, "{:02x}", b)?;
+            write!(fmt, "{b:02x}")?;
         }
         Ok(())
     }
@@ -63,43 +64,41 @@ impl<'de> serde::Deserialize<'de> for Id128 {
 impl Id128 {
     pub fn from_cstr(s: &CStr) -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_from_string(s.as_ptr(), &mut r.inner));
+        ffi_result(unsafe { ffi::id128::sd_id128_from_string(s.as_ptr(), &mut r.inner) })?;
         Ok(r)
     }
 
     pub fn from_random() -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_randomize(&mut r.inner));
+        ffi_result(unsafe { ffi::id128::sd_id128_randomize(&mut r.inner) })?;
         Ok(r)
     }
 
     pub fn from_machine() -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_get_machine(&mut r.inner));
+        ffi_result(unsafe { ffi::id128::sd_id128_get_machine(&mut r.inner) })?;
         Ok(r)
     }
 
     pub fn from_machine_app_specific(app_id: &Id128) -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_get_machine_app_specific(
-            *app_id.as_raw(),
-            &mut r.inner
-        ));
+        ffi_result(unsafe {
+            ffi::id128::sd_id128_get_machine_app_specific(*app_id.as_raw(), &mut r.inner)
+        })?;
         Ok(r)
     }
 
     pub fn from_boot() -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_get_boot(&mut r.inner));
+        ffi_result(unsafe { ffi::id128::sd_id128_get_boot(&mut r.inner) })?;
         Ok(r)
     }
 
     pub fn from_boot_app_specific(app_id: &Id128) -> Result<Id128> {
         let mut r = Id128::default();
-        sd_try!(ffi::id128::sd_id128_get_boot_app_specific(
-            *app_id.as_raw(),
-            &mut r.inner
-        ));
+        ffi_result(unsafe {
+            ffi::id128::sd_id128_get_boot_app_specific(*app_id.as_raw(), &mut r.inner)
+        })?;
         Ok(r)
     }
 

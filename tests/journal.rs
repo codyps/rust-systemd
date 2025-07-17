@@ -103,7 +103,7 @@ fn test_simple_match() {
     let key = "RUST_TEST_MARKER";
     let value = "RUST_SYSTEMD_SIMPLE_MATCH";
     let msg = "MESSAGE=rust-systemd test_match";
-    let filter = format!("{}={}", key, value);
+    let filter = format!("{key}={value}");
     let mut j = journal::OpenOptions::default().open().unwrap();
 
     // check for positive matches
@@ -127,7 +127,7 @@ fn test_simple_match() {
         }
 
         let entryval = j.get_data(key).unwrap();
-        println!("k,v: {:?}, {:?}", key, entryval);
+        println!("k,v: {key:?}, {entryval:?}");
         if entryval.is_none() {
             println!("E: {}", j.display_entry_data());
             continue;
