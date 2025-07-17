@@ -16,6 +16,7 @@
 //    than what is possible with sd-bus directly.
 
 //use enumflags2_derive::EnumFlags;
+use crate::ffi_result;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use std::ffi::CStr;
@@ -867,21 +868,21 @@ impl Bus {
     #[inline]
     pub fn default() -> crate::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_default(b.as_mut_ptr()));
+        ffi_result(unsafe { ffi::bus::sd_bus_default(b.as_mut_ptr()) })?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 
     #[inline]
     pub fn default_user() -> crate::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_default_user(b.as_mut_ptr()));
+        ffi_result(unsafe { ffi::bus::sd_bus_default_user(b.as_mut_ptr()) })?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 
     #[inline]
     pub fn default_system() -> super::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_default_system(b.as_mut_ptr()));
+        ffi_result(unsafe { ffi::bus::sd_bus_default_system(b.as_mut_ptr()) })?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 }
@@ -929,7 +930,9 @@ impl BusRef {
     /// [`sd_bus_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_fd.html
     #[inline]
     pub fn fd(&self) -> super::Result<c_int> {
-        Ok(sd_try!(ffi::bus::sd_bus_get_fd(self.as_ptr())))
+        Ok(ffi_result(unsafe {
+            ffi::bus::sd_bus_get_fd(self.as_ptr())
+        })?)
     }
 
     /// Returns the I/O events to wait for, suitable for passing to poll or a similar call.
@@ -940,7 +943,9 @@ impl BusRef {
     /// [`sd_bus_get_events`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_events.html
     #[inline]
     pub fn events(&self) -> super::Result<c_int> {
-        Ok(sd_try!(ffi::bus::sd_bus_get_events(self.as_ptr())))
+        Ok(ffi_result(unsafe {
+            ffi::bus::sd_bus_get_events(self.as_ptr())
+        })?)
     }
 
     /// Returns the time-out in us to pass to `poll()` or a similar call when waiting for events on
@@ -952,7 +957,7 @@ impl BusRef {
     #[inline]
     pub fn timeout(&self) -> super::Result<u64> {
         let mut b = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_get_timeout(self.as_ptr(), b.as_mut_ptr()));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_timeout(self.as_ptr(), b.as_mut_ptr()) })?;
         let b = unsafe { b.assume_init() };
         Ok(b)
     }
@@ -971,7 +976,7 @@ impl BusRef {
     #[inline]
     pub fn process(&mut self) -> super::Result<Option<Option<Message>>> {
         let mut b = MaybeUninit::uninit();
-        let r = sd_try!(ffi::bus::sd_bus_process(self.as_ptr(), b.as_mut_ptr()));
+        let r = ffi_result(unsafe { ffi::bus::sd_bus_process(self.as_ptr(), b.as_mut_ptr()) })?;
         if r > 0 {
             let b = unsafe { b.assume_init() };
             if b.is_null() {
@@ -993,11 +998,9 @@ impl BusRef {
         max_priority: i64,
     ) -> super::Result<Option<Option<Message>>> {
         let mut b = MaybeUninit::uninit();
-        let r = sd_try!(ffi::bus::sd_bus_process_priority(
-            self.as_ptr(),
-            max_priority,
-            b.as_mut_ptr()
-        ));
+        let r = ffi_result(unsafe {
+            ffi::bus::sd_bus_process_priority(self.as_ptr(), max_priority, b.as_mut_ptr())
+        })?;
         if r > 0 {
             let b = unsafe { b.assume_init() };
             if b.is_null() {
@@ -1023,10 +1026,12 @@ impl BusRef {
     /// [`sd_bus_wait`]: https://www.freedesktop.org/software/systemd/man/sd_bus_wait.html
     #[inline]
     pub fn wait(&mut self, timeout: Option<Duration>) -> super::Result<bool> {
-        Ok(sd_try!(ffi::bus::sd_bus_wait(
-            self.as_ptr(),
-            timeout.map(usec_from_duration).unwrap_or(u64::MAX)
-        )) > 0)
+        Ok(ffi_result(unsafe {
+            ffi::bus::sd_bus_wait(
+                self.as_ptr(),
+                timeout.map(usec_from_duration).unwrap_or(u64::MAX),
+            )
+        })? > 0)
     }
 
     /// Get the unique name (address) of this connection to this `Bus`.
@@ -1039,23 +1044,20 @@ impl BusRef {
     #[inline]
     pub fn unique_name(&self) -> super::Result<&BusName> {
         let mut e = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_get_unique_name(
-            self.as_ptr(),
-            e.as_mut_ptr()
-        ));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_unique_name(self.as_ptr(), e.as_mut_ptr()) })?;
         let e = unsafe { e.assume_init() };
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
     pub fn scope(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        sd_try!(ffi::bus::sd_bus_get_scope(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_scope(self.as_ptr(), &mut ret) })?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
     pub fn tid(&self) -> super::Result<pid_t> {
         let mut ret = 0;
-        sd_try!(ffi::bus::sd_bus_get_tid(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_tid(self.as_ptr(), &mut ret) })?;
         Ok(ret)
     }
 
@@ -1063,13 +1065,13 @@ impl BusRef {
 
     pub fn description(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        sd_try!(ffi::bus::sd_bus_get_description(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_description(self.as_ptr(), &mut ret) })?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
     pub fn address(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        sd_try!(ffi::bus::sd_bus_get_address(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_address(self.as_ptr(), &mut ret) })?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
@@ -1086,13 +1088,13 @@ impl BusRef {
 
     pub fn n_queued_write(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        sd_try!(ffi::bus::sd_bus_get_n_queued_write(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_n_queued_write(self.as_ptr(), &mut ret) })?;
         Ok(ret)
     }
 
     pub fn n_queued_read(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        sd_try!(ffi::bus::sd_bus_get_n_queued_read(self.as_ptr(), &mut ret));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_n_queued_read(self.as_ptr(), &mut ret) })?;
         Ok(ret)
     }
 
@@ -1105,10 +1107,7 @@ impl BusRef {
 
     pub fn method_call_timeout(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        sd_try!(ffi::bus::sd_bus_get_method_call_timeout(
-            self.as_ptr(),
-            &mut ret
-        ));
+        ffi_result(unsafe { ffi::bus::sd_bus_get_method_call_timeout(self.as_ptr(), &mut ret) })?;
         Ok(ret)
     }
 
@@ -1130,13 +1129,15 @@ impl BusRef {
         member: &MemberName,
     ) -> super::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_message_new_signal(
-            self.as_ptr(),
-            m.as_mut_ptr(),
-            path.as_ptr() as *const _,
-            interface.as_ptr() as *const _,
-            member.as_ptr() as *const _
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_new_signal(
+                self.as_ptr(),
+                m.as_mut_ptr(),
+                path.as_ptr() as *const _,
+                interface.as_ptr() as *const _,
+                member.as_ptr() as *const _,
+            )
+        })?;
         let m = unsafe { m.assume_init() };
         Ok(unsafe { Message::from_ptr(m) })
     }
@@ -1153,14 +1154,16 @@ impl BusRef {
         member: &MemberName,
     ) -> super::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_message_new_method_call(
-            self.as_ptr(),
-            m.as_mut_ptr(),
-            dest as *const _ as *const _,
-            path as *const _ as *const _,
-            interface as *const _ as *const _,
-            member as *const _ as *const _
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_new_method_call(
+                self.as_ptr(),
+                m.as_mut_ptr(),
+                dest as *const _ as *const _,
+                path as *const _ as *const _,
+                interface as *const _ as *const _,
+                member as *const _ as *const _,
+            )
+        })?;
         let m = unsafe { m.assume_init() };
         Ok(unsafe { Message::from_ptr(m) })
     }
@@ -1176,11 +1179,9 @@ impl BusRef {
     /// [`sd_bus_request_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_request_name.html
     #[inline]
     pub fn request_name(&mut self, name: &BusName, flags: u64) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_request_name(
-            self.as_ptr(),
-            name as *const _ as *const _,
-            flags
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
+        })?;
         Ok(())
     }
 
@@ -1231,10 +1232,9 @@ impl BusRef {
     /// This blocks. To get async behavior, use `request_name` directly.
     #[inline]
     pub fn release_name(&self, name: &BusName) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_release_name(
-            self.as_ptr(),
-            name as *const _ as *const _
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _)
+        })?;
         Ok(())
     }
 
@@ -1279,11 +1279,13 @@ impl BusRef {
 
     #[inline]
     pub fn add_object_manager(&self, path: &ObjectPath) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_add_object_manager(
-            self.as_ptr(),
-            ptr::null_mut(),
-            path as *const _ as *const _
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_add_object_manager(
+                self.as_ptr(),
+                ptr::null_mut(),
+                path as *const _ as *const _,
+            )
+        })?;
         Ok(())
     }
 
@@ -1294,12 +1296,12 @@ impl BusRef {
     //                                           userdata: T)
     //                                           -> super::Result<()> {
     //    let u = Box::into_raw(Box::new(userdata));
-    //    sd_try!(ffi::bus::sd_bus_add_object_vtable(self.raw,
+    //    ffi_result(unsafe {ffi::bus::sd_bus_add_object_vtable(self.raw,
     //                                               ptr::null_mut(),
     //                                               path.as_ptr() as *const _,
     //                                               interface.as_ptr() as *const _,
     //                                               vtable.as_ptr(),
-    //                                               Box::into_raw(Box::new(T))));
+    //                                               Box::into_raw(Box::new(T)))})?;
     //    Ok(())
     // }
 
@@ -1403,10 +1405,9 @@ impl MessageRef {
     /// [`sd_bus_message_set_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_destination.html
     #[inline]
     pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_message_set_destination(
-            self.as_ptr(),
-            dest as *const _ as *const _
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_set_destination(self.as_ptr(), dest as *const _ as *const _)
+        })?;
         Ok(())
     }
 
@@ -1429,10 +1430,9 @@ impl MessageRef {
     /// [`sd_bus_message_set_auto_start`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_auto_start.html
     #[inline]
     pub fn set_auto_start(&mut self, yes: bool) -> super::Result<()> {
-        sd_try!(ffi::bus::sd_bus_message_set_auto_start(
-            self.as_ptr(),
-            yes as c_int
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_set_auto_start(self.as_ptr(), yes as c_int)
+        })?;
         Ok(())
     }
 
@@ -1602,11 +1602,9 @@ impl MessageRef {
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
         let mut m = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_send(
-            ptr::null_mut(),
-            self.as_ptr(),
-            m.as_mut_ptr()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), m.as_mut_ptr())
+        })?;
         let m = unsafe { m.assume_init() };
         Ok(m)
     }
@@ -1620,11 +1618,9 @@ impl MessageRef {
     #[inline]
     pub fn send_no_reply(&mut self) -> super::Result<()> {
         // self.bus().send_no_reply(self)
-        sd_try!(ffi::bus::sd_bus_send(
-            ptr::null_mut(),
-            self.as_ptr(),
-            ptr::null_mut()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), ptr::null_mut())
+        })?;
         Ok(())
     }
 
@@ -1641,12 +1637,14 @@ impl MessageRef {
     pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
         // self.bus().send_to(self, dest)
         let mut c = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_send_to(
-            ptr::null_mut(),
-            self.as_ptr(),
-            dest as *const _ as *const _,
-            c.as_mut_ptr()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_send_to(
+                ptr::null_mut(),
+                self.as_ptr(),
+                dest as *const _ as *const _,
+                c.as_mut_ptr(),
+            )
+        })?;
         let c = unsafe { c.assume_init() };
         Ok(c)
     }
@@ -1661,12 +1659,14 @@ impl MessageRef {
     #[inline]
     pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
         // self.bus().send_to_no_reply(self, dest)
-        sd_try!(ffi::bus::sd_bus_send_to(
-            ptr::null_mut(),
-            self.as_ptr(),
-            dest as *const _ as *const _,
-            ptr::null_mut()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_send_to(
+                ptr::null_mut(),
+                self.as_ptr(),
+                dest as *const _ as *const _,
+                ptr::null_mut(),
+            )
+        })?;
         Ok(())
     }
 
@@ -1754,11 +1754,9 @@ impl MessageRef {
     #[inline]
     pub fn new_method_error(&mut self, error: &Error) -> crate::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_message_new_method_error(
-            self.as_ptr(),
-            m.as_mut_ptr(),
-            error.as_ptr()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), m.as_mut_ptr(), error.as_ptr())
+        })?;
         Ok(unsafe { Message::from_ptr(m.assume_init()) })
     }
 
@@ -1768,10 +1766,9 @@ impl MessageRef {
     #[inline]
     pub fn new_method_return(&mut self) -> crate::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        sd_try!(ffi::bus::sd_bus_message_new_method_return(
-            self.as_ptr(),
-            m.as_mut_ptr()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), m.as_mut_ptr())
+        })?;
         Ok(unsafe { Message::from_ptr(m.assume_init()) })
     }
 
@@ -1817,11 +1814,9 @@ impl MessageRef {
     #[inline]
     pub fn iter(&mut self) -> crate::Result<MessageIter<'_>> {
         /* probe the `Message` to check if we can iterate on it */
-        sd_try!(ffi::bus::sd_bus_message_peek_type(
-            self.as_ptr(),
-            ptr::null_mut(),
-            ptr::null_mut()
-        ));
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_peek_type(self.as_ptr(), ptr::null_mut(), ptr::null_mut())
+        })?;
         Ok(MessageIter {
             raw: self.as_ptr(),
             life: PhantomData,

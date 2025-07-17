@@ -48,20 +48,6 @@ unsafe fn free_cstring(ptr: *mut c_char) -> Option<String> {
     Some(s)
 }
 
-/// An analogue of `try!()` for systemd FFI calls.
-///
-/// The parameter should be a call to a systemd FFI fn with an c_int return
-/// value. It is called, and if the return is negative then `sd_try!()`
-/// interprets it as an error code and returns IoError from the enclosing fn.
-/// Otherwise, the value of `sd_try!()` is the non-negative value returned by
-/// the FFI call.
-#[macro_export]
-macro_rules! sd_try {
-    ($e:expr) => {{
-        $crate::ffi_result(unsafe { $e })?
-    }};
-}
-
 /// High-level interface to the systemd journal.
 ///
 /// The main interface for writing to the journal is `fn log()`, and the main

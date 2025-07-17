@@ -1,5 +1,6 @@
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use super::{free_cstring, Result};
+use crate::ffi_result;
 use ::ffi::login as ffi;
 use cstr_argument::CStrArgument;
 use std::ptr;
@@ -21,8 +22,10 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
     let mut c_unit_name: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     match unit_type {
-        UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_unit(p, &mut c_unit_name)),
-        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_unit(p, &mut c_unit_name)),
+        UnitType::UserUnit => {
+            ffi_result(unsafe { ffi::sd_pid_get_user_unit(p, &mut c_unit_name) })?
+        }
+        UnitType::SystemUnit => ffi_result(unsafe { ffi::sd_pid_get_unit(p, &mut c_unit_name) })?,
     };
     let unit_name = unsafe { free_cstring(c_unit_name).unwrap() };
     Ok(unit_name)
@@ -37,8 +40,10 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
     let mut c_slice_name: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
     match slice_type {
-        UnitType::UserUnit => sd_try!(ffi::sd_pid_get_user_slice(p, &mut c_slice_name)),
-        UnitType::SystemUnit => sd_try!(ffi::sd_pid_get_slice(p, &mut c_slice_name)),
+        UnitType::UserUnit => {
+            ffi_result(unsafe { ffi::sd_pid_get_user_slice(p, &mut c_slice_name) })?
+        }
+        UnitType::SystemUnit => ffi_result(unsafe { ffi::sd_pid_get_slice(p, &mut c_slice_name) })?,
     };
     let slice_id = unsafe { free_cstring(c_slice_name).unwrap() };
     Ok(slice_id)
@@ -53,7 +58,7 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
 pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
     let mut c_machine_name: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
-    sd_try!(ffi::sd_pid_get_machine_name(p, &mut c_machine_name));
+    ffi_result(unsafe { ffi::sd_pid_get_machine_name(p, &mut c_machine_name) })?;
     let machine_id = unsafe { free_cstring(c_machine_name).unwrap() };
     Ok(machine_id)
 }
@@ -69,7 +74,7 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
 pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
     let mut c_cgroup: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
-    sd_try!(ffi::sd_pid_get_cgroup(p, &mut c_cgroup));
+    ffi_result(unsafe { ffi::sd_pid_get_cgroup(p, &mut c_cgroup) })?;
     let cg = unsafe { free_cstring(c_cgroup).unwrap() };
     Ok(cg)
 }
@@ -82,7 +87,7 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
 pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
     let p: pid_t = pid.unwrap_or(0);
-    sd_try!(ffi::sd_pid_get_session(p, &mut c_session));
+    ffi_result(unsafe { ffi::sd_pid_get_session(p, &mut c_session) })?;
     let ss = unsafe { free_cstring(c_session).unwrap() };
     Ok(ss)
 }
@@ -94,10 +99,7 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
 pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
     let session = session.into_cstr();
     let mut c_seat: *mut c_char = ptr::null_mut();
-    sd_try!(ffi::sd_session_get_seat(
-        session.as_ref().as_ptr(),
-        &mut c_seat
-    ));
+    ffi_result(unsafe { ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat) })?;
     let ss = unsafe { free_cstring(c_seat).unwrap() };
     Ok(ss)
 }
@@ -108,7 +110,7 @@ pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
 pub fn get_vt<S: CStrArgument>(session: S) -> Result<u32> {
     let session = session.into_cstr();
     let c_vt: *mut c_uint = ptr::null_mut();
-    sd_try!(ffi::sd_session_get_vt(session.as_ref().as_ptr(), c_vt));
+    ffi_result(unsafe { ffi::sd_session_get_vt(session.as_ref().as_ptr(), c_vt) })?;
     Ok(unsafe { *c_vt })
 }
 
@@ -120,6 +122,6 @@ pub fn get_vt<S: CStrArgument>(session: S) -> Result<u32> {
 pub fn get_owner_uid(pid: Option<pid_t>) -> Result<uid_t> {
     let mut c_owner_uid: u32 = 0u32;
     let p: pid_t = pid.unwrap_or(0);
-    sd_try!(ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid));
+    ffi_result(unsafe { ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid) })?;
     Ok(c_owner_uid as uid_t)
 }
