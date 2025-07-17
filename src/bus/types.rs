@@ -176,7 +176,7 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
     }
 }
 
-impl<'a> ToSdBusMessage for &'a bus::ObjectPath {
+impl ToSdBusMessage for &bus::ObjectPath {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _) }?;
         Ok(())
@@ -201,7 +201,7 @@ impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
     }
 }
 
-impl<'a> ToSdBusMessage for &'a Utf8CStr {
+impl ToSdBusMessage for &Utf8CStr {
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
         unsafe { m.append_basic_raw(b's', self.as_ptr() as *const _) }
     }

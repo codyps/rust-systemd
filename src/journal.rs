@@ -39,7 +39,7 @@ pub fn send(args: &[&str]) -> c_int {
 
 /// Send a simple message to systemd-journald.
 pub fn print(lvl: u32, s: &str) -> c_int {
-    send(&[&format!("PRIORITY={}", lvl), &format!("MESSAGE={}", s)])
+    send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
 enum SyslogLevel {
@@ -68,11 +68,11 @@ impl From<log::Level> for SyslogLevel {
 /// Record a log entry, with custom priority and location.
 pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
     send(&[
-        &format!("PRIORITY={}", level),
-        &format!("MESSAGE={}", args),
-        &format!("CODE_LINE={}", line),
-        &format!("CODE_FILE={}", file),
-        &format!("CODE_MODULE={}", module_path),
+        &format!("PRIORITY={level}"),
+        &format!("MESSAGE={args}"),
+        &format!("CODE_LINE={line}"),
+        &format!("CODE_FILE={file}"),
+        &format!("CODE_MODULE={module_path}"),
     ]);
 }
 
@@ -84,11 +84,11 @@ pub fn log_record(record: &Record<'_>) {
         format!("TARGET={}", record.target()),
     ];
     let opt_keys = [
-        record.line().map(|line| format!("CODE_LINE={}", line)),
-        record.file().map(|file| format!("CODE_FILE={}", file)),
+        record.line().map(|line| format!("CODE_LINE={line}")),
+        record.file().map(|file| format!("CODE_FILE={file}")),
         record
             .module_path()
-            .map(|path| format!("CODE_FUNC={}", path)),
+            .map(|path| format!("CODE_FUNC={path}")),
     ];
 
     collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
@@ -274,7 +274,7 @@ impl<'a> fmt::Display for DisplayEntryData<'a> {
                 }
                 Ok(None) => break,
                 Err(e) => {
-                    writeln!(fmt, "E: {:?}", e)?;
+                    writeln!(fmt, "E: {e:?}")?;
                     break;
                 }
             }
@@ -751,10 +751,7 @@ impl JournalRef {
             ffi::sd_journal_enumerate_data(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
         });
 
-        let v = match r {
-            Err(e) => return Err(e),
-            Ok(v) => v,
-        };
+        let v = r?;
 
         if v == 0 {
             return Ok(None);

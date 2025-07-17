@@ -24,7 +24,7 @@ impl fmt::Debug for Id128 {
 impl fmt::Display for Id128 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         for b in self.inner.bytes.iter() {
-            write!(fmt, "{:02x}", b)?;
+            write!(fmt, "{b:02x}")?;
         }
         Ok(())
     }

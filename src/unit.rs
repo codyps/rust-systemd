@@ -14,7 +14,7 @@ pub fn escape_name(s: &str) -> String {
             b'_' | b':' => escaped.push(char::from(b)),
             // all ASCII alphanumeric characters
             _ if b.is_ascii_alphanumeric() => escaped.push(char::from(b)),
-            _ => escaped.push_str(&format!("\\x{:02x}", b)),
+            _ => escaped.push_str(&format!("\\x{b:02x}")),
         }
     }
     escaped
