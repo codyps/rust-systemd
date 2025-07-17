@@ -3,7 +3,7 @@
 #[cfg(feature = "journal")]
 mod x {
     //! Follow future journal log messages and print up to 100 of them.
-    use std::io::ErrorKind;
+    
 
     use systemd::journal::{self, JournalRecord, JournalSeek};
     use systemd::Error;
@@ -31,22 +31,22 @@ mod x {
         reader
             .watch_all_elements(|record: JournalRecord| {
                 let unit = record.get(KEY_UNIT).ok_or_else(|| {
-                    Error::new(ErrorKind::Other, "Could not get unit from record")
+                    Error::other("Could not get unit from record")
                 })?;
                 let message = record.get(KEY_MESSAGE).ok_or_else(|| {
-                    Error::new(ErrorKind::Other, "Could not get message from record")
+                    Error::other("Could not get message from record")
                 })?;
-                println!("[{}] {}", unit, message);
+                println!("[{unit}] {message}");
 
                 i += 1;
                 if i < MAX_MESSAGES {
                     Ok(())
                 } else {
-                    Err(Error::new(ErrorKind::Other, "Done watching"))
+                    Err(Error::other("Done watching"))
                 }
             })
             .unwrap_or_else(|e| {
-                println!("Stop watching log. Reason: {}", e);
+                println!("Stop watching log. Reason: {e}");
             });
 
         println!("End of example.");
