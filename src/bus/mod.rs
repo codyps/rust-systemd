@@ -930,9 +930,9 @@ impl BusRef {
     /// [`sd_bus_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_fd.html
     #[inline]
     pub fn fd(&self) -> super::Result<c_int> {
-        Ok(ffi_result(unsafe {
+        ffi_result(unsafe {
             ffi::bus::sd_bus_get_fd(self.as_ptr())
-        })?)
+        })
     }
 
     /// Returns the I/O events to wait for, suitable for passing to poll or a similar call.
@@ -943,9 +943,9 @@ impl BusRef {
     /// [`sd_bus_get_events`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_events.html
     #[inline]
     pub fn events(&self) -> super::Result<c_int> {
-        Ok(ffi_result(unsafe {
+        ffi_result(unsafe {
             ffi::bus::sd_bus_get_events(self.as_ptr())
-        })?)
+        })
     }
 
     /// Returns the time-out in us to pass to `poll()` or a similar call when waiting for events on

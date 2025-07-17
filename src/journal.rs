@@ -672,9 +672,9 @@ impl JournalRef {
     /// [`sd_journal_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_journal_get_fd.html
     #[inline]
     pub fn fd(&self) -> Result<c_int> {
-        Ok(ffi_result(unsafe {
+        ffi_result(unsafe {
             ffi::sd_journal_get_fd(self.as_ptr())
-        })?)
+        })
     }
 
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
