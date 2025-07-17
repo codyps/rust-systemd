@@ -992,9 +992,14 @@ impl JournalRef {
 
     /// Returns timestamp at which current journal entry was recorded.
     pub fn timestamp(&self) -> Result<time::SystemTime> {
+        Ok(system_time_from_realtime_usec(self.timestamp_usec()?))
+    }
+
+    /// Returns timestamp at which current journal entry was recorded in u64 format.
+    pub fn timestamp_usec(&self) -> Result<u64> {
         let mut timestamp_us: u64 = 0;
         ffi_result(unsafe { ffi::sd_journal_get_realtime_usec(self.as_ptr(), &mut timestamp_us) })?;
-        Ok(system_time_from_realtime_usec(timestamp_us))
+        Ok(timestamp_us)
     }
 
     /// Returns monotonic timestamp and boot ID at which current journal entry was recorded.
