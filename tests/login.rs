@@ -9,17 +9,14 @@ fn test_get_unit() {
     let su = login::get_unit(login::UnitType::SystemUnit, None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
-        // This is not running in a unit at all
-        false => {
-            assert!(uu.is_err());
-            assert!(su.is_err());
-        }
+    if has_systemd.unwrap() {
         // User units run under a system unit (E.g. user@1000.service)
-        true => {
-            assert!(su.is_ok());
-        }
-    };
+        assert!(su.is_ok());
+    } else {
+        // This is not running in a unit at all
+        assert!(uu.is_err());
+        assert!(su.is_err());
+    }
 }
 
 #[test]
@@ -28,19 +25,16 @@ fn test_get_slice() {
     let ss = login::get_slice(login::UnitType::SystemUnit, None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
-        // This is running in the top-level generic slice
-        false => {
-            assert_eq!(ss.unwrap(), "-.slice");
-        }
+    if has_systemd.unwrap() {
         // This is running in a system slice, and perhaps
         // in an user one too
-        true => {
-            if ss.is_err() && us.is_err() {
-                panic!("ss: {:?}, us: {:?}", ss, us);
-            }
+        if ss.is_err() && us.is_err() {
+            panic!("ss: {:?}, us: {:?}", ss, us);
         }
-    };
+    } else {
+        // This is running in the top-level generic slice
+        assert_eq!(ss.unwrap(), "-.slice");
+    }
 }
 
 #[test]
@@ -48,14 +42,12 @@ fn test_get_machine_name() {
     let mname = login::get_machine_name(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
+    if !has_systemd.unwrap() {
         // No machined registration
-        false => {
-            assert!(mname.is_err());
-        }
+        assert!(mname.is_err());
+    } else {
         // This is unpredictable, based on testing environment
-        true => {}
-    };
+    }
 }
 
 #[test]
@@ -63,12 +55,12 @@ fn test_get_cgroup() {
     let cg = login::get_cgroup(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
+    if has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
-        true => assert!(cg.is_ok()),
+        assert!(cg.is_ok());
+    } else {
         // Nothing meaningful to check here
-        false => {}
-    };
+    }
 }
 
 #[test]
@@ -76,21 +68,19 @@ fn test_get_session() {
     let ss = login::get_session(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
+    if has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
-        true => {
-            // even in this case, we might get a "no data available" (github actions runners return
-            // this)
-            if let Err(e) = ss {
-                match e.raw_os_error() {
-                    Some(libc::ENODATA) => { /* ok */ }
-                    _ => panic!("{}", e),
-                }
+        // even in this case, we might get a "no data available" (github actions runners return
+        // this)
+        if let Err(e) = ss {
+            match e.raw_os_error() {
+                Some(libc::ENODATA) => { /* ok */ }
+                _ => panic!("{}", e),
             }
         }
+    } else {
         // Nothing meaningful to check here
-        false => {}
-    };
+    }
 }
 
 #[test]
@@ -98,19 +88,17 @@ fn test_get_owner_uid() {
     let ou = login::get_owner_uid(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
-    match has_systemd.unwrap() {
+    if has_systemd.unwrap() {
         // Running under systemd, inside a slice somewhere
-        true => {
-            // even in this case, we might get a "no data available" (github actions runners return
-            // this)
-            if let Err(e) = ou {
-                match e.raw_os_error() {
-                    Some(libc::ENODATA) => { /* ok */ }
-                    _ => panic!("{}", e),
-                }
+        // even in this case, we might get a "no data available" (github actions runners return
+        // this)
+        if let Err(e) = ou {
+            match e.raw_os_error() {
+                Some(libc::ENODATA) => { /* ok */ }
+                _ => panic!("{}", e),
             }
         }
+    } else {
         // Nothing meaningful to check here
-        false => {}
-    };
+    }
 }

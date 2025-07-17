@@ -3,7 +3,6 @@
 #[cfg(feature = "journal")]
 mod x {
     //! Follow future journal log messages and print up to 100 of them.
-    
 
     use systemd::journal::{self, JournalRecord, JournalSeek};
     use systemd::Error;
@@ -30,12 +29,12 @@ mod x {
         let mut i = 0;
         reader
             .watch_all_elements(|record: JournalRecord| {
-                let unit = record.get(KEY_UNIT).ok_or_else(|| {
-                    Error::other("Could not get unit from record")
-                })?;
-                let message = record.get(KEY_MESSAGE).ok_or_else(|| {
-                    Error::other("Could not get message from record")
-                })?;
+                let unit = record
+                    .get(KEY_UNIT)
+                    .ok_or_else(|| Error::other("Could not get unit from record"))?;
+                let message = record
+                    .get(KEY_MESSAGE)
+                    .ok_or_else(|| Error::other("Could not get message from record"))?;
                 println!("[{unit}] {message}");
 
                 i += 1;
