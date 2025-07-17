@@ -858,6 +858,16 @@ impl JournalRef {
         }
     }
 
+    /// Get the journal state after receiving an an event when polling the journal file descriptor.
+    pub fn process(&mut self) -> Result<JournalWaitResult> {
+        match ffi_result(unsafe { ffi::sd_journal_process(self.as_ptr()) })? {
+            ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
+            ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
+            ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
+            _ => Err(io::Error::new(InvalidData, "Failed to process journal")),
+        }
+    }
+
     /// Wait for the next entry to appear. Returns `Ok(None)` if there were no
     /// new entries in the given wait time.
     /// Pass wait_time `None` to wait for an unlimited period for new entries.
