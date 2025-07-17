@@ -75,7 +75,7 @@ impl ListenFds {
     // Constructs a new set from the number of file_descriptors
     fn new(unset_environment: bool) -> Result<Self> {
         // in order to use rust's locking of the environment, do the env var unsetting ourselves
-        let num_fds = ffi_result(unsafe {ffi::sd_listen_fds(0)})?;
+        let num_fds = ffi_result(unsafe { ffi::sd_listen_fds(0) })?;
         if unset_environment {
             env::remove_var("LISTEN_FDS");
             env::remove_var("LISTEN_PID");
@@ -135,10 +135,8 @@ pub fn listen_fds(unset_environment: bool) -> Result<ListenFds> {
 /// supplied, the file descriptor must also match the path.
 pub fn is_fifo<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = ffi_result(unsafe {ffi::sd_is_fifo(
-        fd,
-        path.map_or(null(), |x| x.as_ref().as_ptr())
-    )})?;
+    let result =
+        ffi_result(unsafe { ffi::sd_is_fifo(fd, path.map_or(null(), |x| x.as_ref().as_ptr())) })?;
     Ok(result != 0)
 }
 
@@ -146,10 +144,9 @@ pub fn is_fifo<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
 /// If a path is supplied, the file descriptor must also match the path.
 pub fn is_special<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = ffi_result(unsafe {ffi::sd_is_special(
-        fd,
-        path.map_or(null(), |x| x.as_ref().as_ptr())
-    )})?;
+    let result = ffi_result(unsafe {
+        ffi::sd_is_special(fd, path.map_or(null(), |x| x.as_ref().as_ptr()))
+    })?;
     Ok(result != 0)
 }
 
@@ -188,7 +185,7 @@ pub fn is_socket(
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
 
-    let result = ffi_result(unsafe {ffi::sd_is_socket(fd, c_family, c_socktype, c_listening)})?;
+    let result = ffi_result(unsafe { ffi::sd_is_socket(fd, c_family, c_socktype, c_listening) })?;
     Ok(result != 0)
 }
 
@@ -207,13 +204,9 @@ pub fn is_socket_inet(
     let c_listening = get_c_listening(listening);
     let c_port = port.unwrap_or(0);
 
-    let result = ffi_result(unsafe {ffi::sd_is_socket_inet(
-        fd,
-        c_family,
-        c_socktype,
-        c_listening,
-        c_port
-    )})?;
+    let result = ffi_result(unsafe {
+        ffi::sd_is_socket_inet(fd, c_family, c_socktype, c_listening, c_port)
+    })?;
     Ok(result != 0)
 }
 
@@ -261,13 +254,9 @@ pub fn is_socket_unix<S: CStrArgument>(
         }
     }
 
-    let result = ffi_result(unsafe {ffi::sd_is_socket_unix(
-        fd,
-        c_socktype,
-        c_listening,
-        c_path,
-        c_length
-    )})?;
+    let result = ffi_result(unsafe {
+        ffi::sd_is_socket_unix(fd, c_socktype, c_listening, c_path, c_length)
+    })?;
     Ok(result != 0)
 }
 
@@ -275,10 +264,8 @@ pub fn is_socket_unix<S: CStrArgument>(
 /// path is supplied, it will also verify the name.
 pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
     let path = path.map(|x| x.into_cstr());
-    let result = ffi_result(unsafe {ffi::sd_is_mq(
-        fd,
-        path.map_or(null(), |x| x.as_ref().as_ptr())
-    )})?;
+    let result =
+        ffi_result(unsafe { ffi::sd_is_mq(fd, path.map_or(null(), |x| x.as_ref().as_ptr())) })?;
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
@@ -307,7 +294,8 @@ where
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = ffi_result(unsafe {ffi::sd_notify(unset_environment as c_int, c_state.as_ptr())})?;
+    let result =
+        ffi_result(unsafe { ffi::sd_notify(unset_environment as c_int, c_state.as_ptr()) })?;
     Ok(result != 0)
 }
 
@@ -320,11 +308,9 @@ where
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = ffi_result(unsafe {ffi::sd_pid_notify(
-        pid,
-        unset_environment as c_int,
-        c_state.as_ptr()
-    )})?;
+    let result = ffi_result(unsafe {
+        ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr())
+    })?;
     Ok(result != 0)
 }
 
@@ -341,19 +327,21 @@ where
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = ffi_result(unsafe {ffi::sd_pid_notify_with_fds(
-        pid,
-        unset_environment as c_int,
-        c_state.as_ptr(),
-        fds.as_ptr(),
-        fds.len() as c_uint
-    )})?;
+    let result = ffi_result(unsafe {
+        ffi::sd_pid_notify_with_fds(
+            pid,
+            unset_environment as c_int,
+            c_state.as_ptr(),
+            fds.as_ptr(),
+            fds.len() as c_uint,
+        )
+    })?;
     Ok(result != 0)
 }
 
 /// Returns true if the system was booted with systemd.
 pub fn booted() -> Result<bool> {
-    let result = ffi_result(unsafe {ffi::sd_booted()})?;
+    let result = ffi_result(unsafe { ffi::sd_booted() })?;
     Ok(result != 0)
 }
 
@@ -361,9 +349,6 @@ pub fn booted() -> Result<bool> {
 /// response from the process. If 0, the watchdog is disabled.
 pub fn watchdog_enabled(unset_environment: bool) -> Result<u64> {
     let mut timeout: u64 = 0;
-    ffi_result(unsafe {ffi::sd_watchdog_enabled(
-        unset_environment as c_int,
-        &mut timeout
-    )})?;
+    ffi_result(unsafe { ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout) })?;
     Ok(timeout)
 }
