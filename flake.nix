@@ -24,6 +24,7 @@
             rust-analyzer
             systemd
             pkg-config
+            cargo-release
           ];
 
           RUSTC_WRAPPER = "sccache";

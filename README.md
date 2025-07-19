@@ -13,7 +13,7 @@ rust-systemd
 In `Cargo.toml`:
 ```toml
 [dependencies]
-systemd = "0.10"
+systemd = "0.10.1"
 ```
 
 Build Environment variables
@@ -45,7 +45,7 @@ of these APIs). If your application does not need these features, depend on
 
 ```toml
 [dependencies]
-systemd = { version = "0.10", default-features = false }
+systemd = { version = "0.10.1", default-features = false }
 ```
 
 Note that there still may be some missing symbols. If you discover a link

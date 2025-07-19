@@ -1,5 +1,4 @@
 tag-name = "{{prefix}}{{version}}"
-disable-push = true
 
 pre-release-replacements = [
   {file="README.md", search="systemd = \"[-_0-9\\.a-z]+\"", replace="systemd = \"{{version}}\""} ,
