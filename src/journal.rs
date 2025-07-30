@@ -30,17 +30,64 @@ where
     unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
 }
 
+fn collect_and_send_result<T, S>(args: T) -> Result<()>
+where
+    T: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let iovecs: Vec<const_iovec> = args
+        // SAFETY: we manually guarantee that the lifetime of const_iovec does not exceed that of
+        // the data it's referencing in order to avoid additional allocations.
+        .map(|x| unsafe { const_iovec::from_str(x) })
+        .collect();
+
+    if iovecs.len() > c_int::MAX as usize {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Too many iovecs for systemd journal"
+        ));
+    }
+
+    let result = unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) };
+    ffi_result(result).map(|_| ())
+}
+
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `send_result` instead for proper error handling"
+)]
 pub fn send(args: &[&str]) -> c_int {
     collect_and_send(args.iter())
 }
 
+/// Send preformatted fields to systemd.
+///
+/// This is a relatively low-level operation and probably not suitable unless
+/// you need precise control over which fields are sent to systemd.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn send_result(args: &[&str]) -> Result<()> {
+    collect_and_send_result(args.iter())
+}
+
 /// Send a simple message to systemd-journald.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `print_result` instead for proper error handling"
+)]
 pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
+}
+
+/// Send a simple message to systemd-journald.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn print_result(lvl: u32, s: &str) -> Result<()> {
+    send_result(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
 enum SyslogLevel {
@@ -77,6 +124,25 @@ pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::A
     ]);
 }
 
+/// Record a log entry, with custom priority and location.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn log_result(
+    level: usize,
+    file: &str,
+    line: u32,
+    module_path: &str,
+    args: &fmt::Arguments<'_>,
+) -> Result<()> {
+    send_result(&[
+        &format!("PRIORITY={level}"),
+        &format!("MESSAGE={args}"),
+        &format!("CODE_LINE={line}"),
+        &format!("CODE_FILE={file}"),
+        &format!("CODE_MODULE={module_path}"),
+    ])
+}
+
 /// Send a `log::Record` to systemd-journald.
 pub fn log_record(record: &Record<'_>) {
     let keys = [
@@ -91,6 +157,24 @@ pub fn log_record(record: &Record<'_>) {
     ];
 
     collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
+}
+
+/// Send a `log::Record` to systemd-journald.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn log_record_result(record: &Record<'_>) -> Result<()> {
+    let keys = [
+        format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
+        format!("MESSAGE={}", record.args()),
+        format!("TARGET={}", record.target()),
+    ];
+    let opt_keys = [
+        record.line().map(|line| format!("CODE_LINE={line}")),
+        record.file().map(|file| format!("CODE_FILE={file}")),
+        record.module_path().map(|path| format!("CODE_FUNC={path}")),
+    ];
+
+    collect_and_send_result(keys.iter().chain(opt_keys.iter().flatten()))
 }
 
 /// Logger implementation over systemd-journald.
