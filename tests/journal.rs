@@ -22,6 +22,7 @@ fn have_journal() -> bool {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test() {
     journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
     journal::print(1, &format!("Rust can talk to the journal: {}", 4));
@@ -33,6 +34,41 @@ fn test() {
     log!(log::Level::Warn, "HI warn");
     log!(target: "systemd-tests", log::Level::Warn, "HI warn with target");
     sd_journal_log!(4, "HI {:?}", 2);
+}
+
+#[test]
+fn test_result_api() {
+    // Test the new Result-based API
+    journal::send_result(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]).unwrap();
+    journal::print_result(1, &format!("Rust can talk to the journal: {}", 4)).unwrap();
+    
+    // Test that the functions return Ok(()) on success
+    let result1 = journal::send_result(&["MESSAGE=test message"]);
+    assert!(result1.is_ok());
+    
+    let result2 = journal::print_result(6, "test print");
+    assert!(result2.is_ok());
+    
+    // Test log_result function
+    let result3 = journal::log_result(6, "test.rs", 42, "test_module", &format_args!("test log entry"));
+    assert!(result3.is_ok());
+}
+
+#[test]
+fn test_result_api_with_special_chars() {
+    let result = journal::send_result(&[
+        "MESSAGE=Test with special chars: éàü©",
+        "CUSTOM=Line\nbreak",
+    ]);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_empty_args() {
+    // Test with an empty array
+    let result = journal::send_result(&[]);
+    // Systemd should accept this
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -117,6 +153,7 @@ fn test_seek() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_simple_match() {
     if !have_journal() {
         return;
@@ -172,6 +209,7 @@ fn test_simple_match() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn get_data() {
     if !have_journal() {
         return;
