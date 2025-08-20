@@ -18,7 +18,7 @@ journal = []
 systemd_v245 = []
 
 [dependencies]
-cfg-if = "1.0.0"
+cfg-if = "1.0.3"
 libc = "0.2.76"
 
 [build-dependencies]
