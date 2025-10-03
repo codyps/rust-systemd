@@ -38,6 +38,7 @@ extern "C" {
     pub fn sd_session_is_remote(session: *const c_char) -> c_int;
     pub fn sd_session_get_state(session: *const c_char, state: *mut *mut c_char) -> c_int;
     pub fn sd_session_get_uid(session: *const c_char, uid: *mut uid_t) -> c_int;
+    pub fn sd_session_get_start_time(session: *const c_char, usec: *mut u64) -> c_int;
     pub fn sd_session_get_seat(session: *const c_char, seat: *mut *mut c_char) -> c_int;
     pub fn sd_session_get_service(session: *const c_char, service: *mut *mut c_char) -> c_int;
     pub fn sd_session_get_type(session: *const c_char, _type: *mut *mut c_char) -> c_int;
