@@ -17,7 +17,7 @@ use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::{fmt, io, ptr, result, slice, time};
 
-fn collect_and_send<T, S>(args: T) -> c_int
+fn try_collect_and_send<T, S>(args: T) -> Result<()>
 where
     T: Iterator<Item = S>,
     S: AsRef<str>,
@@ -27,20 +27,64 @@ where
         // the data it's referencing in order to avoid additional allocations.
         .map(|x| unsafe { const_iovec::from_str(x) })
         .collect();
-    unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+
+    let iovecs_len: c_int = iovecs.len().try_into().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Too many iovecs for systemd journal"
+        )
+    })?;
+
+    let result = unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs_len) };
+    ffi_result(result).map(|_| ())
+}
+
+fn collect_and_send<T, S>(args: T) -> c_int
+where
+    T: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    try_collect_and_send(args).map_or_else(|_| -1, |_| 0)
 }
 
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `try_send` instead for proper error handling"
+)]
 pub fn send(args: &[&str]) -> c_int {
     collect_and_send(args.iter())
 }
 
+
+/// Send preformatted fields to systemd.
+///
+/// This is a relatively low-level operation and probably not suitable unless
+/// you need precise control over which fields are sent to systemd.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn try_send(args: &[&str]) -> Result<()> {
+    try_collect_and_send(args.iter())
+}
+
 /// Send a simple message to systemd-journald.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `try_print` instead for proper error handling"
+)]
 pub fn print(lvl: u32, s: &str) -> c_int {
     send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
+}
+
+
+/// Send a simple message to systemd-journald.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn try_print(lvl: u32, s: &str) -> Result<()> {
+    try_send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
 enum SyslogLevel {
@@ -67,18 +111,47 @@ impl From<log::Level> for SyslogLevel {
 }
 
 /// Record a log entry, with custom priority and location.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `try_log` instead for proper error handling"
+)]
 pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
-    send(&[
+    let _ = try_log(level, file, line, module_path, args);
+}
+
+/// Record a log entry, with custom priority and location.
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn try_log(
+    level: usize,
+    file: &str,
+    line: u32,
+    module_path: &str,
+    args: &fmt::Arguments<'_>,
+) -> Result<()> {
+    try_send(&[
         &format!("PRIORITY={level}"),
         &format!("MESSAGE={args}"),
         &format!("CODE_LINE={line}"),
         &format!("CODE_FILE={file}"),
         &format!("CODE_MODULE={module_path}"),
-    ]);
+    ])
+}
+
+
+/// Send a `log::Record` to systemd-journald.
+#[deprecated(
+    since = "0.11.0",
+    note = "Use `try_log_record` instead for proper error handling"
+)]
+pub fn log_record(record: &Record<'_>) {
+    let _ = try_log_record(record);
 }
 
 /// Send a `log::Record` to systemd-journald.
-pub fn log_record(record: &Record<'_>) {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+pub fn try_log_record(record: &Record<'_>) -> Result<()> {
     let keys = [
         format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
         format!("MESSAGE={}", record.args()),
@@ -90,8 +163,9 @@ pub fn log_record(record: &Record<'_>) {
         record.module_path().map(|path| format!("CODE_FUNC={path}")),
     ];
 
-    collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
+    try_collect_and_send(keys.iter().chain(opt_keys.iter().flatten()))
 }
+
 
 /// Logger implementation over systemd-journald.
 pub struct JournalLog;
