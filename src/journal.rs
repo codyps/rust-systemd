@@ -675,6 +675,32 @@ impl JournalRef {
         ffi_result(unsafe { ffi::sd_journal_get_fd(self.as_ptr()) })
     }
 
+    /// Returns the total disk space used by journal files currently accessible
+    /// through this `Journal` handle, in bytes.
+    ///
+    /// Corresponds to `sd_journal_get_usage()`.
+    pub fn usage(&self) -> Result<u64> {
+        let mut bytes: u64 = 0;
+        ffi_result(unsafe { ffi::sd_journal_get_usage(self.as_ptr(), &mut bytes) })?;
+        Ok(bytes)
+    }
+
+    /// Returns a positive value if the journal is stored on a persistent file system.
+    ///
+    /// Corresponds to `sd_journal_has_persistent_files()`.
+    pub fn has_persistent_files(&self) -> Result<bool> {
+        let r = ffi_result(unsafe { ffi::sd_journal_has_persistent_files(self.as_ptr()) })?;
+        Ok(r > 0)
+    }
+
+    /// Returns a positive value if the journal is stored on a runtime file system.
+    ///
+    /// Corresponds to `sd_journal_has_runtime_files()`.
+    pub fn has_runtime_files(&self) -> Result<bool> {
+        let r = ffi_result(unsafe { ffi::sd_journal_has_runtime_files(self.as_ptr()) })?;
+        Ok(r > 0)
+    }
+
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
     /// instance.
     ///
@@ -787,6 +813,53 @@ impl JournalRef {
         }
 
         Ok(ret)
+    }
+
+    /// Prepare enumeration of unique values for a specified field across all matching entries
+    ///
+    /// After calling this, use [`enumerate_unique()`] to iterate through the unique values and
+    /// [`restart_unique()`] to reset the enumeration.
+    ///
+    /// Corresponds to `sd_journal_query_unique()`.
+    pub fn query_unique<A: CStrArgument>(&mut self, field: A) -> Result<()> {
+        let f = field.into_cstr();
+        crate::ffi_result(unsafe { ffi::sd_journal_query_unique(self.as_ptr(), f.as_ref().as_ptr()) })
+            .map(|_| ())
+    }
+
+    /// Restart the iteration of unique values previously set up by [`query_unique()`].
+    ///
+    /// Corresponds to `sd_journal_restart_unique()`.
+    pub fn restart_unique(&mut self) {
+        unsafe { ffi::sd_journal_restart_unique(self.as_ptr()) }
+    }
+
+    /// Obtain the next unique value for the field selected with [`query_unique()`].
+    ///
+    /// The returned [`JournalEntryField`] wraps the raw "FIELD=value" bytes. Use
+    /// [`JournalEntryField::value()`] to access only the value portion.
+    ///
+    /// Safety/lifetime notes are identical to those of [`enumerate_data()`]: the returned slice is
+    /// only valid until the next call to one of the enumeration/get functions on this `JournalRef`.
+    ///
+    /// Corresponds to `sd_journal_enumerate_unique()`.
+    pub fn enumerate_unique(&mut self) -> Result<Option<JournalEntryField<'_>>> {
+        let mut data = MaybeUninit::<*const c_void>::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let r = crate::ffi_result(unsafe {
+            ffi::sd_journal_enumerate_unique(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
+        });
+
+        let v = r?;
+
+        if v == 0 {
+            return Ok(None);
+        }
+
+        // SAFETY: see notes above; cast void pointer to u8 for slice construction.
+        let ptr = unsafe { data.assume_init() } as *const u8;
+        let b = unsafe { std::slice::from_raw_parts(ptr, data_len.assume_init()) };
+        Ok(Some(b.into()))
     }
 
     /// Iterate over journal entries.
@@ -1028,6 +1101,47 @@ impl JournalRef {
             )
         })?;
         Ok(monotonic_timestamp_us)
+    }
+
+    /// Returns the realtime cutoff timestamps of the journal.
+    /// (i.e. the timestamps of the first and last entries)
+    pub fn cutoff_realtime_usec(&self) -> Result<(u64, u64)> {
+        let mut from: u64 = 0;
+        let mut to: u64 = 0;
+        ffi_result(unsafe {
+            ffi::sd_journal_get_cutoff_realtime_usec(self.as_ptr(), &mut from, &mut to)
+        })?;
+        Ok((from, to))
+    }
+
+    /// Returns the realtime cutoff timestamps of the journal as SystemTime.
+    pub fn cutoff_realtime(&self) -> Result<(time::SystemTime, time::SystemTime)> {
+        let (from, to) = self.cutoff_realtime_usec()?;
+        Ok((
+            system_time_from_realtime_usec(from),
+            system_time_from_realtime_usec(to),
+        ))
+    }
+
+    /// Returns the monotonic cutoff timestamps of the journal for the given boot ID.
+    pub fn cutoff_monotonic_usec(&self, boot_id: Id128) -> Result<(u64, u64)> {
+        let mut from: u64 = 0;
+        let mut to: u64 = 0;
+        ffi_result(unsafe {
+            ffi::sd_journal_get_cutoff_monotonic_usec(
+                self.as_ptr(),
+                boot_id.inner,
+                &mut from,
+                &mut to,
+            )
+        })?;
+        Ok((from, to))
+    }
+
+    /// Returns the monotonic cutoff timestamps of the journal for the current boot.
+    pub fn cutoff_monotonic_usec_current_boot(&self) -> Result<(u64, u64)> {
+        let boot_id = Id128::from_boot()?;
+        self.cutoff_monotonic_usec(boot_id)
     }
 
     /// Adds a match by which to filter the entries of the journal.

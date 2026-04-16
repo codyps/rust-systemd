@@ -70,6 +70,15 @@ fn ts() {
 }
 
 #[test]
+fn test_has_files() {
+    let j = journal::OpenOptions::default().open().unwrap();
+    // We can't really assert what these return as it depends on the system,
+    // but we can at least call them to ensure they don't crash.
+    let _ = j.has_persistent_files().unwrap();
+    let _ = j.has_runtime_files().unwrap();
+}
+
+#[test]
 fn test_timestamp() {
     if !have_journal() {
         return;
@@ -198,4 +207,38 @@ fn journal_entry_data_1() {
     assert_eq!(jrd.data(), &b"HI=foo"[..]);
     assert_eq!(jrd.name(), &b"HI"[..]);
     assert_eq!(jrd.value(), Some(&b"foo"[..]));
+}
+
+#[test]
+fn cutoff_realtime() {
+    if !have_journal() {
+        return;
+    }
+
+    let j = journal::OpenOptions::default().open().unwrap();
+    let (from_usec, to_usec) = j.cutoff_realtime_usec().unwrap();
+    let (from_st, to_st) = j.cutoff_realtime().unwrap();
+
+    assert!(from_usec <= to_usec);
+    assert!(from_st <= to_st);
+
+    let boot_id = id128::Id128::from_boot().unwrap();
+    let (m_from, m_to) = j.cutoff_monotonic_usec(boot_id).unwrap();
+    assert!(m_from <= m_to);
+
+    let (mc_from, mc_to) = j.cutoff_monotonic_usec_current_boot().unwrap();
+    assert_eq!(m_from, mc_from);
+    assert_eq!(m_to, mc_to);
+}
+
+#[test]
+fn has_persistent_files() {
+    if !have_journal() {
+        return;
+    }
+
+    let j = journal::OpenOptions::default().open().unwrap();
+    // We don't necessarily know if the system has persistent files,
+    // but we can at least call the function and check it doesn't error.
+    let _ = j.has_persistent_files().unwrap();
 }
