@@ -18,9 +18,9 @@ pub enum UnitType {
 /// Specific processes can be optionally targeted via their PID. When no PID is
 /// specified, operation is executed for the calling process.
 /// This method can be used to retrieve either a system or an user unit identifier.
-pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn get_unit(unit_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_unit_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     match unit_type {
         UnitType::UserUnit => {
             ffi_result(unsafe { ffi::sd_pid_get_user_unit(p, &mut c_unit_name) })?
@@ -36,9 +36,9 @@ pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
 /// Specific processes can be optionally targeted via their PID. When no PID is
 /// specified, operation is executed for the calling process.
 /// This method can be used to retrieve either a system or an user slice identifier.
-pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn get_slice(slice_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_slice_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     match slice_type {
         UnitType::UserUnit => {
             ffi_result(unsafe { ffi::sd_pid_get_user_slice(p, &mut c_slice_name) })?
@@ -55,9 +55,9 @@ pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
 /// specified, operation is executed for the calling process.
 /// This method can be used to retrieve the machine name of processes running
 /// inside a VM or a container.
-pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
+pub fn get_machine_name(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_machine_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_machine_name(p, &mut c_machine_name) })?;
     let machine_id = unsafe { free_cstring(c_machine_name).unwrap() };
     Ok(machine_id)
@@ -71,9 +71,9 @@ pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
 /// process, relative to the root of the hierarchy. It returns the path without
 /// trailing slash, except for processes located in the root control group,
 /// where "/" is returned.
-pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
+pub fn get_cgroup(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_cgroup: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_cgroup(p, &mut c_cgroup) })?;
     let cg = unsafe { free_cstring(c_cgroup).unwrap() };
     Ok(cg)
@@ -84,9 +84,9 @@ pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
 /// Specific processes can be optionally targeted via their PID. When no PID is
 /// specified, operation is executed for the calling process.
 /// This method can be used to retrieve a session identifier.
-pub fn get_session(pid: Option<pid_t>) -> Result<String> {
+pub fn get_session(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_session(p, &mut c_session) })?;
     let ss = unsafe { free_cstring(c_session).unwrap() };
     Ok(ss)
