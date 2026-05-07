@@ -92,6 +92,17 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     Ok(ss)
 }
 
+/// Determines the session identifier of a .user
+///
+/// Specific user can be optionally targeted via their UID.
+/// This method can be used to retrieve a session identifier.
+pub fn get_display(uid: uid_t) -> Result<String> {
+    let mut c_session: *mut c_char = ptr::null_mut();
+    ffi_result(unsafe { libsystemd_sys::login::sd_uid_get_display(uid, &mut c_session) })?;
+    let ss = unsafe { free_cstring(c_session).unwrap() };
+    Ok(ss)
+}
+
 /// Determines the seat identifier of the seat the session identified
 /// by the specified session identifier belongs to.
 ///
