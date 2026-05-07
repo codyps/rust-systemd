@@ -20,9 +20,9 @@ pub enum UnitType {
 /// This method can be used to retrieve either a system or an user unit identifier.
 ///
 /// Corresponds to `sd_pid_get_unit()` and `sd_pid_get_user_unit()`.
-pub fn get_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn get_unit(unit_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_unit_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     match unit_type {
         UnitType::UserUnit => {
             ffi_result(unsafe { ffi::sd_pid_get_user_unit(p, &mut c_unit_name) })?
@@ -45,9 +45,9 @@ pub fn process_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
 /// This method can be used to retrieve either a system or an user slice identifier.
 ///
 /// Corresponds to `sd_pid_get_slice()` and `sd_pid_get_user_slice()`.
-pub fn get_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn get_slice(slice_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_slice_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     match slice_type {
         UnitType::UserUnit => {
             ffi_result(unsafe { ffi::sd_pid_get_user_slice(p, &mut c_slice_name) })?
@@ -71,9 +71,9 @@ pub fn process_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String>
 /// inside a VM or a container.
 ///
 /// Corresponds to `sd_pid_get_machine_name()`.
-pub fn get_machine_name(pid: Option<pid_t>) -> Result<String> {
+pub fn get_machine_name(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_machine_name: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_machine_name(p, &mut c_machine_name) })?;
     let machine_id = unsafe { free_cstring(c_machine_name).unwrap() };
     Ok(machine_id)
@@ -94,9 +94,9 @@ pub fn process_machine_name(pid: Option<pid_t>) -> Result<String> {
 /// where "/" is returned.
 ///
 /// Corresponds to `sd_pid_get_cgroup()`.
-pub fn get_cgroup(pid: Option<pid_t>) -> Result<String> {
+pub fn get_cgroup(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_cgroup: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_cgroup(p, &mut c_cgroup) })?;
     let cg = unsafe { free_cstring(c_cgroup).unwrap() };
     Ok(cg)
@@ -114,9 +114,9 @@ pub fn process_cgroup(pid: Option<pid_t>) -> Result<String> {
 /// This method can be used to retrieve a session identifier.
 ///
 /// Corresponds to `sd_pid_get_session()`.
-pub fn get_session(pid: Option<pid_t>) -> Result<String> {
+pub fn get_session(pid: impl Into<Option<pid_t>>) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_session(p, &mut c_session) })?;
     let ss = unsafe { free_cstring(c_session).unwrap() };
     Ok(ss)
