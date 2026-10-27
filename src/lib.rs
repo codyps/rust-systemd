@@ -83,6 +83,9 @@ macro_rules! log_with{
     })
 }
 
+/// Log a message with source location metadata, returning [`Result<()>`].
+///
+/// Errors from [`journal::log`] are returned to the caller.
 #[cfg(feature = "journal")]
 #[macro_export]
 macro_rules! sd_journal_log{
