@@ -17,29 +17,47 @@ use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::{fmt, io, ptr, result, slice, time};
 
-fn collect_and_send<T, S>(args: T) -> c_int
-where
-    T: Iterator<Item = S>,
-    S: AsRef<str>,
-{
+fn collect_and_send<'a>(args: impl Iterator<Item = &'a str>) -> Result<()> {
     let iovecs: Vec<const_iovec> = args
-        // SAFETY: we manually guarantee that the lifetime of const_iovec does not exceed that of
-        // the data it's referencing in order to avoid additional allocations.
+        // SAFETY: the fields borrow caller-owned strings that outlive this synchronous call.
+        // sd_journal_sendv neither modifies the fields nor retains their pointers after returning.
         .map(|x| unsafe { const_iovec::from_str(x) })
         .collect();
-    unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+
+    let iovecs_len: c_int = iovecs
+        .len()
+        .try_into()
+        .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
+
+    let result = unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs_len) };
+    ffi_result(result).map(|_| ())
 }
 
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
-pub fn send(args: &[&str]) -> c_int {
-    collect_and_send(args.iter())
+///
+/// Returns `Ok(())` when libsystemd reports success, or an error containing its errno on failure.
+/// An empty field list or malformed field framing (such as a missing `=`) returns `EINVAL`.
+/// Field values may contain newlines or NUL bytes and are passed without trimming whitespace.
+///
+/// `Ok(())` does not mean the message was necessarily delivered: libsystemd also reports success
+/// when the journal socket is absent, and journald can discard messages or fields after accepting
+/// them.
+pub fn send(args: &[&str]) -> Result<()> {
+    collect_and_send(args.iter().copied())
 }
 
 /// Send a simple message to systemd-journald.
-pub fn print(lvl: u32, s: &str) -> c_int {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+///
+/// This submits `PRIORITY` and `MESSAGE` fields using `sd_journal_sendv`.
+/// Unlike native `sd_journal_print`, it preserves whitespace and does not validate that `lvl`
+/// is in the recommended range `0..=7`.
+pub fn print(lvl: u32, s: &str) -> Result<()> {
     send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
@@ -67,18 +85,30 @@ impl From<log::Level> for SyslogLevel {
 }
 
 /// Record a log entry, with custom priority and location.
-pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+pub fn log(
+    level: usize,
+    file: &str,
+    line: u32,
+    module_path: &str,
+    args: &fmt::Arguments<'_>,
+) -> Result<()> {
     send(&[
         &format!("PRIORITY={level}"),
         &format!("MESSAGE={args}"),
         &format!("CODE_LINE={line}"),
         &format!("CODE_FILE={file}"),
         &format!("CODE_MODULE={module_path}"),
-    ]);
+    ])
 }
 
 /// Send a `log::Record` to systemd-journald.
-pub fn log_record(record: &Record<'_>) {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+pub fn log_record(record: &Record<'_>) -> Result<()> {
     let keys = [
         format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
         format!("MESSAGE={}", record.args()),
@@ -90,10 +120,17 @@ pub fn log_record(record: &Record<'_>) {
         record.module_path().map(|path| format!("CODE_FUNC={path}")),
     ];
 
-    collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
+    collect_and_send(
+        keys.iter()
+            .chain(opt_keys.iter().flatten())
+            .map(String::as_str),
+    )
 }
 
 /// Logger implementation over systemd-journald.
+///
+/// Journal errors are ignored because [`Log::log`] cannot return them. Use [`log_record`]
+/// directly when errors need to be handled.
 pub struct JournalLog;
 impl Log for JournalLog {
     fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
@@ -101,7 +138,7 @@ impl Log for JournalLog {
     }
 
     fn log(&self, record: &Record<'_>) {
-        log_record(record);
+        let _ = log_record(record);
     }
 
     fn flush(&self) {

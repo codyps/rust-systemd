@@ -62,14 +62,18 @@ An example of the journal writing api:
 use log::warn;
 use systemd::{journal, sd_journal_log};
 
-fn main() {
-   journal::print(1, &format!("Rust can talk to the journal: {:?}", 4));
-   journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
+fn main() -> std::io::Result<()> {
+   journal::print(1, &format!("Rust can talk to the journal: {:?}", 4))?;
+   journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"])?;
    journal::JournalLog::init().unwrap();
    warn!("HI");
-   sd_journal_log!(4, "HI {:?}", 2);
+   sd_journal_log!(4, "HI {:?}", 2)?;
+   Ok(())
 }
 ```
+
+`send`, `print`, `log`, `log_record`, and `sd_journal_log!` return a `Result`
+containing any error reported by libsystemd. Use `?` or handle the error explicitly.
 
 daemon
 ------
