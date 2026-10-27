@@ -4,9 +4,9 @@ use systemd::daemon::booted;
 use systemd::login;
 
 #[test]
-fn test_get_unit() {
-    let uu = login::get_unit(login::UnitType::UserUnit, None);
-    let su = login::get_unit(login::UnitType::SystemUnit, None);
+fn test_process_unit() {
+    let uu = login::process_unit(login::UnitType::UserUnit, None);
+    let su = login::process_unit(login::UnitType::SystemUnit, None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if has_systemd.unwrap() {
@@ -20,9 +20,9 @@ fn test_get_unit() {
 }
 
 #[test]
-fn test_get_slice() {
-    let us = login::get_slice(login::UnitType::UserUnit, None);
-    let ss = login::get_slice(login::UnitType::SystemUnit, None);
+fn test_process_slice() {
+    let us = login::process_slice(login::UnitType::UserUnit, None);
+    let ss = login::process_slice(login::UnitType::SystemUnit, None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if has_systemd.unwrap() {
@@ -38,8 +38,8 @@ fn test_get_slice() {
 }
 
 #[test]
-fn test_get_machine_name() {
-    let mname = login::get_machine_name(None);
+fn test_process_machine_name() {
+    let mname = login::process_machine_name(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if !has_systemd.unwrap() {
@@ -51,8 +51,8 @@ fn test_get_machine_name() {
 }
 
 #[test]
-fn test_get_cgroup() {
-    let cg = login::get_cgroup(None);
+fn test_process_cgroup() {
+    let cg = login::process_cgroup(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if has_systemd.unwrap() {
@@ -64,8 +64,8 @@ fn test_get_cgroup() {
 }
 
 #[test]
-fn test_get_session() {
-    let ss = login::get_session(None);
+fn test_process_session() {
+    let ss = login::process_session(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if has_systemd.unwrap() {
@@ -84,8 +84,8 @@ fn test_get_session() {
 }
 
 #[test]
-fn test_get_owner_uid() {
-    let ou = login::get_owner_uid(None);
+fn test_process_owner_uid() {
+    let ou = login::process_owner_uid(None);
     let has_systemd = booted();
     assert!(has_systemd.is_ok());
     if has_systemd.unwrap() {
@@ -170,8 +170,8 @@ fn test_session_functions() {
     // Test session functions with the first available session
     let session_id = &session_list[0];
 
-    // Test get_session_uid
-    let uid_result = login::get_session_uid(session_id);
+    // Test session_uid
+    let uid_result = login::session_uid(session_id);
     // UID should be retrievable for any valid session
     assert!(
         uid_result.is_ok(),
@@ -180,8 +180,8 @@ fn test_session_functions() {
         uid_result
     );
 
-    // Test get_session_start_time
-    let start_time_result = login::get_session_start_time(session_id);
+    // Test session_start_time
+    let start_time_result = login::session_start_time(session_id);
     // Start time should be retrievable for any valid session
     assert!(
         start_time_result.is_ok(),
@@ -197,8 +197,8 @@ fn test_session_functions() {
         start_time
     );
 
-    // Test get_session_tty (may return None for non-TTY sessions)
-    let tty_result = login::get_session_tty(session_id);
+    // Test session_tty (may return None for non-TTY sessions)
+    let tty_result = login::session_tty(session_id);
     assert!(
         tty_result.is_ok(),
         "Failed to get TTY for session {}: {:?}",
@@ -206,8 +206,8 @@ fn test_session_functions() {
         tty_result
     );
 
-    // Test get_session_remote_host (may return None for local sessions)
-    let remote_host_result = login::get_session_remote_host(session_id);
+    // Test session_remote_host (may return None for local sessions)
+    let remote_host_result = login::session_remote_host(session_id);
     assert!(
         remote_host_result.is_ok(),
         "Failed to get remote host for session {}: {:?}",
@@ -215,8 +215,8 @@ fn test_session_functions() {
         remote_host_result
     );
 
-    // Test get_session_display (may return None for non-GUI sessions)
-    let display_result = login::get_session_display(session_id);
+    // Test session_display (may return None for non-GUI sessions)
+    let display_result = login::session_display(session_id);
     assert!(
         display_result.is_ok(),
         "Failed to get display for session {}: {:?}",
@@ -224,8 +224,8 @@ fn test_session_functions() {
         display_result
     );
 
-    // Test get_session_type (should return Some value for any session)
-    let type_result = login::get_session_type(session_id);
+    // Test session_type (should return Some value for any session)
+    let type_result = login::session_type(session_id);
     assert!(
         type_result.is_ok(),
         "Failed to get type for session {}: {:?}",

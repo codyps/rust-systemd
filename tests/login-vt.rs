@@ -16,6 +16,7 @@ unsafe extern "C" fn sd_session_get_vt(_session: *const c_char, vt: *mut c_uint)
 }
 
 #[test]
-fn get_vt_provides_output_storage() {
+fn session_vt_provides_output_storage() {
+    assert_eq!(login::session_vt("test-session").unwrap(), 7);
     assert_eq!(login::get_vt("test-session").unwrap(), 7);
 }
