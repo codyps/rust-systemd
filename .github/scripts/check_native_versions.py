@@ -15,6 +15,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 # Native ABI introduction versions, independent of the Rust feature conditions.
 VERSIONS = {
+    "sd_listen_fds_with_names": 227,
     "sd_id128_get_machine_app_specific": 233,
     "sd_bus_get_n_queued_read": 238,
     "sd_bus_get_n_queued_write": 238,
