@@ -22,7 +22,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write
     concurrency:
       group: release-plz-pr
       cancel-in-progress: false
@@ -46,7 +45,7 @@ jobs:
           version: 0.4.1
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Synchronize release metadata and run CI
+      - name: Synchronize release metadata
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,9 +62,6 @@ jobs:
             git commit -m 'chore: synchronize release metadata'
             git push origin "HEAD:$release_branch"
           fi
-          # workflow_dispatch can be triggered by GITHUB_TOKEN. A token-created
-          # PR's pull_request event alone cannot run CI without approval.
-          gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref "$release_branch"
 
   publish:
     if: >-
