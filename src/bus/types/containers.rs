@@ -1,5 +1,5 @@
 use super::{FromSdBusMessage, SdBusMessageDirect, ToSdBusMessage, UnixFd};
-use crate::bus::{ContainerType, MessageIter, MessageRef, ObjectPath};
+use crate::bus::{ContainerType, MessageIter, MessageRef};
 use crate::CStrArgument;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
@@ -44,7 +44,6 @@ macro_rules! basic_type {
 basic_type!(bool, "b");
 basic_type!(UnixFd, "h");
 basic_type!(&Utf8CStr, "s");
-basic_type!(&ObjectPath, "o");
 basic_type!(&str, "s");
 basic_type!(String, "s");
 basic_type!(&String, "s");

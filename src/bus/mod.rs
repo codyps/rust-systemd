@@ -15,6 +15,38 @@
 //!         CString::new("org.example.Interface").unwrap(), "Ping")
 //! }
 //! ```
+//!
+//! Checked constructors also accept convertible strings. Their `Cow` result
+//! borrows existing C strings and owns converted Rust strings. Use
+//! `into_owned()` for storage independent of an input borrow:
+//!
+//! ```
+//! use std::borrow::Cow;
+//! use std::ffi::CString;
+//! use systemd::bus::{ObjectPath, ObjectPathBuf, BusName, InterfaceName, MemberName};
+//! let input = CString::new("/org/example/Object").unwrap();
+//! let borrowed = ObjectPath::new(input.as_c_str()).unwrap();
+//! assert!(matches!(borrowed, Cow::Borrowed(_)));
+//! let stored: ObjectPathBuf = borrowed.into_owned();
+//! drop(input);
+//! assert_eq!(stored.to_bytes(), b"/org/example/Object");
+//! let _ = ObjectPath::new("/org/example/Other").unwrap();
+//! let _ = BusName::new("org.example.Service").unwrap();
+//! let _ = InterfaceName::new("org.example.Interface").unwrap();
+//! let _ = MemberName::new("Ping").unwrap();
+//! assert!(ObjectPath::new("invalid path").is_err());
+//! ```
+//!
+//! A borrowed checked value cannot outlive its input:
+//!
+//! ```compile_fail
+//! use std::{borrow::Cow, ffi::CString};
+//! use systemd::bus::ObjectPath;
+//! fn escape() -> Cow<'static, ObjectPath> {
+//!     let input = CString::new("/org/example/Object").unwrap();
+//!     ObjectPath::new(input.as_c_str()).unwrap()
+//! }
+//! ```
 
 // Persistent issues:
 //
@@ -51,7 +83,9 @@ use std::time::Duration;
 use super::usec_from_duration;
 use utf8_cstr::Utf8CStr;
 
+mod names;
 pub mod types;
+pub use self::names::{BusNameBuf, InterfaceNameBuf, MemberNameBuf, ObjectPathBuf};
 mod vtable;
 pub use self::vtable::{Vtable, VtableFlags};
 
@@ -221,6 +255,9 @@ impl InterfaceName {
     pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
         if b.is_empty() {
             return Err("Name must have more than 0 characters");
+        }
+        if b.len() > 256 {
+            return Err("Must not exceed 255 characters");
         }
         validate_c_string(b)?;
 
@@ -501,7 +538,7 @@ impl MemberName {
 
     /// # Safety
     ///
-    /// `b` must be a valid c-string (ie: it must be `\0` (nul) terminated).
+    /// `b` must be exactly one NUL-terminated, valid D-Bus member name.
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
         &*(b as *const [u8] as *const MemberName)
@@ -509,7 +546,8 @@ impl MemberName {
 
     /// # Safety
     ///
-    /// `b` must point to a valid c-string, with lifetime at least `'a`
+    /// `b` must point to a valid NUL-terminated D-Bus member name, with
+    /// lifetime at least `'a`.
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())

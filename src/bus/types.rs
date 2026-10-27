@@ -50,7 +50,6 @@
 //! ```
 
 use super::{MessageIter, MessageRef};
-use crate::bus;
 use ffi::{c_char, c_int};
 use std::ffi::CStr;
 use utf8_cstr::Utf8CStr;
@@ -206,28 +205,6 @@ impl<'a> FromSdBusMessage<'a> for UnixFd {
         Self: Sized,
     {
         unsafe { m.read_basic_raw(b'h', UnixFd) }
-    }
-}
-
-impl ToSdBusMessage for &bus::ObjectPath {
-    fn to_message(&self, m: &mut MessageRef) -> crate::Result<()> {
-        unsafe { m.append_basic_raw(b'o', self.as_ptr() as *const _) }?;
-        Ok(())
-    }
-}
-
-// String-like values returned by sd_bus_message_read_basic point into the
-// sealed message body and may be borrowed for the message's lifetime.
-impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
-    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
-    where
-        Self: Sized,
-    {
-        unsafe {
-            m.read_basic_raw(b'o', |x: *const c_char| {
-                bus::ObjectPath::from_ptr_unchecked(x)
-            })
-        }
     }
 }
 
