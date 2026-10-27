@@ -29,7 +29,10 @@ fn call() {
         let error = bus::Error::new(name, message);
         let reply = m.new_method_error(&error).unwrap();
         let raw = reply.error().expect("error reply must contain its error");
-        assert_eq!(raw.name().unwrap().as_ref().to_bytes(), b"org.example.TestError");
+        assert_eq!(
+            raw.name().unwrap().as_ref().to_bytes(),
+            b"org.example.TestError"
+        );
         assert_eq!(raw.message(), message);
     }
 }
