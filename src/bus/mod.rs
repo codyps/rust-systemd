@@ -1957,8 +1957,7 @@ impl<'a> MessageIter<'a> {
         Ok((t, s))
     }
 
-    // XXX: handle containers
-    // FIXME: consider renaming
+    // TODO: support typed decoding of D-Bus containers.
     /// Read the next value. Borrowed strings and paths remain valid for the
     /// message's lifetime, so later reads can proceed while those views are held.
     /// For a message containing two strings, both views can be returned to a
