@@ -1,6 +1,9 @@
 use super::{FromSdBusMessage, SdBusMessageDirect, ToSdBusMessage, UnixFd};
 use crate::bus::{ContainerType, MessageIter, MessageRef, ObjectPath};
+use crate::CStrArgument;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
+use std::ffi::{CStr, CString};
 use std::hash::{BuildHasher, Hash};
 use std::io::{Error, ErrorKind};
 use utf8_cstr::Utf8CStr;
@@ -44,16 +47,63 @@ basic_type!(&Utf8CStr, "s");
 basic_type!(&ObjectPath, "o");
 basic_type!(&str, "s");
 basic_type!(String, "s");
+basic_type!(&String, "s");
+basic_type!(&CStr, "s");
+basic_type!(CString, "s");
+basic_type!(&CString, "s");
+basic_type!(Cow<'_, CStr>, "s");
+basic_type!(Cow<'_, str>, "s");
 
 impl ToSdBusMessage for &str {
     fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
-        let value =
-            std::ffi::CString::new(*self).map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
-        // SAFETY: the live CString contains one complete NUL-terminated string.
+        let value = self.try_into_cstr()?;
+        // SAFETY: the live conversion buffer contains one NUL-terminated string.
         unsafe { message.append_basic_raw(b's', value.as_ptr().cast()) }
     }
 }
+impl ToSdBusMessage for &CStr {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        // SAFETY: self is a live NUL-terminated C string. libsystemd validates
+        // D-Bus UTF-8 requirements and copies the value during this call.
+        unsafe { message.append_basic_raw(b's', self.as_ptr().cast()) }
+    }
+}
+impl ToSdBusMessage for CString {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        self.as_c_str().to_message(message)
+    }
+}
+impl ToSdBusMessage for &CString {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        self.as_c_str().to_message(message)
+    }
+}
+impl ToSdBusMessage for Cow<'_, CStr> {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        self.as_ref().to_message(message)
+    }
+}
+impl ToSdBusMessage for Cow<'_, str> {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        self.as_ref().to_message(message)
+    }
+}
+impl<'a> FromSdBusMessage<'a> for &'a CStr {
+    fn from_message(message: &mut MessageIter<'a>) -> crate::Result<Option<Self>> {
+        Ok(<&Utf8CStr>::from_message(message)?.map(AsRef::as_ref))
+    }
+}
+impl<'a> FromSdBusMessage<'a> for CString {
+    fn from_message(message: &mut MessageIter<'a>) -> crate::Result<Option<Self>> {
+        Ok(<&CStr>::from_message(message)?.map(ToOwned::to_owned))
+    }
+}
 impl ToSdBusMessage for String {
+    fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
+        self.as_str().to_message(message)
+    }
+}
+impl ToSdBusMessage for &String {
     fn to_message(&self, message: &mut MessageRef) -> crate::Result<()> {
         self.as_str().to_message(message)
     }

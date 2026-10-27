@@ -5,8 +5,8 @@
 use super::ffi::{c_int, pid_t, size_t};
 use super::{Error, Result};
 use crate::ffi_result;
+use crate::CStrArgument;
 use ::ffi::daemon as ffi;
-use cstr_argument::CStrArgument;
 use libc::{c_char, c_uint};
 use libc::{SOCK_DGRAM, SOCK_RAW, SOCK_STREAM};
 use std::io::ErrorKind;
@@ -139,19 +139,19 @@ pub unsafe fn listen_fds_unset_environment() -> Result<ListenFds> {
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is
 /// supplied, the file descriptor must also match the path.
-pub fn is_fifo<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.into_cstr());
+pub fn is_fifo<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
+    let path = path.map(|x| x.try_into_cstr()).transpose()?;
     let result =
-        ffi_result(unsafe { ffi::sd_is_fifo(fd, path.map_or(null(), |x| x.as_ref().as_ptr())) })?;
+        ffi_result(unsafe { ffi::sd_is_fifo(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) })?;
     Ok(result != 0)
 }
 
 /// Identifies whether the passed file descriptor is a special character device.
 /// If a path is supplied, the file descriptor must also match the path.
-pub fn is_special<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.into_cstr());
+pub fn is_special<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
+    let path = path.map(|x| x.try_into_cstr()).transpose()?;
     let result = ffi_result(unsafe {
-        ffi::sd_is_special(fd, path.map_or(null(), |x| x.as_ref().as_ptr()))
+        ffi::sd_is_special(fd, path.as_ref().map_or(null(), |x| x.as_ptr()))
     })?;
     Ok(result != 0)
 }
@@ -237,13 +237,13 @@ pub fn tcp_listener(fd: Fd) -> Result<TcpListener> {
 /// are supplied, it must match as well. For normal sockets, leave the path set
 /// to None; otherwise, pass in the full socket path.  See `Listening` for
 /// listening check parameters.
-pub fn is_socket_unix<S: CStrArgument>(
+pub fn is_socket_unix<'a, S: CStrArgument<'a>>(
     fd: Fd,
     socktype: Option<SocketType>,
     listening: Listening,
     path: Option<S>,
 ) -> Result<bool> {
-    let path_cstr = path.map(|p| p.into_cstr());
+    let path_cstr = path.map(|p| p.try_into_cstr()).transpose()?;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_path: *const c_char;
@@ -268,10 +268,10 @@ pub fn is_socket_unix<S: CStrArgument>(
 
 /// Identifies whether the passed file descriptor is a POSIX message queue. If a
 /// path is supplied, it will also verify the name.
-pub fn is_mq<S: CStrArgument>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.into_cstr());
+pub fn is_mq<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
+    let path = path.map(|x| x.try_into_cstr()).transpose()?;
     let result =
-        ffi_result(unsafe { ffi::sd_is_mq(fd, path.map_or(null(), |x| x.as_ref().as_ptr())) })?;
+        ffi_result(unsafe { ffi::sd_is_mq(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) })?;
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify

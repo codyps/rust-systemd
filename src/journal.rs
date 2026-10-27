@@ -3,7 +3,7 @@ use crate::ffi::const_iovec;
 use crate::ffi::journal as ffi;
 use crate::ffi_result;
 use crate::id128::Id128;
-use cstr_argument::CStrArgument;
+use crate::CStrArgument;
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use libc::{c_char, c_int, size_t};
 use log::{self, Level, Log, Record, SetLoggerError};
@@ -460,7 +460,7 @@ impl OpenOptions {
     /// `sd_journal_open_namespace()`: https://www.freedesktop.org/software/systemd/man/sd_journal_open.html
     #[cfg(feature = "systemd_v245")]
     #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v245")))]
-    pub fn open_namespace<A: CStrArgument>(&self, namespace: A) -> Result<Journal> {
+    pub fn open_namespace<'a, A: CStrArgument<'a>>(&self, namespace: A) -> Result<Journal> {
         Journal::open_with_opts_ns(Some(namespace), self)
     }
 }
@@ -509,7 +509,7 @@ impl OpenDirectoryOptions {
     }
 
     /// Open the journal corresponding to this directory path
-    pub fn open_directory<A: CStrArgument>(&self, directory: A) -> Result<Journal> {
+    pub fn open_directory<'a, A: CStrArgument<'a>>(&self, directory: A) -> Result<Journal> {
         Journal::open_with_opts_dir(directory, self)
     }
 
@@ -539,7 +539,7 @@ impl OpenFilesOptions {
     }
 
     /// Open a journal, giving one or more paths to files
-    pub fn open_files<A: CStrArgument, I: IntoIterator<Item = A>>(
+    pub fn open_files<'a, A: CStrArgument<'a>, I: IntoIterator<Item = A>>(
         &self,
         files: I,
     ) -> Result<Journal> {
@@ -588,7 +588,7 @@ impl Journal {
     }
 
     #[cfg(feature = "systemd_v245")]
-    fn open_with_opts_ns<A: CStrArgument>(
+    fn open_with_opts_ns<'a, A: CStrArgument<'a>>(
         namespace: Option<A>,
         opts: &OpenOptions,
     ) -> Result<Journal> {
@@ -615,7 +615,7 @@ impl Journal {
             flags |= ffi::SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE;
         }
 
-        let ns = namespace.map(|a| a.into_cstr());
+        let ns = namespace.map(|a| a.try_into_cstr()).transpose()?;
         let ns_p = ns
             .as_ref()
             .map(|a| a.as_ref().as_ptr())
@@ -625,7 +625,7 @@ impl Journal {
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 
-    fn open_with_opts_dir<A: CStrArgument>(
+    fn open_with_opts_dir<'a, A: CStrArgument<'a>>(
         directory: A,
         opts: &OpenDirectoryOptions,
     ) -> Result<Journal> {
@@ -640,7 +640,7 @@ impl Journal {
             flags |= ffi::SD_JOURNAL_SYSTEM;
         }
 
-        let d_path = directory.into_cstr();
+        let d_path = directory.try_into_cstr()?;
         let mut jp = MaybeUninit::uninit();
         crate::ffi_result(unsafe {
             ffi::sd_journal_open_directory(jp.as_mut_ptr(), d_path.as_ref().as_ptr(), flags)
@@ -648,13 +648,13 @@ impl Journal {
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 
-    fn open_with_opts_files<A: CStrArgument, I: IntoIterator<Item = A>>(
+    fn open_with_opts_files<'a, A: CStrArgument<'a>, I: IntoIterator<Item = A>>(
         files: I,
         opts: &OpenFilesOptions,
     ) -> Result<Journal> {
         let mut file_cstrs = Vec::new();
         for i in files {
-            file_cstrs.push(i.into_cstr());
+            file_cstrs.push(i.try_into_cstr()?);
         }
 
         let mut file_ptrs = Vec::new();
@@ -779,10 +779,13 @@ impl JournalRef {
     /// (seeking, etc) invalidates the returned reference.
     ///
     /// Corresponds to `sd_journal_get_data()`.
-    pub fn get_data<A: CStrArgument>(&mut self, field: A) -> Result<Option<JournalEntryField<'_>>> {
+    pub fn get_data<'a, A: CStrArgument<'a>>(
+        &mut self,
+        field: A,
+    ) -> Result<Option<JournalEntryField<'_>>> {
         let mut data = MaybeUninit::uninit();
         let mut data_len = MaybeUninit::uninit();
-        let f = field.into_cstr();
+        let f = field.try_into_cstr()?;
         match crate::ffi_result(unsafe {
             ffi::sd_journal_get_data(
                 self.as_ptr(),
@@ -864,8 +867,8 @@ impl JournalRef {
     /// [`restart_unique()`] to reset the enumeration.
     ///
     /// Corresponds to `sd_journal_query_unique()`.
-    pub fn query_unique<A: CStrArgument>(&mut self, field: A) -> Result<()> {
-        let f = field.into_cstr();
+    pub fn query_unique<'a, A: CStrArgument<'a>>(&mut self, field: A) -> Result<()> {
+        let f = field.try_into_cstr()?;
         crate::ffi_result(unsafe {
             ffi::sd_journal_query_unique(self.as_ptr(), f.as_ref().as_ptr())
         })
@@ -1073,8 +1076,8 @@ impl JournalRef {
     }
 
     /// Corresponds to `sd_journal_seek_cursor()`
-    pub fn seek_cursor<A: CStrArgument>(&mut self, cursor: A) -> Result<()> {
-        let c = cursor.into_cstr();
+    pub fn seek_cursor<'a, A: CStrArgument<'a>>(&mut self, cursor: A) -> Result<()> {
+        let c = cursor.try_into_cstr()?;
         crate::ffi_result(unsafe {
             ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ref().as_ptr())
         })?;
@@ -1120,8 +1123,8 @@ impl JournalRef {
     /// Test if a given cursor matches the current postition in the journal
     ///
     /// Corresponds to `sd_journal_test_cursor()`.
-    pub fn test_cursor<A: CStrArgument>(&self, cursor: A) -> Result<bool> {
-        let c = cursor.into_cstr();
+    pub fn test_cursor<'a, A: CStrArgument<'a>>(&self, cursor: A) -> Result<bool> {
+        let c = cursor.try_into_cstr()?;
         ffi_result(unsafe { ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr()) })
             .map(|v| v != 0)
     }

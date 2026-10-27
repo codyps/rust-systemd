@@ -17,6 +17,7 @@
 
 //use enumflags2_derive::EnumFlags;
 use crate::ffi_result;
+use crate::CStrArgument;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use std::ffi::CStr;
@@ -35,6 +36,21 @@ use utf8_cstr::Utf8CStr;
 pub mod types;
 mod vtable;
 pub use self::vtable::{Vtable, VtableFlags};
+
+macro_rules! name_argument {
+    ($($ty:ty),+) => {$(
+        impl<'a> CStrArgument<'a> for &'a $ty {
+            fn try_into_cstr(self) -> crate::Result<std::borrow::Cow<'a, CStr>> {
+                Ok(std::borrow::Cow::Borrowed(self))
+            }
+        }
+    )+};
+}
+name_argument!(ObjectPath, InterfaceName, BusName, MemberName);
+
+fn invalid_argument(error: impl fmt::Display) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+}
 
 /**
  * Result type for dbus calls that contains errors returned by remote services (and local errors as
@@ -639,12 +655,36 @@ impl Error {
         }
     }
 
-    pub fn new(name: &Utf8CStr, message: Option<&Utf8CStr>) -> Error {
+    /// Construct a D-Bus error. Invalid strings return `InvalidInput`.
+    /// For an absent message, pass `None::<&str>`.
+    ///
+    /// ```
+    /// use std::ffi::CString;
+    /// use systemd::bus::Error;
+    /// let error = Error::new(CString::new("org.example.Failure").unwrap(),
+    ///                        Some(String::from("details"))).unwrap();
+    /// assert_eq!(error.message().unwrap().as_bytes(), b"details");
+    /// let _ = Error::new("org.example.Failure", None::<&str>).unwrap();
+    /// ```
+    pub fn new<'a>(
+        name: impl CStrArgument<'a>,
+        message: Option<impl CStrArgument<'a>>,
+    ) -> crate::Result<Error> {
+        let name = name.try_into_cstr()?;
+        InterfaceName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let message = message.map(|m| m.try_into_cstr()).transpose()?;
+        let name = Utf8CStr::from_bytes(name.to_bytes_with_nul())
+            .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
+        let message = message
+            .as_ref()
+            .map(|m| Utf8CStr::from_bytes(m.to_bytes_with_nul()))
+            .transpose()
+            .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
         let v = RawError::with(name, message);
         // SAFETY: sd_bus_error_set supplies valid error storage, including its
         // static NoMemory fallback if allocation fails. Cache the actual native
         // lengths, which can differ from the caller's strings in that case.
-        unsafe { Self::from_raw(v) }
+        Ok(unsafe { Self::from_raw(v) })
     }
 
     pub fn name(&self) -> &Utf8CStr {
@@ -1249,12 +1289,20 @@ impl BusRef {
     ///
     /// [`sd_bus_message_new_signal`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_signal.html
     #[inline]
-    pub fn new_signal(
+    pub fn new_signal<'s>(
         &mut self,
-        path: &ObjectPath,
-        interface: &InterfaceName,
-        member: &MemberName,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
+        member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = interface.try_into_cstr()?;
+        let interface =
+            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let member = member.try_into_cstr()?;
+        let member =
+            MemberName::from_bytes(member.to_bytes_with_nul()).map_err(invalid_argument)?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_signal(
@@ -1273,13 +1321,23 @@ impl BusRef {
     ///
     /// [`sd_bus_message_new_method_call`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_call.html
     #[inline]
-    pub fn new_method_call(
+    pub fn new_method_call<'s>(
         &mut self,
-        dest: &BusName,
-        path: &ObjectPath,
-        interface: &InterfaceName,
-        member: &MemberName,
+        dest: impl CStrArgument<'s>,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
+        member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = interface.try_into_cstr()?;
+        let interface =
+            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let member = member.try_into_cstr()?;
+        let member =
+            MemberName::from_bytes(member.to_bytes_with_nul()).map_err(invalid_argument)?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_method_call(
@@ -1305,7 +1363,13 @@ impl BusRef {
     ///
     /// [`sd_bus_request_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_request_name.html
     #[inline]
-    pub fn request_name(&mut self, name: &BusName, flags: u64) -> super::Result<()> {
+    pub fn request_name<'s>(
+        &mut self,
+        name: impl CStrArgument<'s>,
+        flags: u64,
+    ) -> super::Result<()> {
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
         })?;
@@ -1313,15 +1377,17 @@ impl BusRef {
     }
 
     #[inline]
-    pub fn request_name_async<F>(
+    pub fn request_name_async<'s, F>(
         &mut self,
-        name: &BusName,
+        name: impl CStrArgument<'s>,
         flags: u64,
         callback: F,
     ) -> super::Result<()>
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1350,7 +1416,9 @@ impl BusRef {
 
     /// This blocks. To get async behavior, use `request_name` directly.
     #[inline]
-    pub fn release_name(&self, name: &BusName) -> super::Result<()> {
+    pub fn release_name<'s>(&self, name: impl CStrArgument<'s>) -> super::Result<()> {
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _)
         })?;
@@ -1361,10 +1429,12 @@ impl BusRef {
     ///
     /// [`sd_bus_add_object`]: https://www.freedesktop.org/software/systemd/man/sd_bus_add_object.html
     #[inline]
-    pub fn add_object<F>(&self, path: &ObjectPath, callback: F) -> super::Result<()>
+    pub fn add_object<'s, F>(&self, path: impl CStrArgument<'s>, callback: F) -> super::Result<()>
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1390,7 +1460,9 @@ impl BusRef {
     }
 
     #[inline]
-    pub fn add_object_manager(&self, path: &ObjectPath) -> super::Result<()> {
+    pub fn add_object_manager<'s>(&self, path: impl CStrArgument<'s>) -> super::Result<()> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_add_object_manager(
                 self.as_ptr(),
@@ -1403,12 +1475,17 @@ impl BusRef {
 
     /// Register an interface for the bus's lifetime. The registration owns its
     /// vtable, strings, and callbacks; failed registrations release them.
-    pub fn add_object_vtable(
+    pub fn add_object_vtable<'s>(
         &self,
-        path: &ObjectPath,
-        interface: &InterfaceName,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
         vtable: Vtable,
     ) -> crate::Result<()> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = interface.try_into_cstr()?;
+        let interface =
+            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
         vtable.register(self, path, interface)
     }
 
@@ -1512,7 +1589,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_set_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_destination.html
     #[inline]
-    pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
+    pub fn set_destination<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_set_destination(self.as_ptr(), dest as *const _ as *const _)
         })?;
@@ -1759,7 +1838,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
-    pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
+    pub fn send_to<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<u64> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
         // self.bus().send_to(self, dest)
         let mut c = MaybeUninit::uninit();
         ffi_result(unsafe {
@@ -1782,7 +1863,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
-    pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
+    pub fn send_to_no_reply<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
         // self.bus().send_to_no_reply(self, dest)
         ffi_result(unsafe {
             ffi::bus::sd_bus_send_to(
@@ -1924,9 +2007,12 @@ impl MessageRef {
     /// Open a container for writing. `contents` describes its members without
     /// the outer container delimiters. Close it after appending all members.
     /// If appending or closing fails, discard the partially written message.
-    pub fn open_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<()> {
-        let contents = std::ffi::CString::new(contents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    pub fn open_container<'a>(
+        &mut self,
+        kind: ContainerType,
+        contents: impl CStrArgument<'a>,
+    ) -> crate::Result<()> {
+        let contents = contents.try_into_cstr()?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_open_container(
                 self.as_ptr(),
@@ -1968,9 +2054,12 @@ impl<'a> MessageIter<'a> {
     /// Enter the next container with the expected kind and member signature.
     /// Returns false at the end of an enclosing array. A mismatching signature
     /// returns an error without consuming the value.
-    pub fn enter_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<bool> {
-        let contents = std::ffi::CString::new(contents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    pub fn enter_container<'s>(
+        &mut self,
+        kind: ContainerType,
+        contents: impl CStrArgument<'s>,
+    ) -> crate::Result<bool> {
+        let contents = contents.try_into_cstr()?;
         Ok(ffi_result(unsafe {
             ffi::bus::sd_bus_message_enter_container(self.raw, kind as c_char, contents.as_ptr())
         })? > 0)

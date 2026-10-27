@@ -1,4 +1,5 @@
 use super::{BusRef, InterfaceName, MemberName, MessageIter, MessageRef, ObjectPath};
+use crate::CStrArgument;
 use ffi::bus::vtable::sd_bus_vtable;
 use ffi::{bus as raw, c_char, c_int, c_void};
 use foreign_types::ForeignTypeRef;
@@ -88,7 +89,9 @@ impl Entry {
 
 /// An owned interface definition for [`BusRef::add_object_vtable`].
 ///
-/// Member names and signatures are ordinary Rust strings. Names are checked
+/// Member names and signatures accept Rust strings, C strings, and `Cow`.
+/// Owned C strings transfer their buffers; borrowed inputs are copied when
+/// owned storage is needed for registration. Names are checked
 /// while building; libsystemd checks signatures and flag combinations when
 /// registering. Callbacks and captured state must be `'static`; share mutable
 /// state using interior mutability. The bus owns the registered definition.
@@ -105,7 +108,7 @@ impl Entry {
 ///
 /// ```
 /// use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
-/// use systemd::bus::{BusRef, InterfaceName, ObjectPath, Vtable, VtableFlags};
+/// use systemd::bus::{BusRef, Vtable, VtableFlags};
 ///
 /// fn register(bus: &BusRef) -> systemd::Result<()> {
 ///     let count = Arc::new(AtomicU32::new(0));
@@ -123,9 +126,7 @@ impl Entry {
 ///                 count.store(next, Ordering::Relaxed);
 ///                 Ok(())
 ///             })?;
-///     bus.add_object_vtable(
-///         ObjectPath::from_bytes(b"/org/example/Counter\0").unwrap(),
-///         InterfaceName::from_bytes(b"org.example.Counter\0").unwrap(), table)
+///     bus.add_object_vtable("/org/example/Counter", "org.example.Counter", table)
 /// }
 /// ```
 ///
@@ -152,11 +153,11 @@ impl Vtable {
 
     /// Declare a method. `signature` and `result` describe sequences of input
     /// and output arguments; an empty string means no arguments.
-    pub fn method<F>(
+    pub fn method<'a, F>(
         self,
-        member: &str,
-        signature: &str,
-        result: &str,
+        member: impl CStrArgument<'a>,
+        signature: impl CStrArgument<'a>,
+        result: impl CStrArgument<'a>,
         flags: VtableFlags,
         handler: F,
     ) -> crate::Result<Self>
@@ -173,15 +174,20 @@ impl Vtable {
     }
 
     /// Declare a signal for introspection. Emit it using [`BusRef::new_signal`].
-    pub fn signal(self, member: &str, signature: &str, flags: VtableFlags) -> crate::Result<Self> {
+    pub fn signal<'a>(
+        self,
+        member: impl CStrArgument<'a>,
+        signature: impl CStrArgument<'a>,
+        flags: VtableFlags,
+    ) -> crate::Result<Self> {
         self.add(member, signature, "", flags, Callbacks::Signal)
     }
 
     /// Declare a read-only property with one complete value type as its signature.
-    pub fn property<F>(
+    pub fn property<'a, F>(
         self,
-        member: &str,
-        signature: &str,
+        member: impl CStrArgument<'a>,
+        signature: impl CStrArgument<'a>,
         flags: VtableFlags,
         get: F,
     ) -> crate::Result<Self>
@@ -202,10 +208,10 @@ impl Vtable {
 
     /// Declare a readable and writable property. The setter's iterator starts
     /// at the bare value inside the incoming variant, without rewinding.
-    pub fn writable_property<G, S>(
+    pub fn writable_property<'a, G, S>(
         self,
-        member: &str,
-        signature: &str,
+        member: impl CStrArgument<'a>,
+        signature: impl CStrArgument<'a>,
         flags: VtableFlags,
         get: G,
         set: S,
@@ -226,15 +232,15 @@ impl Vtable {
         )
     }
 
-    fn add(
+    fn add<'a>(
         mut self,
-        member: &str,
-        signature: &str,
-        result: &str,
+        member: impl CStrArgument<'a>,
+        signature: impl CStrArgument<'a>,
+        result: impl CStrArgument<'a>,
         flags: VtableFlags,
         callbacks: Callbacks,
     ) -> crate::Result<Self> {
-        let member = CString::new(member).map_err(invalid)?;
+        let member = member.try_into_cstr()?.into_owned();
         MemberName::from_bytes(member.as_bytes_with_nul()).map_err(invalid)?;
         if self.entries.iter().any(|e| {
             e.member == member
@@ -244,8 +250,8 @@ impl Vtable {
         }
         self.entries.push(Entry {
             member,
-            signature: CString::new(signature).map_err(invalid)?,
-            result: CString::new(result).map_err(invalid)?,
+            signature: signature.try_into_cstr()?.into_owned(),
+            result: result.try_into_cstr()?.into_owned(),
             flags,
             callbacks,
         });
@@ -295,6 +301,26 @@ fn invalid(error: impl std::fmt::Display) -> Error {
 struct Registration {
     table: Vec<sd_bus_vtable>,
     definition: Vtable,
+}
+
+#[test]
+fn owned_vtable_strings_transfer_their_buffers() {
+    let member = CString::new("Echo").unwrap();
+    let signature = CString::new("s").unwrap();
+    let result = CString::new("s").unwrap();
+    let pointers = (member.as_ptr(), signature.as_ptr(), result.as_ptr());
+    let table = Vtable::new()
+        .method(member, signature, result, VtableFlags::empty(), |_| Ok(()))
+        .unwrap();
+    let entry = &table.entries[0];
+    assert_eq!(
+        (
+            entry.member.as_ptr(),
+            entry.signature.as_ptr(),
+            entry.result.as_ptr()
+        ),
+        pointers
+    );
 }
 
 // All native offsets are zero. Lookup selects a callback without creating

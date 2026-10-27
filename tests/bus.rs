@@ -31,7 +31,7 @@ fn call() {
     let name = Utf8CStr::from_bytes(b"org.example.TestError\0").unwrap();
     let message = Utf8CStr::from_bytes(b"A distinct error message\0").unwrap();
     for message in [Some(message), None] {
-        let error = bus::Error::new(name, message);
+        let error = bus::Error::new(name, message).unwrap();
         let reply = m.new_method_error(&error).unwrap();
         let raw = reply.error().expect("error reply must contain its error");
         assert_eq!(

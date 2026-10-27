@@ -1,11 +1,12 @@
 use super::{pump, Canary};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::ffi::{CStr, CString};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use systemd::bus::types::Variant;
 use systemd::bus::{self, MessageRef, Vtable, VtableFlags as Flags};
-use utf8_cstr::Utf8CStr;
 
 fn path() -> &'static bus::ObjectPath {
     bus::ObjectPath::from_bytes(b"/org/example/Vtable\0").unwrap()
@@ -26,8 +27,8 @@ fn exchange(
         .new_method_call(
             server.unique_name().unwrap(),
             path(),
-            bus::InterfaceName::from_bytes(interface).unwrap(),
-            bus::MemberName::from_bytes(member).unwrap(),
+            Cow::Borrowed(CStr::from_bytes_with_nul(interface).unwrap()),
+            CString::from_vec_with_nul(member.to_vec()).unwrap(),
         )
         .unwrap();
     body(&mut call);
@@ -78,8 +79,8 @@ pub fn round_trip() {
         let signature = String::from("a{sv}");
         let table = Vtable::new()
             .method(
-                &echo,
-                &signature,
+                echo,
+                CString::new(signature.as_str()).unwrap(),
                 &signature,
                 Flags::UNPRIVILEGED,
                 move |request| {
@@ -96,9 +97,9 @@ pub fn round_trip() {
             .unwrap()
             .method("Fail", "", "", Flags::UNPRIVILEGED, |_| {
                 Err(bus::Error::new(
-                    Utf8CStr::from_bytes(b"org.example.VtableFailure\0").unwrap(),
-                    Some(Utf8CStr::from_bytes(b"deliberate failure\0").unwrap()),
-                ))
+                    "org.example.VtableFailure",
+                    Some("deliberate failure"),
+                )?)
             })
             .unwrap()
             .method("Panic", "", "", Flags::UNPRIVILEGED, |_| {
@@ -147,7 +148,11 @@ pub fn round_trip() {
             .signal("Changed", "u", Flags::empty())
             .unwrap();
         server
-            .add_object_vtable(path(), interface(), table)
+            .add_object_vtable(
+                CString::new("/org/example/Vtable").unwrap(),
+                "org.example.Vtable",
+                table,
+            )
             .unwrap();
     }
     for _ in 0..2 {
