@@ -92,11 +92,16 @@ pub fn get_session(pid: Option<pid_t>) -> Result<String> {
     Ok(ss)
 }
 
-/// Determines the session identifier of a .user
+/// Returns the ID of the user's primary session, as selected by logind.
 ///
-/// Specific user can be optionally targeted via their UID.
-/// This method can be used to retrieve a session identifier.
-pub fn get_display(uid: uid_t) -> Result<String> {
+/// The returned value is a session ID, not an X11 display address. The `uid`
+/// argument identifies the requested user; `0` refers to root.
+///
+/// Returns an `ENODATA` error if the user has no primary session, or `EINVAL`
+/// if the UID is invalid.
+///
+/// Corresponds to `sd_uid_get_display()`.
+pub fn user_primary_session(uid: uid_t) -> Result<String> {
     let mut c_session: *mut c_char = ptr::null_mut();
     ffi_result(unsafe { libsystemd_sys::login::sd_uid_get_display(uid, &mut c_session) })?;
     let ss = unsafe { free_cstring(c_session).unwrap() };

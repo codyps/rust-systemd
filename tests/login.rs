@@ -104,32 +104,28 @@ fn test_get_owner_uid() {
 }
 
 #[test]
-fn test_get_display() {
-    let ou = login::get_owner_uid(None);
-    let has_systemd = booted();
-    assert!(has_systemd.is_ok());
-    if has_systemd.unwrap() {
-        // Running under systemd, inside a slice somewhere
-        // even in this case, we might get a "no data available" (github actions runners return
-        // this)
-        if let Err(e) = ou {
-            match e.raw_os_error() {
-                Some(libc::ENODATA) => { /* ok */ }
-                _ => panic!("{}", e),
-            }
-            return;
+fn test_user_primary_session() {
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    // Query the user directly, even without a process owner or a running logind.
+    match login::user_primary_session(uid) {
+        Ok(session) => assert!(!session.is_empty()),
+        Err(e) => {
+            // No primary session is normal for users without a login session.
+            assert_eq!(e.raw_os_error(), Some(libc::ENODATA));
         }
-        let ou = ou.unwrap();
-        let display = login::get_display(ou);
-        if let Err(e) = display {
-            match e.raw_os_error() {
-                Some(libc::ENODATA) => { /* ok */ }
-                _ => panic!("{}", e),
-            }
-            return;
-        }
-    } else {
-        // Nothing meaningful to check here
+    }
+}
+
+#[test]
+fn test_user_primary_session_invalid_uid() {
+    // systemd rejects both the historical 16-bit and current 32-bit invalid IDs.
+    // This must work independently of login sessions or cgroup ownership.
+    for uid in [65_535, libc::uid_t::MAX] {
+        assert_eq!(
+            login::user_primary_session(uid).unwrap_err().raw_os_error(),
+            Some(libc::EINVAL)
+        );
     }
 }
 
