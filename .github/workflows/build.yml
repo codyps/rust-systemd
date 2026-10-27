@@ -22,6 +22,10 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
       - name: Check manual linking and missing-library failures
         run: python3 .github/scripts/check_linking.py --lib-dir "$(pkg-config --variable=libdir libsystemd)"
+      - name: Fetch dependencies for native compatibility tests
+        run: cargo fetch --locked
+      - name: Check native API capabilities and version gates
+        run: python3 .github/scripts/check_native_versions.py
 
   check:
     runs-on: ubuntu-latest
@@ -43,7 +47,7 @@ jobs:
       - name: Install libsystemd-dev
         run: sudo apt-get -o Acquire::Retries=3 install libsystemd-dev
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all --all-targets --features serde,default,bus,systemd_v245,journal -- -D warnings
+      - run: cargo clippy --all --all-targets --features serde,default,bus,systemd_v254,journal -- -D warnings
 
   features:
     runs-on: ubuntu-latest

@@ -1,6 +1,22 @@
 #![cfg_attr(feature = "unstable-doc-cfg", feature(doc_cfg))]
 #![warn(rust_2018_idioms)]
 
+//! Rust interfaces to libsystemd and compatible libraries.
+//!
+//! Native APIs introduced in newer releases require explicit Cargo features:
+//! `systemd_v240` enables boot-specific application IDs and bus timeout APIs;
+//! `systemd_v241` adds the raw close-and-unref helper; `systemd_v245` adds
+//! journal namespaces; `systemd_v254` adds session start-time queries. Each
+//! version feature includes the earlier version features. The default `bus`
+//! feature requires the callback-lifetime APIs from systemd 239. With bus
+//! disabled, the base APIs require systemd 233 or equivalent capabilities.
+//!
+//! The build script checks required native symbols by linking a probe for the
+//! target without running it. This includes explicit `SYSTEMD_LIB_DIR` and
+//! `SYSTEMD_LIBS` selections and libraries selected by `SYSTEMD_PKG_NAME`,
+//! including libelogind. Disable unsupported features or install a library
+//! providing the selected APIs when the capability check fails.
+
 #[cfg(all(feature = "journal", doctest))]
 doc_comment::doctest!("../README.md", readme);
 

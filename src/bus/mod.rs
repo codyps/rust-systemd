@@ -1280,7 +1280,8 @@ impl Bus {
 
 impl fmt::Debug for BusRef {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("BusRef")
+        let mut debug = fmt.debug_struct("BusRef");
+        debug
             .field("unique_name", &self.unique_name())
             .field("bus_id", &self.bus_id())
             .field("scope", &self.scope())
@@ -1298,10 +1299,10 @@ impl fmt::Debug for BusRef {
             .field("fd", &self.fd())
             .field("events", &self.events())
             .field("n_queued_read", &self.n_queued_read())
-            .field("n_queued_write", &self.n_queued_write())
-            //.field("event", &self.event())
-            .field("method_call_timeout", &self.method_call_timeout())
-            .finish()
+            .field("n_queued_write", &self.n_queued_write());
+        #[cfg(feature = "systemd_v240")]
+        debug.field("method_call_timeout", &self.method_call_timeout());
+        debug.finish()
         // Consider:
         // current_message
         // current_handler
@@ -1531,6 +1532,8 @@ impl BusRef {
     }
     */
 
+    #[cfg(feature = "systemd_v240")]
+    #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v240")))]
     pub fn method_call_timeout(&self) -> super::Result<u64> {
         let mut ret = Default::default();
         ffi_result(unsafe { ffi::bus::sd_bus_get_method_call_timeout(self.as_ptr(), &mut ret) })?;

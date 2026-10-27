@@ -21,5 +21,6 @@ extern "C" {
     pub fn sd_id128_get_machine(ret: *mut sd_id128_t) -> c_int;
     pub fn sd_id128_get_machine_app_specific(app_id: sd_id128_t, ret: *mut sd_id128_t) -> c_int;
     pub fn sd_id128_get_boot(ret: *mut sd_id128_t) -> c_int;
+    #[cfg(feature = "systemd_v240")]
     pub fn sd_id128_get_boot_app_specific(app_id: sd_id128_t, ret: *mut sd_id128_t) -> c_int;
 }

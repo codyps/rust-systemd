@@ -7,6 +7,7 @@
 
 extern crate systemd;
 
+#[cfg(feature = "systemd_v254")]
 use std::time::{Duration, UNIX_EPOCH};
 use systemd::login;
 
@@ -32,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Get session start time
+        #[cfg(feature = "systemd_v254")]
         if let Ok(start_time_usec) = login::session_start_time(&session_id) {
             let start_time = UNIX_EPOCH + Duration::from_micros(start_time_usec);
             println!("  Start time: {:?}", start_time);

@@ -180,22 +180,25 @@ fn test_session_functions() {
         uid_result
     );
 
-    // Test session_start_time
-    let start_time_result = login::session_start_time(session_id);
-    // Start time should be retrievable for any valid session
-    assert!(
-        start_time_result.is_ok(),
-        "Failed to get start time for session {}: {:?}",
-        session_id,
-        start_time_result
-    );
-    let start_time = start_time_result.unwrap();
-    // Start time should be a reasonable timestamp (after year 2000)
-    assert!(
-        start_time > 946_684_800_000_000,
-        "Start time seems too early: {}",
-        start_time
-    );
+    #[cfg(feature = "systemd_v254")]
+    {
+        // Test session_start_time
+        let start_time_result = login::session_start_time(session_id);
+        // Start time should be retrievable for any valid session
+        assert!(
+            start_time_result.is_ok(),
+            "Failed to get start time for session {}: {:?}",
+            session_id,
+            start_time_result
+        );
+        let start_time = start_time_result.unwrap();
+        // Start time should be a reasonable timestamp (after year 2000)
+        assert!(
+            start_time > 946_684_800_000_000,
+            "Start time seems too early: {}",
+            start_time
+        );
+    }
 
     // Test session_tty (may return None for non-TTY sessions)
     let tty_result = login::session_tty(session_id);
