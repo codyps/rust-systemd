@@ -1,3 +1,21 @@
+//! Queries for processes, users, and login sessions.
+//!
+//! PID queries accept a PID, `Some(pid)`, or `None`. Both `None` and PID `0`
+//! select the calling process, following libsystemd's convention. Negative PIDs
+//! return an `EINVAL` error.
+//!
+//! When passing an inferred value such as `Default::default()` or `.into()`,
+//! provide an explicit type or pass `None` / `Some(pid)` directly.
+//!
+//! ```
+//! use systemd::login;
+//!
+//! let _ = login::get_cgroup(1234);
+//! let _ = login::get_cgroup(Some(1234));
+//! let _ = login::get_cgroup(None);
+//! let _ = login::process_cgroup(0);
+//! ```
+
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use super::{free_cstring, Error, Result};
 use crate::ffi_result;
@@ -15,8 +33,8 @@ pub enum UnitType {
 
 /// Determines the systemd unit (i.e. service or scope unit) identifier of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve either a system or an user unit identifier.
 ///
 /// Corresponds to `sd_pid_get_unit()` and `sd_pid_get_user_unit()`.
@@ -34,14 +52,14 @@ pub fn get_unit(unit_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<St
 }
 
 /// Alias for [`get_unit()`].
-pub fn process_unit(unit_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn process_unit(unit_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     get_unit(unit_type, pid)
 }
 
 /// Determines the slice (either in system or user session) of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve either a system or an user slice identifier.
 ///
 /// Corresponds to `sd_pid_get_slice()` and `sd_pid_get_user_slice()`.
@@ -59,14 +77,14 @@ pub fn get_slice(slice_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<
 }
 
 /// Alias for [`get_slice()`].
-pub fn process_slice(slice_type: UnitType, pid: Option<pid_t>) -> Result<String> {
+pub fn process_slice(slice_type: UnitType, pid: impl Into<Option<pid_t>>) -> Result<String> {
     get_slice(slice_type, pid)
 }
 
 /// Determines the machine name of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve the machine name of processes running
 /// inside a VM or a container.
 ///
@@ -80,14 +98,14 @@ pub fn get_machine_name(pid: impl Into<Option<pid_t>>) -> Result<String> {
 }
 
 /// Alias for [`get_machine_name()`].
-pub fn process_machine_name(pid: Option<pid_t>) -> Result<String> {
+pub fn process_machine_name(pid: impl Into<Option<pid_t>>) -> Result<String> {
     get_machine_name(pid)
 }
 
 /// Determines the control group path of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve the control group path of a specific
 /// process, relative to the root of the hierarchy. It returns the path without
 /// trailing slash, except for processes located in the root control group,
@@ -103,14 +121,14 @@ pub fn get_cgroup(pid: impl Into<Option<pid_t>>) -> Result<String> {
 }
 
 /// Alias for [`get_cgroup()`].
-pub fn process_cgroup(pid: Option<pid_t>) -> Result<String> {
+pub fn process_cgroup(pid: impl Into<Option<pid_t>>) -> Result<String> {
     get_cgroup(pid)
 }
 
 /// Determines the session identifier of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve a session identifier.
 ///
 /// Corresponds to `sd_pid_get_session()`.
@@ -123,7 +141,7 @@ pub fn get_session(pid: impl Into<Option<pid_t>>) -> Result<String> {
 }
 
 /// Alias for [`get_session()`].
-pub fn process_session(pid: Option<pid_t>) -> Result<String> {
+pub fn process_session(pid: impl Into<Option<pid_t>>) -> Result<String> {
     get_session(pid)
 }
 
@@ -181,20 +199,20 @@ pub fn session_vt<S: CStrArgument>(session: S) -> Result<u32> {
 
 /// Determines the owner uid of a process.
 ///
-/// Specific processes can be optionally targeted via their PID. When no PID is
-/// specified, operation is executed for the calling process.
+/// Pass a PID directly or as `Some(pid)` to query a specific process. Pass `None`
+/// or `0` to query the calling process.
 /// This method can be used to retrieve an owner uid.
 ///
 /// Corresponds to `sd_pid_get_owner_uid()`.
-pub fn get_owner_uid(pid: Option<pid_t>) -> Result<uid_t> {
+pub fn get_owner_uid(pid: impl Into<Option<pid_t>>) -> Result<uid_t> {
     let mut c_owner_uid: u32 = 0u32;
-    let p: pid_t = pid.unwrap_or(0);
+    let p: pid_t = pid.into().unwrap_or(0);
     ffi_result(unsafe { ffi::sd_pid_get_owner_uid(p, &mut c_owner_uid) })?;
     Ok(c_owner_uid as uid_t)
 }
 
 /// Alias for [`get_owner_uid()`].
-pub fn process_owner_uid(pid: Option<pid_t>) -> Result<uid_t> {
+pub fn process_owner_uid(pid: impl Into<Option<pid_t>>) -> Result<uid_t> {
     get_owner_uid(pid)
 }
 
