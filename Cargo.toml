@@ -22,7 +22,7 @@ systemd_v254 = ["systemd_v245", "libsystemd-sys/systemd_v254"]
 unstable-doc-cfg = []
 
 [dependencies]
-log = "~0.4"
+log = { version = "~0.4", features = ["std"] }
 libc = "~0.2"
 memchr = "2"
 utf8-cstr = "~0.1"

@@ -32,7 +32,9 @@ extern crate enumflags2_derive;
 #[allow(deprecated)]
 pub use journal::JournalFiles;
 #[cfg(feature = "journal")]
-pub use journal::{Journal, JournalLog, JournalRecord, JournalSeek, JournalWaitResult};
+pub use journal::{
+    FormattedJournalLog, Journal, JournalLog, JournalRecord, JournalSeek, JournalWaitResult,
+};
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Error, Result};
 
