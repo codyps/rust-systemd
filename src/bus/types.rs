@@ -1,28 +1,62 @@
-/*!
- * Define a mechanism for converting types to messages and messages to types
- *
- * A few existing models:
- *
- * - rust-postgres: defines ToSql and FromSql traits, and has their accessor and creator functions
- *   take slices of trait objects. rust-postgress is not an ffi lib, so they read directly from a
- *   Read and write to a Write. For them, each item is associated with a postgres type, so they
- *   provide a mechanism in ToSql/FromSql to determine if a particular pg-type can decode to a
- *   given rs-type. Essentially, they allow picking a decoding mechanism based on the pg-type.
- *
- * - dbus-rs: defines a MessageItem enum which maps dbus types to rust types. All types are owned
- *   (so that they can be decoded into). This will result in higher overhead than allowing users to
- *   perform more direct convertions
- *
- * - serde: we could think about our encoding like plain-old serialization/deserialization &
- *   provide the serde/rustc-serialize interfaces into it. This is probably more work but is
- *   potentially the most convenient.
- */
+//! Typed D-Bus containers: vectors are arrays, tuples are structs, and maps are
+//! dictionaries. [`Variant<T>`] wraps one value with its wire signature.
+//! Struct tuples have one to twelve fields. Empty arrays and dictionaries keep
+//! their element types. Map decoding rejects duplicate keys; use a vector of
+//! [`DictEntry`] values when duplicates or wire order need to be preserved.
+//!
+//! After an encoding error, discard the partially written message. After a
+//! decoding error, use [`MessageIter::rewind`] before retrying from the beginning.
+//! Typed variants require the expected payload type, including for nested variants.
+//!
+//! ```
+//! use std::collections::BTreeMap;
+//! use systemd::bus::{MessageIter, MessageRef};
+//! use systemd::bus::types::Variant;
+//!
+//! fn write(message: &mut MessageRef) -> systemd::Result<()> {
+//!     message.append(vec![1u32, 2, 3])?;
+//!     message.append(("a struct", Variant(vec![true, false])))?;
+//!     let dictionary: BTreeMap<String, Variant<u32>> =
+//!         [("count".to_owned(), Variant(3))].iter().cloned().collect();
+//!     message.append(dictionary)
+//! }
+//!
+//! fn read(iter: &mut MessageIter<'_>) -> systemd::Result<()> {
+//!     let numbers: Vec<u32> = iter.next()?.expect("array");
+//!     let structure: (String, Variant<Vec<bool>>) = iter.next()?.expect("struct");
+//!     let dictionary: BTreeMap<String, Variant<u32>> = iter.next()?.expect("dictionary");
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Containers may hold borrowed message data:
+//!
+//! ```
+//! use systemd::bus::MessageRef;
+//!
+//! fn read_strings(message: &mut MessageRef) -> systemd::Result<Vec<&str>> {
+//!     Ok(message.iter()?.next()?.expect("string array"))
+//! }
+//! ```
+//!
+//! Those borrows cannot outlive the message that owns them:
+//!
+//! ```compile_fail
+//! use systemd::bus::Message;
+//!
+//! fn read_strings(mut message: Message) -> systemd::Result<Vec<&'static str>> {
+//!     Ok(message.iter()?.next()?.expect("string array"))
+//! }
+//! ```
 
 use super::{MessageIter, MessageRef};
 use crate::bus;
 use ffi::{c_char, c_int};
 use std::ffi::CStr;
 use utf8_cstr::Utf8CStr;
+
+mod containers;
+pub use self::containers::{DictEntry, SdBusBasicType, SdBusType, Variant};
 
 /**
  * When impled for a Type, promises that a reference to the type cast to a pointer can be encoded
@@ -52,9 +86,8 @@ pub unsafe trait SdBusMessageDirect {
  * Allows types to provide a conversion to a dbus message
  */
 pub trait ToSdBusMessage {
-    // type signature?
-    // function to do append?
-    // Do we need a ToOwned bit? Check ToSql
+    /// Append one value. Types used inside typed containers must also implement
+    /// [`SdBusType`] with the matching signature.
     fn to_message(&self, m: &mut MessageRef) -> crate::Result<()>;
 }
 
@@ -183,11 +216,8 @@ impl ToSdBusMessage for &bus::ObjectPath {
     }
 }
 
-// For string likes, (object path, string, signature) sd_bus_message_read_basic returns a *const
-// c_char reference to the string owned by the underlying message. Unclear if we can represent this
-// without copying.
-//
-// If we could use &MessageRef instead this could be useful.
+// String-like values returned by sd_bus_message_read_basic point into the
+// sealed message body and may be borrowed for the message's lifetime.
 impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
     fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
@@ -219,11 +249,3 @@ impl<'a> FromSdBusMessage<'a> for &'a Utf8CStr {
         }
     }
 }
-
-// TODO:
-//  string-likes (string, object path, signature)
-//  array
-//  variant
-//  struct
-//  dict
-//
