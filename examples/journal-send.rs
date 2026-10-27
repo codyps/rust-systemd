@@ -8,51 +8,51 @@ mod x {
 
     pub fn main() {
         println!("Demonstrating new Result-based journal API...");
+        println!("Success means libsystemd reported no error; it does not acknowledge delivery.");
 
-        // Using try_send for detailed control
-        match journal::try_send(&[
+        // Using send for detailed control
+        match journal::send(&[
             "MESSAGE=Hello from Rust with Result API!",
             "PRIORITY=6",
-            "CODE_FILE=journal-send-result.rs",
+            "CODE_FILE=journal-send.rs",
             "CODE_LINE=15",
             "CUSTOM_FIELD=test_value",
         ]) {
-            Ok(()) => println!("Detailed message sent successfully"),
+            Ok(()) => println!("libsystemd accepted the detailed message"),
             Err(e) => println!("Failed to send detailed message: {}", e),
         }
 
-        // Using try_print for simple messages
-        if let Err(e) = journal::try_print(6, "Simple message with Result API") {
+        // Using print for simple messages
+        if let Err(e) = journal::print(6, "Simple message with Result API") {
             println!("Failed to send simple message: {}", e);
         } else {
-            println!("Simple message sent successfully");
+            println!("libsystemd accepted the simple message");
         }
 
-        // Using try_log for structured logging
-        match journal::try_log(
+        // Using log for structured logging
+        match journal::log(
             4, // Warning level
             file!(),
             line!(),
             module_path!(),
             &format_args!("Structured log entry with count: {}", 42),
         ) {
-            Ok(()) => println!("Structured log sent successfully"),
+            Ok(()) => println!("libsystemd accepted the structured log"),
             Err(e) => println!("Failed to send structured log: {}", e),
         }
 
-        // Demonstrating error handling with invalid data
-        // This should still succeed as systemd is quite permissive
-        match journal::try_send(&["INVALID_KEY_WITHOUT_VALUE"]) {
-            Ok(()) => println!("Even invalid-looking data was accepted"),
-            Err(e) => println!("Invalid data was rejected: {}", e),
+        // An empty field list is rejected with EINVAL.
+        match journal::send(&[]) {
+            Ok(()) => println!("Unexpectedly accepted an empty field list"),
+            Err(e) => println!("Empty field list was rejected: {}", e),
         }
 
         // Chaining operations with proper error handling
         let operations = [
-            || journal::try_print(3, "Error level message"),
-            || journal::try_print(4, "Warning level message"),
-            || journal::try_print(6, "Info level message"),
-            || journal::try_print(7, "Debug level message"),
+            || journal::print(3, "Error level message"),
+            || journal::print(4, "Warning level message"),
+            || journal::print(6, "Info level message"),
+            || journal::print(7, "Debug level message"),
         ];
 
         let mut success_count = 0;
@@ -71,7 +71,10 @@ mod x {
             success_count,
             operations.len()
         );
-        println!("Example completed. Check your journal with: journalctl -t journal-send-result");
+        println!(
+            "Example completed. Check your journal with: journalctl _PID={}",
+            std::process::id()
+        );
     }
 }
 
@@ -79,7 +82,7 @@ mod x {
 mod x {
     pub fn main() {
         println!("This example requires the 'journal' feature.");
-        println!("Run with: cargo run --example journal-send-result --features journal");
+        println!("Run with: cargo run --example journal-send --features journal");
     }
 }
 

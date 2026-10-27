@@ -22,10 +22,10 @@ fn have_journal() -> bool {
 }
 
 #[test]
-#[allow(deprecated)]
-fn test() {
-    journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]);
-    journal::print(1, &format!("Rust can talk to the journal: {}", 4));
+#[deny(deprecated)]
+fn test() -> systemd::Result<()> {
+    journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"])?;
+    journal::print(1, &format!("Rust can talk to the journal: {}", 4))?;
 
     journal::JournalLog::init().ok().unwrap();
     log::set_max_level(log::LevelFilter::Warn);
@@ -33,30 +33,37 @@ fn test() {
     log!(target: "systemd-tests", log::Level::Info, "HI info with target");
     log!(log::Level::Warn, "HI warn");
     log!(target: "systemd-tests", log::Level::Warn, "HI warn with target");
-    sd_journal_log!(4, "HI {:?}", 2);
+    sd_journal_log!(4, "HI {:?}", 2)?;
+    Ok(())
 }
 
 #[test]
-fn test_try_api() {
-    // Test the new try-based API
-    journal::try_send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]).unwrap();
-    journal::try_print(1, &format!("Rust can talk to the journal: {}", 4)).unwrap();
-    
+fn test_result_api() {
+    // Test the Result-returning API
+    journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"]).unwrap();
+    journal::print(1, &format!("Rust can talk to the journal: {}", 4)).unwrap();
+
     // Test that the functions return Ok(()) on success
-    let result1 = journal::try_send(&["MESSAGE=test message"]);
+    let result1 = journal::send(&["MESSAGE=test message"]);
     assert!(result1.is_ok());
-    
-    let result2 = journal::try_print(6, "test print");
+
+    let result2 = journal::print(6, "test print");
     assert!(result2.is_ok());
-    
-    // Test try_log function
-    let result3 = journal::try_log(6, "test.rs", 42, "test_module", &format_args!("test log entry"));
+
+    // Test log function
+    let result3 = journal::log(
+        6,
+        "test.rs",
+        42,
+        "test_module",
+        &format_args!("test log entry"),
+    );
     assert!(result3.is_ok());
 }
 
 #[test]
-fn test_try_api_with_special_chars() {
-    let result = journal::try_send(&[
+fn test_api_with_special_chars() {
+    let result = journal::send(&[
         "MESSAGE=Test with special chars: éàü©",
         "CUSTOM=Line\nbreak",
     ]);
@@ -65,10 +72,119 @@ fn test_try_api_with_special_chars() {
 
 #[test]
 fn test_empty_args() {
-    // Test with an empty array
-    let result = journal::try_send(&[]);
-    // Systemd should accept this
-    assert!(result.is_ok());
+    let error = journal::send(&[]).unwrap_err();
+    assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
+}
+
+#[test]
+fn send_validation_matches_native() {
+    let cases: &[(&[&str], libc::c_int)] = &[
+        (&[], -libc::EINVAL),
+        (&[""], -libc::EINVAL),
+        (&["X"], -libc::EINVAL),
+        (&["MISSING_EQUALS"], -libc::EINVAL),
+        (&["=missing_name"], -libc::EINVAL),
+        (&["BAD\nNAME=value"], -libc::EINVAL),
+        (&["MESSAGE=valid", "INVALID"], -libc::EINVAL),
+        (&["MESSAGE="], 0),
+        (&["MESSAGE=Unicode: éàü©"], 0),
+        (&["MESSAGE=line one\nline two\n"], 0),
+        (&["MESSAGE=embedded\0NUL"], 0),
+        (&["CUSTOM=one", "CUSTOM=two"], 0),
+    ];
+
+    for &(fields, expected) in cases {
+        let iovecs: Vec<_> = fields
+            .iter()
+            // SAFETY: fields stay alive until all native calls in this iteration have returned.
+            .map(|field| unsafe { libsystemd_sys::const_iovec::from_str(*field) })
+            .collect();
+        // SAFETY: iovecs references live fields, and every test case has a small field count.
+        let native = unsafe {
+            libsystemd_sys::journal::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as libc::c_int)
+        };
+        assert_eq!(native, expected, "native result for {fields:?}");
+        let result = journal::send(fields);
+        if native < 0 {
+            assert_eq!(
+                result.unwrap_err().raw_os_error(),
+                Some(-native),
+                "Result errno for {fields:?}"
+            );
+        } else {
+            result.unwrap();
+        }
+    }
+}
+
+#[test]
+fn test_log_record() {
+    let record = log::Record::builder()
+        .args(format_args!("Test structured record"))
+        .level(log::Level::Warn)
+        .target("systemd-tests")
+        .file(Some(file!()))
+        .line(Some(line!()))
+        .module_path(Some(module_path!()))
+        .build();
+    journal::log_record(&record).unwrap();
+
+    // Records from other logging implementations can omit source locations.
+    let record = log::Record::builder()
+        .args(format_args!("Test record without source location"))
+        .build();
+    journal::log_record(&record).unwrap();
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn journal_errors_are_returned() {
+    const CHILD_ENV: &str = "RUST_SYSTEMD_TEST_JOURNAL_ERRORS";
+    if std::env::var_os(CHILD_ENV).is_none() {
+        // A fresh process isolates both the descriptor limit and libsystemd's cached journal fd.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "journal_errors_are_returned", "--nocapture"])
+            .env(CHILD_ENV, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    let limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: this changes the descriptor limit only in this isolated child process.
+    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) }, 0);
+
+    let fields = &["MESSAGE=Test descriptor exhaustion"];
+    let args = format_args!("Test descriptor exhaustion");
+    let record = log::Record::builder().args(args).build();
+    for result in [
+        journal::send(fields),
+        journal::print(6, "Test descriptor exhaustion"),
+        journal::log(6, file!(), line!(), module_path!(), &args),
+        journal::log_record(&record),
+        sd_journal_log!(6, "Test descriptor exhaustion"),
+    ] {
+        assert_eq!(result.unwrap_err().raw_os_error(), Some(libc::EMFILE));
+    }
+
+    // The log facade has no Result return, so its adapter remains best-effort.
+    log::Log::log(&journal::JournalLog, &record);
+}
+
+#[test]
+#[deny(deprecated)]
+fn log_macro_returns_result() {
+    let result: systemd::Result<()> = sd_journal_log!(4, "Test macro with argument {}", 42);
+    result.unwrap();
 }
 
 #[test]
@@ -153,7 +269,6 @@ fn test_seek() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn test_simple_match() {
     if !have_journal() {
         return;
@@ -171,7 +286,7 @@ fn test_simple_match() {
     j.previous().unwrap();
     j.match_add(key, value).unwrap();
 
-    journal::send(&[&filter, msg]);
+    journal::send(&[&filter, msg]).unwrap();
     let mut waits = 0;
     loop {
         if j.next().unwrap() == 0 {
@@ -202,14 +317,13 @@ fn test_simple_match() {
         .unwrap()
         .match_add("NOKEY", "NOVALUE")
         .unwrap();
-    journal::send(&[msg]);
+    journal::send(&[msg]).unwrap();
     while j.next().unwrap() != 0 {
         assert!(j.get_data("NO_KEY").unwrap().is_none())
     }
 }
 
 #[test]
-#[allow(deprecated)]
 fn get_data() {
     if !have_journal() {
         return;
@@ -217,7 +331,7 @@ fn get_data() {
 
     let mut j = journal::OpenOptions::default().open().unwrap();
     j.seek_tail().unwrap();
-    journal::send(&["RUST_TEST_MARKER=1"]);
+    journal::send(&["RUST_TEST_MARKER=1"]).unwrap();
     j.match_add("RUST_TEST_MARKER", "1").unwrap();
 
     loop {
