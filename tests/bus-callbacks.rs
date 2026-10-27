@@ -175,6 +175,62 @@ fn persistent_object() {
     assert_eq!(drops.load(Ordering::SeqCst), 1);
 }
 
+fn container_round_trip() {
+    use bus::types::Variant;
+    use std::collections::BTreeMap;
+    let mut server = bus::Bus::default_system().unwrap();
+    let mut client = bus::Bus::default_user().unwrap();
+    client.unique_name().unwrap();
+    let path = bus::ObjectPath::from_bytes(b"/org/example/Containers\0").unwrap();
+    server
+        .add_object(path, |request| {
+            let dictionary: BTreeMap<String, Variant<Vec<u32>>> =
+                request.iter().unwrap().next().unwrap().unwrap();
+            assert_eq!(dictionary["numbers"], Variant(vec![1, 2, 3]));
+            let mut reply = request.new_method_return().unwrap();
+            reply.append(("received", dictionary)).unwrap();
+            reply.send_no_reply().unwrap();
+            Ok(())
+        })
+        .unwrap();
+    let dictionary: BTreeMap<_, _> = [("numbers".to_owned(), Variant(vec![1u32, 2, 3]))]
+        .iter()
+        .cloned()
+        .collect();
+    let mut call = client
+        .new_method_call(
+            server.unique_name().unwrap(),
+            path,
+            bus::InterfaceName::from_bytes(b"org.example.Test\0").unwrap(),
+            bus::MemberName::from_bytes(b"RoundTrip\0").unwrap(),
+        )
+        .unwrap();
+    call.append(dictionary).unwrap();
+    let replies = Arc::new(AtomicUsize::new(0));
+    let observed = replies.clone();
+    call.call_async(
+        move |response| {
+            assert!(response.error().is_none());
+            let mut iter = response.iter().unwrap();
+            let (text, dictionary): (&str, BTreeMap<String, Variant<Vec<u32>>>) =
+                iter.next().unwrap().unwrap();
+            assert_eq!(text, "received");
+            assert_eq!(dictionary["numbers"], Variant(vec![1, 2, 3]));
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        },
+        1_000_000,
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while replies.load(Ordering::SeqCst) == 0 {
+        pump(&mut server);
+        pump(&mut client);
+        assert!(Instant::now() < deadline, "container reply timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
 struct PrivateBus(Child);
 
 impl Drop for PrivateBus {
@@ -188,7 +244,9 @@ impl Drop for PrivateBus {
 fn callback_lifetimes_on_private_bus() {
     const CHILD_CASE: &str = "RUST_SYSTEMD_BUS_CALLBACK_CASE";
     if let Ok(case) = std::env::var(CHILD_CASE) {
-        if case == "persistent" {
+        if case == "containers" {
+            container_round_trip();
+        } else if case == "persistent" {
             persistent_object();
         } else {
             one_shot(&case);
@@ -208,6 +266,7 @@ fn callback_lifetimes_on_private_bus() {
         .unwrap();
     assert!(!address.is_empty(), "private bus failed to start");
     for case in [
+        "containers",
         "persistent",
         "call-complete",
         "call-drop",

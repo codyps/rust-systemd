@@ -20,6 +20,7 @@ use crate::ffi_result;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use std::ffi::CStr;
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem::{forget, MaybeUninit};
 use std::ops::Deref;
@@ -27,7 +28,6 @@ use std::os::unix::io::AsRawFd;
 use std::ptr;
 use std::result;
 use std::time::Duration;
-use std::{fmt, str};
 
 use super::usec_from_duration;
 use utf8_cstr::Utf8CStr;
@@ -546,6 +546,18 @@ pub enum MessageType {
     MethodReturn,
     MethodError,
     Signal,
+}
+
+/// Container kinds accepted by libsystemd's open/enter container APIs.
+/// Structs and dictionary entries use `r` and `e` here; their signatures use
+/// parentheses and braces respectively.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ContainerType {
+    Array = b'a',
+    Variant = b'v',
+    Struct = b'r',
+    DictEntry = b'e',
 }
 
 impl MessageType {
@@ -1406,6 +1418,7 @@ foreign_type! {
 pub struct MessageIter<'a> {
     raw: *mut ffi::bus::sd_bus_message,
     life: PhantomData<&'a MessageRef>,
+    peeked_signature: String,
 }
 
 impl fmt::Debug for MessageRef {
@@ -1852,6 +1865,28 @@ impl MessageRef {
         v.to_message(self)
     }
 
+    /// Open a container for writing. `contents` describes its members without
+    /// the outer container delimiters. Close it after appending all members.
+    /// If appending or closing fails, discard the partially written message.
+    pub fn open_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<()> {
+        let contents = std::ffi::CString::new(contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_message_open_container(
+                self.as_ptr(),
+                kind as c_char,
+                contents.as_ptr(),
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Close the innermost write container, checking its signature is complete.
+    pub fn close_container(&mut self) -> crate::Result<()> {
+        ffi_result(unsafe { ffi::bus::sd_bus_message_close_container(self.as_ptr()) })?;
+        Ok(())
+    }
+
     /// Get an iterator over the message. This iterator really exists with in the `Message` itself,
     /// so we can only hand out one at a time.
     ///
@@ -1868,11 +1903,45 @@ impl MessageRef {
         Ok(MessageIter {
             raw: self.as_ptr(),
             life: PhantomData,
+            peeked_signature: String::new(),
         })
     }
 }
 
 impl<'a> MessageIter<'a> {
+    /// Enter the next container with the expected kind and member signature.
+    /// Returns false at the end of an enclosing array. A mismatching signature
+    /// returns an error without consuming the value.
+    pub fn enter_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<bool> {
+        let contents = std::ffi::CString::new(contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        Ok(ffi_result(unsafe {
+            ffi::bus::sd_bus_message_enter_container(self.raw, kind as c_char, contents.as_ptr())
+        })? > 0)
+    }
+
+    /// Exit the innermost read container. All its members must have been read.
+    pub fn exit_container(&mut self) -> crate::Result<()> {
+        ffi_result(unsafe { ffi::bus::sd_bus_message_exit_container(self.raw) })?;
+        Ok(())
+    }
+
+    /// Whether the current container has no unread members.
+    pub fn at_end(&self) -> crate::Result<bool> {
+        // peek_type provides this check on older libsystemd releases too;
+        // sd_bus_message_at_end itself was only introduced in version 246.
+        Ok(ffi_result(unsafe {
+            ffi::bus::sd_bus_message_peek_type(self.raw, ptr::null_mut(), ptr::null_mut())
+        })? == 0)
+    }
+
+    /// Return to the start of the whole message, leaving all read containers.
+    /// Cloned messages share this cursor. Borrowed body values remain valid.
+    pub fn rewind(&mut self) -> crate::Result<()> {
+        ffi_result(unsafe { ffi::bus::sd_bus_message_rewind(self.raw, 1) })?;
+        Ok(())
+    }
+
     #[inline]
     fn as_mut_ptr(&mut self) -> *mut ffi::bus::sd_bus_message {
         self.raw
@@ -1920,23 +1989,12 @@ impl<'a> MessageIter<'a> {
         }
     }
 
-    /// This needs to be `&mut` as the `&str` will be invalid after either of:
-    ///  - self is dropped
-    ///  - sd_bus_message_peek_type is called a second time
-    ///
-    /// Using &mut allows us to prevent #2.
-    ///
-    /// FIXME/WARNING: Message might have been cloned, in which case we can't rely on the lifetime of
-    /// &str! As `Message` isn't `Send` or `Sync`, we can guarantee we're not racing with someone
-    /// else to free it though. Probably need to allocate space for it here rather than return a
-    /// ref.
-    ///
-    ///
+    /// Inspect the next value's type and container-member signature. At the end,
+    /// returns type zero and an empty signature. Signature text is cached in this
+    /// iterator so operations through a cloned message cannot invalidate it.
     /// This corresponds to [`sd_bus_message_peek_type`]
     ///
     /// [`sd_bus_message_peek_type`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_peek_type.html
-    // &str lasts until next call of sd_bus_message_peek_type
-    // XXX: confirm that lifetimes here match that!
     #[inline]
     pub fn peek_type(&mut self) -> crate::Result<(c_char, &str)> {
         let mut t = MaybeUninit::<c_char>::uninit();
@@ -1946,18 +2004,17 @@ impl<'a> MessageIter<'a> {
         })?;
 
         let cont = unsafe { cont.assume_init() };
-        let s = if cont.is_null() {
-            /* XXX: we may need to adjust here and return an option, but it isn't yet clear if
-             * there will be confusion between NULL and "" here */
-            ""
-        } else {
-            unsafe { str::from_utf8_unchecked(CStr::from_ptr(cont).to_bytes()) }
-        };
+        self.peeked_signature.clear();
+        if !cont.is_null() {
+            let signature = unsafe { CStr::from_ptr(cont) }
+                .to_str()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            self.peeked_signature.push_str(signature);
+        }
         let t = unsafe { t.assume_init() };
-        Ok((t, s))
+        Ok((t, &self.peeked_signature))
     }
 
-    // TODO: support typed decoding of D-Bus containers.
     /// Read the next value. Borrowed strings and paths remain valid for the
     /// message's lifetime, so later reads can proceed while those views are held.
     /// For a message containing two strings, both views can be returned to a
