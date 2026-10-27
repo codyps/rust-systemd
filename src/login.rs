@@ -125,9 +125,9 @@ pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
 /// This function will return an error if the seat does not support VTs.
 pub fn get_vt<S: CStrArgument>(session: S) -> Result<u32> {
     let session = session.into_cstr();
-    let c_vt: *mut c_uint = ptr::null_mut();
-    ffi_result(unsafe { ffi::sd_session_get_vt(session.as_ref().as_ptr(), c_vt) })?;
-    Ok(unsafe { *c_vt })
+    let mut vt: c_uint = 0;
+    ffi_result(unsafe { ffi::sd_session_get_vt(session.as_ref().as_ptr(), &mut vt) })?;
+    Ok(vt)
 }
 
 /// Determines the owner uid of a process.
