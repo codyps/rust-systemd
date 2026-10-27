@@ -13,7 +13,7 @@ rust-systemd
 In `Cargo.toml`:
 ```toml
 [dependencies]
-systemd = "0.10.1"
+systemd = "0.11.0"
 ```
 
 Build Environment variables
@@ -45,7 +45,7 @@ of these APIs). If your application does not need these features, depend on
 
 ```toml
 [dependencies]
-systemd = { version = "0.10.1", default-features = false }
+systemd = { version = "0.11.0", default-features = false }
 ```
 
 Note that there still may be some missing symbols. If you discover a link
@@ -74,6 +74,12 @@ fn main() -> std::io::Result<()> {
 
 `send`, `print`, `log`, `log_record`, and `sd_journal_log!` return a `Result`
 containing any error reported by libsystemd. Use `?` or handle the error explicitly.
+
+Releases
+--------
+
+Releases are prepared and published by release-plz. See the
+[release workflow and trusted publishing setup](https://github.com/codyps/rust-systemd/blob/master/.github/RELEASING.md).
 
 daemon
 ------

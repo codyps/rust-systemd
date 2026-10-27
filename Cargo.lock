@@ -229,7 +229,7 @@ checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 
 [[package]]
 name = "libsystemd-sys"
-version = "0.9.4"
+version = "0.9.5"
 dependencies = [
  "build-env",
  "cfg-if",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "cstr-argument",
  "doc-comment",

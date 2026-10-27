@@ -1,0 +1,15 @@
+[workspace]
+# Publish only after a release PR is merged, with each crate versioned separately.
+release_always = false
+git_tag_name = "{{ package }}-{{ version }}"
+git_release_name = "{{ package }} {{ version }}"
+semver_check = true
+dependencies_update = false
+
+[[package]]
+name = "systemd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "libsystemd-sys"
+changelog_path = "libsystemd-sys/CHANGELOG.md"
