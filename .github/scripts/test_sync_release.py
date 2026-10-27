@@ -23,8 +23,10 @@ class ReleaseMetadataTests(unittest.TestCase):
             'systemd = "0.10.1"\n'
             'systemd = { version = "0.10.1", default-features = false }\n'
         )
-        for path in ("README.md", "libsystemd-sys/README.md"):
-            (self.root / path).write_text(self.examples)
+        (self.root / "README.md").write_text(self.examples)
+        (self.root / "libsystemd-sys/README.md").write_text(
+            self.examples.replace("systemd =", "libsystemd-sys =").replace("0.10.1", "0.9.4")
+        )
 
     def test_versions_are_independent_and_dependency_minimum_is_updated(self):
         changed = synchronize(self.root)
@@ -32,17 +34,28 @@ class ReleaseMetadataTests(unittest.TestCase):
         manifest = (self.root / "Cargo.toml").read_text()
         self.assertIn('version = "0.9.5"', manifest)
         self.assertIn('version-sync = "0.9.2"', manifest)
-        for path in ("README.md", "libsystemd-sys/README.md"):
-            self.assertEqual(
-                (self.root / path).read_text(),
-                self.examples.replace("0.10.1", "0.11.0"),
-            )
+        self.assertEqual(
+            (self.root / "README.md").read_text(),
+            self.examples.replace("0.10.1", "0.11.0"),
+        )
+        self.assertEqual(
+            (self.root / "libsystemd-sys/README.md").read_text(),
+            self.examples.replace("systemd =", "libsystemd-sys =").replace("0.10.1", "0.9.5"),
+        )
         self.assertEqual(synchronize(self.root), [])
 
     def test_check_does_not_write(self):
         self.assertEqual(len(synchronize(self.root, check=True)), 3)
         self.assertEqual((self.root / "README.md").read_text(), self.examples)
         self.assertIn('version = "^0.9"', (self.root / "Cargo.toml").read_text())
+
+    def test_high_level_release_does_not_change_sys_readme(self):
+        synchronize(self.root)
+        sys_readme = (self.root / "libsystemd-sys/README.md").read_text()
+        manifest = self.root / "Cargo.toml"
+        manifest.write_text(manifest.read_text().replace('"0.11.0"', '"0.11.1"'))
+        self.assertEqual(synchronize(self.root), [self.root / "README.md"])
+        self.assertEqual((self.root / "libsystemd-sys/README.md").read_text(), sys_readme)
 
     def test_missing_dependency_version_fails_before_writing(self):
         path = self.root / "Cargo.toml"

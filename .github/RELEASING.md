@@ -44,6 +44,8 @@ personal access token, or manual workflow approval for the bot's PR event.
 
 The minimum sys-crate dependency follows its workspace version so consumers cannot
 resolve an older sys crate that lacks newly added FFI declarations.
+Each crate has its own README and version examples, allowing high-level-only
+documentation changes without triggering a sys-crate release.
 
 ## Reviewing and retrying releases
 

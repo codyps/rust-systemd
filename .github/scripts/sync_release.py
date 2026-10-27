@@ -35,16 +35,20 @@ def synchronize(root: Path, *, check: bool = False) -> list[Path]:
         + manifest_text[section.end(1) :]
     }
 
-    # Both READMEs currently demonstrate the high-level systemd crate.
-    for relative in ("README.md", "libsystemd-sys/README.md"):
+    # Each README follows its own crate so a high-level version change does not
+    # also change the sys crate's packaged documentation and trigger a release.
+    for relative, package, package_version in (
+        ("README.md", "systemd", version),
+        ("libsystemd-sys/README.md", "libsystemd-sys", ffi_version),
+    ):
         path = root / relative
         text, count = re.subn(
-            r'(?m)^(systemd\s*=\s*(?:\{\s*version\s*=\s*)?")[^"]+(".*)$',
-            lambda match: match[1] + version + match[2],
+            r"(?m)^(" + re.escape(package) + r'\s*=\s*(?:\{\s*version\s*=\s*)?")[^"]+(".*)$',
+            lambda match: match[1] + package_version + match[2],
             path.read_text(),
         )
         if count == 0:
-            raise ValueError(f"No systemd dependency example in {relative}")
+            raise ValueError(f"No {package} dependency example in {relative}")
         expected[path] = text
 
     changed = [path for path, text in expected.items() if path.read_text() != text]
