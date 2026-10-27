@@ -39,7 +39,7 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let lfds = daemon::listen_fds(false)?;
+    let lfds = daemon::listen_fds()?;
     if lfds.len() != 1 {
         panic!("Must have exactly 1 fd to listen on, got {}", lfds.len());
     }

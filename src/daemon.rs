@@ -13,8 +13,8 @@ use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd as Fd;
+use std::ptr;
 use std::ptr::null;
-use std::{env, ptr};
 
 // XXX: this is stolen from std::old_io::net::addrinfo until we have a replacement in the standard
 // lib.
@@ -73,14 +73,8 @@ pub struct ListenFds {
 
 impl ListenFds {
     // Constructs a new set from the number of file_descriptors
-    fn new(unset_environment: bool) -> Result<Self> {
-        // in order to use rust's locking of the environment, do the env var unsetting ourselves
-        let num_fds = ffi_result(unsafe { ffi::sd_listen_fds(0) })?;
-        if unset_environment {
-            env::remove_var("LISTEN_FDS");
-            env::remove_var("LISTEN_PID");
-            env::remove_var("LISTEN_FDNAMES");
-        }
+    unsafe fn new(unset_environment: bool) -> Result<Self> {
+        let num_fds = ffi_result(unsafe { ffi::sd_listen_fds(unset_environment as c_int) })?;
         Ok(Self { num_fds })
     }
 
@@ -124,11 +118,23 @@ impl Iterator for ListenFdsRange {
     }
 }
 
-/// Returns a struct that can iterate over the passed file descriptors.  Removes the
-/// `$LISTEN_FDS` and `$LISTEN_PID` file descriptors from the environment if
-/// `unset_environment` is `true`
-pub fn listen_fds(unset_environment: bool) -> Result<ListenFds> {
-    ListenFds::new(unset_environment)
+/// Returns a struct that can iterate over the passed file descriptors.
+/// Leaves the process environment unchanged.
+pub fn listen_fds() -> Result<ListenFds> {
+    // SAFETY: passing false prevents libsystemd from modifying the environment.
+    unsafe { ListenFds::new(false) }
+}
+
+/// Like [`listen_fds()`], but also removes the socket activation environment
+/// variables, including when libsystemd reports an error.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call this during single-threaded startup before spawning any threads.
+pub unsafe fn listen_fds_unset_environment() -> Result<ListenFds> {
+    unsafe { ListenFds::new(true) }
 }
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is
@@ -287,35 +293,93 @@ where
 /// of key-value pairs.  See `sd-daemon.h` for details. Some of the most common
 /// keys are defined as `STATE_*` constants in this module. Returns `true` if
 /// systemd was contacted successfully.
-pub fn notify<'a, I, K, V>(unset_environment: bool, state: I) -> Result<bool>
+/// Leaves the process environment unchanged.
+pub fn notify<'a, I, K, V>(state: I) -> Result<bool>
 where
     I: Iterator<Item = &'a (K, V)>,
     K: AsRef<str> + 'a,
     V: AsRef<str> + 'a,
 {
-    let c_state = state_to_c_string(state);
-    let result =
-        ffi_result(unsafe { ffi::sd_notify(unset_environment as c_int, c_state.as_ptr()) })?;
-    Ok(result != 0)
+    pid_notify(0, state)
+}
+
+/// Like [`notify()`], but also removes `NOTIFY_SOCKET` from the environment.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call this during single-threaded startup before spawning any threads.
+pub unsafe fn notify_unset_environment<'a, I, K, V>(state: I) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    unsafe { pid_notify_unset_environment(0, state) }
 }
 
 /// Similar to `notify()`, but this sends the message on behalf of the supplied
 /// PID, if possible.
-pub fn pid_notify<'a, I, K, V>(pid: pid_t, unset_environment: bool, state: I) -> Result<bool>
+/// Leaves the process environment unchanged.
+pub fn pid_notify<'a, I, K, V>(pid: pid_t, state: I) -> Result<bool>
 where
     I: Iterator<Item = &'a (K, V)>,
     K: AsRef<str> + 'a,
     V: AsRef<str> + 'a,
 {
-    let c_state = state_to_c_string(state);
-    let result = ffi_result(unsafe {
-        ffi::sd_pid_notify(pid, unset_environment as c_int, c_state.as_ptr())
-    })?;
-    Ok(result != 0)
+    pid_notify_with_fds(pid, state, &[])
+}
+
+/// Like [`pid_notify()`], but also removes `NOTIFY_SOCKET` from the environment.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call this during single-threaded startup before spawning any threads.
+pub unsafe fn pid_notify_unset_environment<'a, I, K, V>(pid: pid_t, state: I) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    unsafe { pid_notify_with_fds_unset_environment(pid, state, &[]) }
 }
 
 /// Similar to `pid_notify()`, but this also sends file descriptors to the store.
-pub fn pid_notify_with_fds<'a, I, K, V>(
+/// Leaves the process environment unchanged.
+pub fn pid_notify_with_fds<'a, I, K, V>(pid: pid_t, state: I, fds: &[Fd]) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    // SAFETY: passing false prevents libsystemd from modifying the environment.
+    unsafe { pid_notify_with_fds_impl(pid, false, state, fds) }
+}
+
+/// Like [`pid_notify_with_fds()`], but also removes `NOTIFY_SOCKET` from the environment.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call this during single-threaded startup before spawning any threads.
+pub unsafe fn pid_notify_with_fds_unset_environment<'a, I, K, V>(
+    pid: pid_t,
+    state: I,
+    fds: &[Fd],
+) -> Result<bool>
+where
+    I: Iterator<Item = &'a (K, V)>,
+    K: AsRef<str> + 'a,
+    V: AsRef<str> + 'a,
+{
+    unsafe { pid_notify_with_fds_impl(pid, true, state, fds) }
+}
+
+unsafe fn pid_notify_with_fds_impl<'a, I, K, V>(
     pid: pid_t,
     unset_environment: bool,
     state: I,
@@ -347,7 +411,24 @@ pub fn booted() -> Result<bool> {
 
 /// Returns a timeout in microseconds before which the watchdog expects a
 /// response from the process. If 0, the watchdog is disabled.
-pub fn watchdog_enabled(unset_environment: bool) -> Result<u64> {
+/// Leaves the process environment unchanged.
+pub fn watchdog_enabled() -> Result<u64> {
+    // SAFETY: passing false prevents libsystemd from modifying the environment.
+    unsafe { watchdog_enabled_impl(false) }
+}
+
+/// Like [`watchdog_enabled()`], but also removes `WATCHDOG_USEC` and `WATCHDOG_PID`.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call this during single-threaded startup before spawning any threads.
+pub unsafe fn watchdog_enabled_unset_environment() -> Result<u64> {
+    unsafe { watchdog_enabled_impl(true) }
+}
+
+unsafe fn watchdog_enabled_impl(unset_environment: bool) -> Result<u64> {
     let mut timeout: u64 = 0;
     ffi_result(unsafe { ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout) })?;
     Ok(timeout)

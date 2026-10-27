@@ -4,7 +4,7 @@ use systemd::daemon;
 
 #[test]
 fn test_listen_fds() {
-    assert!(daemon::listen_fds(false).ok().unwrap().is_empty());
+    assert!(daemon::listen_fds().ok().unwrap().is_empty());
 }
 
 #[test]
@@ -15,7 +15,7 @@ fn test_booted() {
 
 #[test]
 fn test_watchdog_enabled() {
-    let result = daemon::watchdog_enabled(false);
+    let result = daemon::watchdog_enabled();
     assert!(result.is_ok());
     assert_eq!(result.ok().unwrap(), 0);
 }
@@ -23,7 +23,6 @@ fn test_watchdog_enabled() {
 #[test]
 fn test_notify() {
     let result = daemon::notify(
-        false,
         [
             (daemon::STATE_READY, "1"),
             (daemon::STATE_STATUS, "Running test_notify()"),
