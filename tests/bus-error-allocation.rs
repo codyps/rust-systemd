@@ -28,7 +28,7 @@ unsafe extern "C" fn sd_bus_error_set(
 fn error_uses_native_lengths_after_allocation_failure() {
     let name = Utf8CStr::from_bytes(b"org.example.Short\0").unwrap();
     let message = Utf8CStr::from_bytes(b"message that was not allocated\0").unwrap();
-    let error = Error::new(name, Some(message));
+    let error = Error::new(name, Some(message)).unwrap();
     assert_eq!(
         error.name(),
         Utf8CStr::from_bytes(b"org.freedesktop.DBus.Error.NoMemory\0").unwrap()

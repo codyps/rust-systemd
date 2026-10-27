@@ -4,7 +4,8 @@
 //! simpler string format. See `man 3 sd-id128` for more details.
 
 use super::Result;
-use crate::ffi_result;
+use crate::{ffi_result, CStrArgument};
+#[cfg(feature = "serde")]
 use std::ffi::CStr;
 use std::fmt;
 
@@ -62,7 +63,8 @@ impl<'de> serde::Deserialize<'de> for Id128 {
 }
 
 impl Id128 {
-    pub fn from_cstr(s: &CStr) -> Result<Id128> {
+    pub fn from_cstr<'a>(s: impl CStrArgument<'a>) -> Result<Id128> {
+        let s = s.try_into_cstr()?;
         let mut r = Id128::default();
         ffi_result(unsafe { ffi::id128::sd_id128_from_string(s.as_ptr(), &mut r.inner) })?;
         Ok(r)

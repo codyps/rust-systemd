@@ -19,8 +19,8 @@
 use super::ffi::{c_char, c_uint, pid_t, uid_t};
 use super::{free_cstring, Error, Result};
 use crate::ffi_result;
+use crate::CStrArgument;
 use ::ffi::login as ffi;
-use cstr_argument::CStrArgument;
 use std::ptr;
 
 /// Systemd slice and unit types
@@ -167,8 +167,8 @@ pub fn user_primary_session(uid: uid_t) -> Result<String> {
 /// Note that not all sessions are attached to a seat, this call will fail for them.
 ///
 /// Corresponds to `sd_session_get_seat()`.
-pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
-    let session = session.into_cstr();
+pub fn get_seat<'a, S: CStrArgument<'a>>(session: S) -> Result<String> {
+    let session = session.try_into_cstr()?;
     let mut c_seat: *mut c_char = ptr::null_mut();
     ffi_result(unsafe { ffi::sd_session_get_seat(session.as_ref().as_ptr(), &mut c_seat) })?;
     let ss = unsafe { free_cstring(c_seat).unwrap() };
@@ -176,7 +176,7 @@ pub fn get_seat<S: CStrArgument>(session: S) -> Result<String> {
 }
 
 /// Alias for [`get_seat()`].
-pub fn session_seat<S: CStrArgument>(session: S) -> Result<String> {
+pub fn session_seat<'a, S: CStrArgument<'a>>(session: S) -> Result<String> {
     get_seat(session)
 }
 
@@ -185,15 +185,15 @@ pub fn session_seat<S: CStrArgument>(session: S) -> Result<String> {
 /// This function will return an error if the seat does not support VTs.
 ///
 /// Corresponds to `sd_session_get_vt()`.
-pub fn get_vt<S: CStrArgument>(session: S) -> Result<u32> {
-    let session = session.into_cstr();
+pub fn get_vt<'a, S: CStrArgument<'a>>(session: S) -> Result<u32> {
+    let session = session.try_into_cstr()?;
     let mut vt: c_uint = 0;
     ffi_result(unsafe { ffi::sd_session_get_vt(session.as_ref().as_ptr(), &mut vt) })?;
     Ok(vt)
 }
 
 /// Alias for [`get_vt()`].
-pub fn session_vt<S: CStrArgument>(session: S) -> Result<u32> {
+pub fn session_vt<'a, S: CStrArgument<'a>>(session: S) -> Result<u32> {
     get_vt(session)
 }
 
@@ -253,23 +253,23 @@ pub fn get_sessions() -> Result<Vec<String>> {
 /// Retrieves the user ID (UID) of the specified session.
 ///
 /// Corresponds to `sd_session_get_uid()`.
-pub fn get_session_uid<S: CStrArgument>(session: S) -> Result<uid_t> {
-    let session = session.into_cstr();
+pub fn get_session_uid<'a, S: CStrArgument<'a>>(session: S) -> Result<uid_t> {
+    let session = session.try_into_cstr()?;
     let mut uid: uid_t = 0;
     ffi_result(unsafe { ffi::sd_session_get_uid(session.as_ref().as_ptr(), &mut uid) })?;
     Ok(uid)
 }
 
 /// Alias for [`get_session_uid()`].
-pub fn session_uid<S: CStrArgument>(session: S) -> Result<uid_t> {
+pub fn session_uid<'a, S: CStrArgument<'a>>(session: S) -> Result<uid_t> {
     get_session_uid(session)
 }
 
 /// Retrieves the start time of the specified session as microseconds since Unix epoch.
 ///
 /// Corresponds to `sd_session_get_start_time()`.
-pub fn get_session_start_time<S: CStrArgument>(session: S) -> Result<u64> {
-    let session = session.into_cstr();
+pub fn get_session_start_time<'a, S: CStrArgument<'a>>(session: S) -> Result<u64> {
+    let session = session.try_into_cstr()?;
     let mut start_time_usec: u64 = 0;
     ffi_result(unsafe {
         ffi::sd_session_get_start_time(session.as_ref().as_ptr(), &mut start_time_usec)
@@ -278,7 +278,7 @@ pub fn get_session_start_time<S: CStrArgument>(session: S) -> Result<u64> {
 }
 
 /// Alias for [`get_session_start_time()`].
-pub fn session_start_time<S: CStrArgument>(session: S) -> Result<u64> {
+pub fn session_start_time<'a, S: CStrArgument<'a>>(session: S) -> Result<u64> {
     get_session_start_time(session)
 }
 
@@ -288,8 +288,8 @@ pub fn session_start_time<S: CStrArgument>(session: S) -> Result<u64> {
 /// Returns None if the session is not associated with a TTY.
 ///
 /// Corresponds to `sd_session_get_tty()`.
-pub fn get_session_tty<S: CStrArgument>(session: S) -> Result<Option<String>> {
-    let session = session.into_cstr();
+pub fn get_session_tty<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
+    let session = session.try_into_cstr()?;
     let mut tty_ptr: *mut c_char = ptr::null_mut();
     let result = unsafe { ffi::sd_session_get_tty(session.as_ref().as_ptr(), &mut tty_ptr) };
 
@@ -304,7 +304,7 @@ pub fn get_session_tty<S: CStrArgument>(session: S) -> Result<Option<String>> {
 }
 
 /// Alias for [`get_session_tty()`].
-pub fn session_tty<S: CStrArgument>(session: S) -> Result<Option<String>> {
+pub fn session_tty<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
     get_session_tty(session)
 }
 
@@ -315,8 +315,8 @@ pub fn session_tty<S: CStrArgument>(session: S) -> Result<Option<String>> {
 /// is local or if no remote host information is available.
 ///
 /// Corresponds to `sd_session_get_remote_host()`.
-pub fn get_session_remote_host<S: CStrArgument>(session: S) -> Result<Option<String>> {
-    let session = session.into_cstr();
+pub fn get_session_remote_host<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
+    let session = session.try_into_cstr()?;
     let mut remote_host_ptr: *mut c_char = ptr::null_mut();
     let result =
         unsafe { ffi::sd_session_get_remote_host(session.as_ref().as_ptr(), &mut remote_host_ptr) };
@@ -332,7 +332,7 @@ pub fn get_session_remote_host<S: CStrArgument>(session: S) -> Result<Option<Str
 }
 
 /// Alias for [`get_session_remote_host()`].
-pub fn session_remote_host<S: CStrArgument>(session: S) -> Result<Option<String>> {
+pub fn session_remote_host<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
     get_session_remote_host(session)
 }
 
@@ -342,8 +342,8 @@ pub fn session_remote_host<S: CStrArgument>(session: S) -> Result<Option<String>
 /// Returns None if the session is not graphical or has no display.
 ///
 /// Corresponds to `sd_session_get_display()`.
-pub fn get_session_display<S: CStrArgument>(session: S) -> Result<Option<String>> {
-    let session = session.into_cstr();
+pub fn get_session_display<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
+    let session = session.try_into_cstr()?;
     let mut display_ptr: *mut c_char = ptr::null_mut();
     let result =
         unsafe { ffi::sd_session_get_display(session.as_ref().as_ptr(), &mut display_ptr) };
@@ -359,7 +359,7 @@ pub fn get_session_display<S: CStrArgument>(session: S) -> Result<Option<String>
 }
 
 /// Alias for [`get_session_display()`].
-pub fn session_display<S: CStrArgument>(session: S) -> Result<Option<String>> {
+pub fn session_display<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
     get_session_display(session)
 }
 
@@ -369,8 +369,8 @@ pub fn session_display<S: CStrArgument>(session: S) -> Result<Option<String>> {
 /// indicates the type of session.
 ///
 /// Corresponds to `sd_session_get_type()`.
-pub fn get_session_type<S: CStrArgument>(session: S) -> Result<Option<String>> {
-    let session = session.into_cstr();
+pub fn get_session_type<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
+    let session = session.try_into_cstr()?;
     let mut type_ptr: *mut c_char = ptr::null_mut();
     let result = unsafe { ffi::sd_session_get_type(session.as_ref().as_ptr(), &mut type_ptr) };
 
@@ -385,6 +385,6 @@ pub fn get_session_type<S: CStrArgument>(session: S) -> Result<Option<String>> {
 }
 
 /// Alias for [`get_session_type()`].
-pub fn session_type<S: CStrArgument>(session: S) -> Result<Option<String>> {
+pub fn session_type<'a, S: CStrArgument<'a>>(session: S) -> Result<Option<String>> {
     get_session_type(session)
 }

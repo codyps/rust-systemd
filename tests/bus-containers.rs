@@ -221,7 +221,7 @@ fn invalid_signatures_and_out_of_context_entries_are_rejected() {
     assert!(m.append(DictEntry(1u32, 2u32)).is_err());
     assert!(m.open_container(ContainerType::Array, "").is_err());
     assert!(m
-        .open_container(ContainerType::Array, &format!("{}u", "a".repeat(65)))
+        .open_container(ContainerType::Array, format!("{}u", "a".repeat(65)))
         .is_err());
 }
 

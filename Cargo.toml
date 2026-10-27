@@ -23,7 +23,6 @@ log = "~0.4"
 libc = "~0.2"
 memchr = "2"
 utf8-cstr = "~0.1"
-cstr-argument = "~0.1"
 foreign-types = "0.5.0"
 serde = { version = "1", default-features = false, optional = true }
 #enumflags2 = "^0.5"

@@ -29,18 +29,130 @@ pub enum SdBusVtableFlag {
     CapabilityMask = 0xFFFF << 40,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 #[repr(C)]
+/// The original v221 vtable layout, also accepted by newer libsystemd releases.
+/// It omits the argument-name fields added in v242. The start entry advertises
+/// this layout's element size so libsystemd uses the correct stride.
+///
+/// Constructors only store raw pointers; they do not dereference them, invoke
+/// handlers, or take ownership. They impose no pointer validity requirements.
+/// Calling the unsafe `sd_bus_add_object_vtable`/`sd_bus_add_fallback_vtable`
+/// APIs requires a correctly terminated table and valid strings, callbacks,
+/// and userdata for the entire registration lifetime, including unregistration.
 pub struct sd_bus_vtable {
     type_and_flags: u64,
-    // NOTE: assumes that usize == pointer size == size_t
-    union_data: [usize; 5],
+    union_data: VtableData,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+union VtableData {
+    start: sd_bus_table_start,
+    method: sd_bus_table_method,
+    signal: sd_bus_table_signal,
+    property: sd_bus_table_property,
+    // Initialize the whole legacy union, including unused members, to zero.
+    zero: [usize; 5],
+}
+
+impl Default for VtableData {
+    fn default() -> Self {
+        Self { zero: [0; 5] }
+    }
+}
+
+impl std::fmt::Debug for sd_bus_vtable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("sd_bus_vtable")
+            .field("type", &self.typ())
+            .field("flags", &self.flags())
+            .finish_non_exhaustive()
+    }
 }
 
 // FIXME: all this nasty `target_endian` stuff is because we don't have an abstraction for
 // bitfields. `c2rust-bitfields` only supports little endian. None of the other bitfield crates
 // claim compatibility with C (which is what we require here).
 impl sd_bus_vtable {
+    fn entry(typ: SdBusVtableType, flags: u64) -> Self {
+        Self {
+            type_and_flags: Self::type_and_flags(typ as u8, flags),
+            ..Self::default()
+        }
+    }
+
+    pub fn start(flags: u64) -> Self {
+        let mut entry = Self::entry(SdBusVtableType::Start, flags);
+        entry.union_data.start = sd_bus_table_start {
+            element_size: std::mem::size_of::<Self>(),
+        };
+        entry
+    }
+
+    pub fn end() -> Self {
+        Self::entry(SdBusVtableType::End, 0)
+    }
+
+    /// Store a method descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
+    pub fn method(
+        member: *const c_char,
+        signature: *const c_char,
+        result: *const c_char,
+        handler: sd_bus_message_handler_t,
+        offset: size_t,
+        flags: u64,
+    ) -> Self {
+        let mut entry = Self::entry(SdBusVtableType::Method, flags);
+        entry.union_data.method = sd_bus_table_method {
+            member,
+            signature,
+            result,
+            handler,
+            offset,
+        };
+        entry
+    }
+
+    /// Store a signal descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
+    pub fn signal(member: *const c_char, signature: *const c_char, flags: u64) -> Self {
+        let mut entry = Self::entry(SdBusVtableType::Signal, flags);
+        entry.union_data.signal = sd_bus_table_signal { member, signature };
+        entry
+    }
+
+    /// Store a property descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
+    pub fn property(
+        member: *const c_char,
+        signature: *const c_char,
+        get: sd_bus_property_get_t,
+        set: sd_bus_property_set_t,
+        offset: size_t,
+        writable: bool,
+        flags: u64,
+    ) -> Self {
+        let mut entry = Self::entry(
+            if writable {
+                SdBusVtableType::WritableProperty
+            } else {
+                SdBusVtableType::Property
+            },
+            flags,
+        );
+        entry.union_data.property = sd_bus_table_property {
+            member,
+            signature,
+            get,
+            set,
+            offset,
+        };
+        entry
+    }
+
     pub fn type_and_flags(typ: u8, flags: u64) -> u64 {
         assert!(flags <= ((1 << 56) - 1));
 
@@ -105,11 +217,13 @@ fn size_eq() {
     assert_eq!(size_of::<usize>(), size_of::<*const u8>());
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct sd_bus_table_start {
     pub element_size: size_t,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct sd_bus_table_method {
     pub member: *const c_char,
@@ -119,12 +233,14 @@ pub struct sd_bus_table_method {
     pub offset: size_t,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct sd_bus_table_signal {
     pub member: *const c_char,
     pub signature: *const c_char,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct sd_bus_table_property {
     pub member: *const c_char,

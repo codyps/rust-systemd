@@ -3,17 +3,28 @@
 use systemd::bus::{BusName, InterfaceName, MemberName, ObjectPath};
 
 #[test]
-fn name_wrappers_validate_the_entire_c_string() {
+fn name_wrappers_validate_the_entire_c_string() -> Result<(), Box<dyn std::error::Error>> {
     macro_rules! check {
         ($name:ty, $valid:expr) => {{
             let valid: &[u8] = $valid;
-            let name = <$name>::from_bytes(valid).unwrap();
+            let name = <$name>::from_bytes(valid)?;
             assert_eq!(name.to_bytes_with_nul(), valid);
-            assert!(<$name>::from_bytes(&valid[..valid.len() - 1]).is_err());
+            assert_eq!(name.as_ptr().cast::<u8>(), valid.as_ptr());
+            assert_eq!(
+                <$name>::from_bytes(&valid[..valid.len() - 1])
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::InvalidInput
+            );
             for suffix in [&b"suffix"[..], &b"\0"[..], &b"suffix\0"[..], &b"\xff\0"[..]] {
                 let mut invalid = valid.to_vec();
                 invalid.extend_from_slice(suffix);
-                assert!(<$name>::from_bytes(&invalid).is_err(), "{:?}", invalid);
+                assert_eq!(
+                    <$name>::from_bytes(&invalid).unwrap_err().kind(),
+                    std::io::ErrorKind::InvalidInput,
+                    "{:?}",
+                    invalid
+                );
             }
             // SAFETY: valid is a live, validated NUL-terminated name.
             let pointer_name = unsafe { <$name>::from_ptr_unchecked(valid.as_ptr().cast()) };
@@ -27,4 +38,91 @@ fn name_wrappers_validate_the_entire_c_string() {
     check!(BusName, b":1.123\0");
     check!(InterfaceName, b"org.example.Complete\0");
     check!(MemberName, b"Complete\0");
+    Ok(())
+}
+
+#[test]
+fn name_validation_errors_propagate_as_standard_errors() {
+    macro_rules! check {
+        ($name:ty, $invalid:expr) => {{
+            fn parse(bytes: &[u8]) -> Result<&$name, Box<dyn std::error::Error>> {
+                Ok(<$name>::from_bytes(bytes)?)
+            }
+            for bytes in [&b""[..], &b"\0"[..], &b"\xff\0"[..], &$invalid[..]] {
+                let error = parse(bytes).unwrap_err();
+                let error = error.downcast_ref::<std::io::Error>().unwrap();
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+                assert!(!error.to_string().is_empty());
+            }
+        }};
+    }
+    check!(ObjectPath, b"/invalid/path/\0");
+    check!(BusName, b"org.0invalid\0");
+    check!(InterfaceName, b"org.0invalid\0");
+    check!(MemberName, b"invalid.member\0");
+}
+
+#[test]
+fn convertible_names_are_validated_at_each_public_bus_boundary() {
+    use systemd::bus::{Bus, Vtable};
+    let mut bus = Bus::default_system().unwrap();
+    let invalid = std::io::ErrorKind::InvalidInput;
+    assert_eq!(
+        bus.request_name(String::from("invalid"), 0)
+            .unwrap_err()
+            .kind(),
+        invalid
+    );
+    assert_eq!(bus.release_name("invalid").unwrap_err().kind(), invalid);
+    assert_eq!(
+        bus.request_name_async("invalid", 0, |_| Ok(()))
+            .unwrap_err()
+            .kind(),
+        invalid
+    );
+    assert_eq!(
+        bus.add_object("invalid", |_| Ok(())).unwrap_err().kind(),
+        invalid
+    );
+    assert_eq!(
+        bus.add_object_manager("invalid").unwrap_err().kind(),
+        invalid
+    );
+    assert_eq!(
+        bus.add_object_vtable("invalid", "org.example.Valid", Vtable::new())
+            .unwrap_err()
+            .kind(),
+        invalid
+    );
+    assert_eq!(
+        bus.add_object_vtable("/org/example/Valid", "invalid", Vtable::new())
+            .unwrap_err()
+            .kind(),
+        invalid
+    );
+    for (path, interface, member) in [
+        ("invalid", "org.example.Valid", "Valid"),
+        ("/org/example/Valid", "invalid", "Valid"),
+        ("/org/example/Valid", "org.example.Valid", "Invalid.Member"),
+    ] {
+        assert_eq!(
+            bus.new_signal(path, interface, member)
+                .err()
+                .unwrap()
+                .kind(),
+            invalid
+        );
+    }
+    let mut message = bus
+        .new_signal("/org/example/Valid", "org.example.Valid", "Valid")
+        .unwrap();
+    assert_eq!(
+        message.set_destination("invalid").unwrap_err().kind(),
+        invalid
+    );
+    assert_eq!(message.send_to("invalid").unwrap_err().kind(), invalid);
+    assert_eq!(
+        message.send_to_no_reply("invalid").unwrap_err().kind(),
+        invalid
+    );
 }

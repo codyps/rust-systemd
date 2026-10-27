@@ -1,3 +1,53 @@
+//! D-Bus connections and messages.
+//!
+//! Functions taking object paths, bus names, interface names, or member names
+//! accept both the checked types and convertible strings through
+//! [`crate::CStrArgument`]. Rust strings, C strings, owned strings, and `Cow`
+//! inputs are validated before the native call. Invalid values return an
+//! `InvalidInput` error; callers do not need to construct checked wrappers.
+//!
+//! ```
+//! use std::ffi::CString;
+//! use systemd::bus::{BusRef, Message};
+//!
+//! fn request(bus: &mut BusRef) -> systemd::Result<Message> {
+//!     bus.new_method_call("org.example.Service", "/org/example/Object",
+//!         CString::new("org.example.Interface").unwrap(), "Ping")
+//! }
+//! ```
+//!
+//! Checked constructors also accept convertible strings. Their `Cow` result
+//! borrows existing C strings and owns converted Rust strings. Use
+//! `into_owned()` for storage independent of an input borrow:
+//!
+//! ```
+//! use std::borrow::Cow;
+//! use std::ffi::CString;
+//! use systemd::bus::{ObjectPath, ObjectPathBuf, BusName, InterfaceName, MemberName};
+//! let input = CString::new("/org/example/Object").unwrap();
+//! let borrowed = ObjectPath::new(input.as_c_str()).unwrap();
+//! assert!(matches!(borrowed, Cow::Borrowed(_)));
+//! let stored: ObjectPathBuf = borrowed.into_owned();
+//! drop(input);
+//! assert_eq!(stored.to_bytes(), b"/org/example/Object");
+//! let _ = ObjectPath::new("/org/example/Other").unwrap();
+//! let _ = BusName::new("org.example.Service").unwrap();
+//! let _ = InterfaceName::new("org.example.Interface").unwrap();
+//! let _ = MemberName::new("Ping").unwrap();
+//! assert!(ObjectPath::new("invalid path").is_err());
+//! ```
+//!
+//! A borrowed checked value cannot outlive its input:
+//!
+//! ```compile_fail
+//! use std::{borrow::Cow, ffi::CString};
+//! use systemd::bus::ObjectPath;
+//! fn escape() -> Cow<'static, ObjectPath> {
+//!     let input = CString::new("/org/example/Object").unwrap();
+//!     ObjectPath::new(input.as_c_str()).unwrap()
+//! }
+//! ```
+
 // Persistent issues:
 //
 //  - callbacks trigger allocation
@@ -17,6 +67,7 @@
 
 //use enumflags2_derive::EnumFlags;
 use crate::ffi_result;
+use crate::CStrArgument;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use std::ffi::CStr;
@@ -32,7 +83,26 @@ use std::time::Duration;
 use super::usec_from_duration;
 use utf8_cstr::Utf8CStr;
 
+mod names;
 pub mod types;
+pub use self::names::{BusNameBuf, InterfaceNameBuf, MemberNameBuf, ObjectPathBuf};
+mod vtable;
+pub use self::vtable::{Vtable, VtableFlags};
+
+macro_rules! name_argument {
+    ($($ty:ty),+) => {$(
+        impl<'a> CStrArgument<'a> for &'a $ty {
+            fn try_into_cstr(self) -> crate::Result<std::borrow::Cow<'a, CStr>> {
+                Ok(std::borrow::Cow::Borrowed(self))
+            }
+        }
+    )+};
+}
+name_argument!(ObjectPath, InterfaceName, BusName, MemberName);
+
+fn invalid_argument(error: impl fmt::Display) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+}
 
 /**
  * Result type for dbus calls that contains errors returned by remote services (and local errors as
@@ -47,10 +117,10 @@ pub mod types;
  */
 pub type Result<T> = result::Result<T, Error>;
 
-fn validate_c_string(bytes: &[u8]) -> result::Result<(), &'static str> {
-    CStr::from_bytes_with_nul(bytes)
-        .map(|_| ())
-        .map_err(|_| "Expected exactly one trailing NUL byte and no interior NUL bytes")
+fn validate_c_string(bytes: &[u8]) -> crate::Result<()> {
+    CStr::from_bytes_with_nul(bytes).map(|_| ()).map_err(|_| {
+        invalid_argument("Expected exactly one trailing NUL byte and no interior NUL bytes")
+    })
 }
 
 /**
@@ -76,14 +146,17 @@ impl ObjectPath {
      * Create a path reference from a u8 slice. Performs all checking needed to ensure requirements
      * are met.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&ObjectPath> {
         if b.is_empty() {
-            return Err("Path must have at least 1 character ('/')");
+            return Err(invalid_argument(
+                "Path must have at least 1 character ('/')",
+            ));
         }
         validate_c_string(b)?;
 
         if b[0] != b'/' {
-            return Err("Path must begin with '/'");
+            return Err(invalid_argument("Path must begin with '/'"));
         }
 
         for w in b.windows(2) {
@@ -93,7 +166,9 @@ impl ObjectPath {
             match c {
                 b'/' => {
                     if prev == b'/' {
-                        return Err("Path must not have 2 '/' next to each other");
+                        return Err(invalid_argument(
+                            "Path must not have 2 '/' next to each other",
+                        ));
                     }
                 }
                 b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' => {
@@ -101,18 +176,24 @@ impl ObjectPath {
                 }
                 b'\0' => {
                     if prev == b'/' && b.len() != 2 {
-                        return Err("Path must not end in '/' unless it is the root path");
+                        return Err(invalid_argument(
+                            "Path must not end in '/' unless it is the root path",
+                        ));
                     }
 
                     return Ok(unsafe { ObjectPath::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err("Invalid character in path, only '[A-Z][a-z][0-9]_/' allowed");
+                    return Err(invalid_argument(
+                        "Invalid character in path, only '[A-Z][a-z][0-9]_/' allowed",
+                    ));
                 }
             }
         }
 
-        Err("Path must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Path must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -182,18 +263,22 @@ impl InterfaceName {
      *  Interface names must not being with a '.' character
      * sd-bus additionally requires nul ('\0') termination of the interface name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&InterfaceName> {
         if b.is_empty() {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
+        }
+        if b.len() > 256 {
+            return Err(invalid_argument("Must not exceed 255 characters"));
         }
         validate_c_string(b)?;
 
         match b[0] {
-            b'.' => return Err("Name must not begin with '.'"),
+            b'.' => return Err(invalid_argument("Name must not begin with '.'")),
             b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Name must only begin with '[A-Z][a-z]_'")),
         }
 
         let mut periods = 0;
@@ -203,7 +288,9 @@ impl InterfaceName {
             match c {
                 b'.' => {
                     if prev == b'.' {
-                        return Err("Name must not have 2 '.' next to each other");
+                        return Err(invalid_argument(
+                            "Name must not have 2 '.' next to each other",
+                        ));
                     }
 
                     periods += 1;
@@ -213,30 +300,32 @@ impl InterfaceName {
                 }
                 b'0'..=b'9' => {
                     if prev == b'.' {
-                        return Err("Name element must not start with '[0-9]'");
+                        return Err(invalid_argument("Name element must not start with '[0-9]'"));
                     }
                     // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
-                        return Err("Name must not end in '.'");
+                        return Err(invalid_argument("Name must not end in '.'"));
                     }
 
                     if periods < 1 {
-                        return Err("Name must have at least 2 elements");
+                        return Err(invalid_argument("Name must have at least 2 elements"));
                     }
                     return Ok(unsafe { InterfaceName::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in interface name, only '[A-Z][a-z][0-9]_\\.' \
                                 allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -304,26 +393,27 @@ impl BusName {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.is_empty() {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
         }
 
         if b.len() > 256 {
-            return Err("Must be shorter than 255 characters");
+            return Err(invalid_argument("Must be shorter than 255 characters"));
         }
         validate_c_string(b)?;
 
         let mut is_unique = false;
         match b[0] {
-            b'.' => return Err("Name must not begin with '.'"),
+            b'.' => return Err(invalid_argument("Name must not begin with '.'")),
             b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'-' => {
                 // Ok
             }
             b':' => {
                 is_unique = true; /* Ok */
             }
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Name must only begin with '[A-Z][a-z]_'")),
         }
 
         let mut periods = 0;
@@ -333,7 +423,7 @@ impl BusName {
             match c {
                 b'.' => {
                     if prev == b'.' || prev == b':' {
-                        return Err("Elements may not be empty");
+                        return Err(invalid_argument("Elements may not be empty"));
                     }
 
                     periods += 1;
@@ -343,29 +433,31 @@ impl BusName {
                 }
                 b'0'..=b'9' => {
                     if prev == b'.' && !is_unique {
-                        return Err("Name element must not start with '[0-9]'");
+                        return Err(invalid_argument("Name element must not start with '[0-9]'"));
                     }
                     // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
-                        return Err("Name must not end in '.'");
+                        return Err(invalid_argument("Name must not end in '.'"));
                     }
 
                     if periods < 1 {
-                        return Err("Name must have at least 2 elements");
+                        return Err(invalid_argument("Name must have at least 2 elements"));
                     }
                     return Ok(unsafe { BusName::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in bus name, only '[A-Z][a-z][0-9]_\\.' allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -429,13 +521,14 @@ impl MemberName {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.len() < 2 {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
         }
 
         if b.len() > 256 {
-            return Err("Must be shorter than 255 characters");
+            return Err(invalid_argument("Must be shorter than 255 characters"));
         }
         validate_c_string(b)?;
 
@@ -443,7 +536,7 @@ impl MemberName {
             b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
-            _ => return Err("Must begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Must begin with '[A-Z][a-z]_'")),
         }
 
         for c in b {
@@ -453,19 +546,21 @@ impl MemberName {
                 }
                 b'\0' => return Ok(unsafe { Self::from_bytes_unchecked(b) }),
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in member name, only '[A-Z][a-z][0-9]_' allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
     ///
-    /// `b` must be a valid c-string (ie: it must be `\0` (nul) terminated).
+    /// `b` must be exactly one NUL-terminated, valid D-Bus member name.
     #[inline]
     pub unsafe fn from_bytes_unchecked(b: &[u8]) -> &Self {
         &*(b as *const [u8] as *const MemberName)
@@ -473,7 +568,8 @@ impl MemberName {
 
     /// # Safety
     ///
-    /// `b` must point to a valid c-string, with lifetime at least `'a`
+    /// `b` must point to a valid NUL-terminated D-Bus member name, with
+    /// lifetime at least `'a`.
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
         Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
@@ -598,7 +694,10 @@ pub struct RawError {
 impl RawError {
     /// # Safety
     ///
-    /// `ptr` must point to a valid `sd_bus_error` which has a lifetime of at least `'a`.
+    /// `ptr` must point to an initialized `sd_bus_error` for at least `'a`.
+    /// Non-null embedded pointers must remain valid NUL-terminated UTF-8 strings
+    /// for that lifetime; the name must be a valid D-Bus error name. The native
+    /// owner must not free or change the error while this view is borrowed.
     pub unsafe fn from_ptr<'a>(ptr: *const ffi::bus::sd_bus_error) -> &'a Self {
         // this is incredibly questionable: we're casting it through to a wrapper struct. It's
         // unclear if we're providing everything necessary for this to work right.
@@ -634,12 +733,36 @@ impl Error {
         }
     }
 
-    pub fn new(name: &Utf8CStr, message: Option<&Utf8CStr>) -> Error {
+    /// Construct a D-Bus error. Invalid strings return `InvalidInput`.
+    /// For an absent message, pass `None::<&str>`.
+    ///
+    /// ```
+    /// use std::ffi::CString;
+    /// use systemd::bus::Error;
+    /// let error = Error::new(CString::new("org.example.Failure").unwrap(),
+    ///                        Some(String::from("details"))).unwrap();
+    /// assert_eq!(error.message().unwrap().as_bytes(), b"details");
+    /// let _ = Error::new("org.example.Failure", None::<&str>).unwrap();
+    /// ```
+    pub fn new<'a>(
+        name: impl CStrArgument<'a>,
+        message: Option<impl CStrArgument<'a>>,
+    ) -> crate::Result<Error> {
+        let name = name.try_into_cstr()?;
+        InterfaceName::from_bytes(name.to_bytes_with_nul())?;
+        let message = message.map(|m| m.try_into_cstr()).transpose()?;
+        let name = Utf8CStr::from_bytes(name.to_bytes_with_nul())
+            .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
+        let message = message
+            .as_ref()
+            .map(|m| Utf8CStr::from_bytes(m.to_bytes_with_nul()))
+            .transpose()
+            .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
         let v = RawError::with(name, message);
         // SAFETY: sd_bus_error_set supplies valid error storage, including its
         // static NoMemory fallback if allocation fails. Cache the actual native
         // lengths, which can differ from the caller's strings in that case.
-        unsafe { Self::from_raw(v) }
+        Ok(unsafe { Self::from_raw(v) })
     }
 
     pub fn name(&self) -> &Utf8CStr {
@@ -663,6 +786,24 @@ impl Error {
         let x = ::std::ptr::read(&self.raw.inner);
         forget(self);
         *dest = x;
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        let mut raw = RawError::default();
+        // Preserve native errno errors; other I/O errors become a generic D-Bus
+        // failure. sd_bus_error_set_errno also supplies its allocation fallback.
+        unsafe {
+            ffi::bus::sd_bus_error_set_errno(
+                raw.as_mut_ptr(),
+                error
+                    .raw_os_error()
+                    .filter(|code| *code > 0)
+                    .unwrap_or(libc::EIO),
+            );
+            Self::from_raw(raw)
+        }
     }
 }
 
@@ -708,13 +849,53 @@ impl Default for RawError {
     }
 }
 
-impl From<ffi::bus::sd_bus_error> for RawError {
-    fn from(inner: ffi::bus::sd_bus_error) -> Self {
+impl RawError {
+    /// Take ownership of a native error. Dropping this wrapper calls
+    /// `sd_bus_error_free`; it does not copy or validate the embedded pointers.
+    ///
+    /// # Safety
+    ///
+    /// `inner` must be an initialized `sd_bus_error`. Non-null name and message
+    /// pointers must refer to valid NUL-terminated UTF-8 strings for this
+    /// wrapper's entire lifetime, and a non-null name must be a valid D-Bus error
+    /// name. Owned storage must be compatible with `sd_bus_error_free` and must
+    /// not be freed elsewhere after this transfer. Non-owning strings must
+    /// remain live for the wrapper's lifetime; copying their pointers does not
+    /// extend their lifetime.
+    ///
+    /// ```
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// // SAFETY: this is an initialized, empty error with no owned storage.
+    /// let error = unsafe { RawError::from_raw(native) };
+    /// assert!(error.name().is_none());
+    /// ```
+    ///
+    /// Taking ownership requires an explicit unsafe block:
+    ///
+    /// ```compile_fail
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// let error = RawError::from_raw(native);
+    /// ```
+    ///
+    /// The unchecked native value cannot enter through a safe conversion either:
+    ///
+    /// ```compile_fail
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// let error = RawError::from(native);
+    /// ```
+    pub unsafe fn from_raw(inner: ffi::bus::sd_bus_error) -> Self {
         Self { inner }
     }
-}
 
-impl RawError {
     #[inline]
     fn new() -> Self {
         Default::default()
@@ -860,7 +1041,9 @@ fn raw_error_clone_initializes_storage() {
 }
 
 /* XXX: fixme: return code does have meaning! */
-extern "C" fn raw_message_handler<F>(
+// SAFETY: libsystemd supplies a live message, userdata pointing to F retained by
+// its current slot, and an initialized writable error output.
+unsafe extern "C" fn raw_message_handler<F>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,
     ret_error: *mut ffi::bus::sd_bus_error,
@@ -889,28 +1072,24 @@ where
     }
 }
 
-extern "C" fn raw_destroy_cb_message_handler<F>(userdata: *mut c_void)
-where
-    F: Fn(&mut MessageRef) -> Result<()>,
-{
+// SAFETY: userdata is the unique allocation from Box::into_raw, and native slot
+// teardown calls this once, after unregistering its callbacks and table.
+unsafe extern "C" fn raw_destroy_userdata<F>(userdata: *mut c_void) {
     let _: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
 }
 
 // `slot` is the caller-owned reference returned by a successful registration;
-// `callback` is its userdata, allocated by Box::into_raw and not otherwise owned.
-unsafe fn float_callback_slot<F>(
+// `userdata` was allocated by Box::into_raw and is not otherwise owned.
+unsafe fn float_userdata_slot<F>(
     slot: *mut ffi::bus::sd_bus_slot,
-    callback: *mut F,
-) -> crate::Result<()>
-where
-    F: Fn(&mut MessageRef) -> Result<()>,
-{
+    userdata: *mut F,
+) -> crate::Result<()> {
     if let Err(error) = ffi_result(unsafe {
-        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_cb_message_handler::<F>))
+        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_userdata::<F>))
     }) {
         // Destroy-callback installation failed, so Rust still owns the userdata.
         unsafe { ffi::bus::sd_bus_slot_unref(slot) };
-        drop(unsafe { Box::from_raw(callback) });
+        drop(unsafe { Box::from_raw(userdata) });
         return Err(error);
     }
 
@@ -953,6 +1132,150 @@ impl Bus {
         ffi_result(unsafe { ffi::bus::sd_bus_default_system(b.as_mut_ptr()) })?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
+
+    /// Open a new, independent connection to the user or system bus.
+    ///
+    /// libsystemd selects the user bus in a user session context and the
+    /// system bus otherwise. The connection is independent of the connections
+    /// returned by [`Bus::default`]. Use [`Bus::open_user`] or
+    /// [`Bus::open_system`] to select the bus explicitly.
+    ///
+    /// This corresponds to [`sd_bus_open`].
+    ///
+    /// [`sd_bus_open`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    #[inline]
+    pub fn open() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to the current user's bus.
+    ///
+    /// Uses `DBUS_SESSION_BUS_ADDRESS`, or the bus under `XDG_RUNTIME_DIR`
+    /// when no explicit address is set. Each invocation creates its own
+    /// connection, independent of [`Bus::default_user`].
+    ///
+    /// This corresponds to [`sd_bus_open_user`].
+    ///
+    /// [`sd_bus_open_user`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    #[inline]
+    pub fn open_user() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open_user(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to the local system bus.
+    ///
+    /// Uses `DBUS_SYSTEM_BUS_ADDRESS`, or the standard system-bus address
+    /// when no explicit address is set. Each invocation creates its own
+    /// connection, independent of [`Bus::default_system`]. Flush outgoing
+    /// messages and close the connection explicitly when shutting it down.
+    /// Dropping a bus only releases its reference; queued messages can keep
+    /// the connection alive.
+    ///
+    /// This corresponds to [`sd_bus_open_system`].
+    ///
+    /// [`sd_bus_open_system`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use systemd::bus::Bus;
+    /// let mut bus = Bus::open_system()?;
+    /// // Send messages using this connection.
+    /// let result = bus.flush();
+    /// bus.close(); // Close even if flushing failed.
+    /// result?;
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open_system(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open an independent connection to a remote system bus over SSH.
+    ///
+    /// `host` accepts libsystemd's `[user@]host[:port][/machine]` syntax.
+    /// An optional machine selects a container on that host; entering a
+    /// container requires appropriate privileges on the remote host.
+    /// SSH authentication and transport setup are handled by libsystemd.
+    ///
+    /// Accepts Rust strings, C strings, their owned forms, and `Cow` through
+    /// [`crate::CStrArgument`]. The returned bus does not borrow the input.
+    /// Interior NUL bytes return `InvalidInput`; native syntax and connection
+    /// errors are returned as operating-system errors. The connection starts
+    /// during this call; further authentication or transport errors can surface
+    /// when processing messages or making calls.
+    ///
+    /// This corresponds to [`sd_bus_open_system_remote`].
+    ///
+    /// [`sd_bus_open_system_remote`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use std::ffi::CString;
+    /// use systemd::bus::Bus;
+    /// let target = CString::new("alice@example.org:2222/my-container").unwrap();
+    /// let bus = Bus::open_system_remote(target)?;
+    /// println!("{:?}", bus.unique_name()?);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system_remote<'a>(host: impl CStrArgument<'a>) -> crate::Result<Bus> {
+        let host = host.try_into_cstr()?;
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: host stays live throughout the call. Success initializes
+        // bus and transfers one owned reference to the returned connection.
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_open_system_remote(bus.as_mut_ptr(), host.as_ptr())
+        })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to a local machine's system bus.
+    ///
+    /// `machine` names a local container known to systemd. It can include a
+    /// `user@` prefix to select the connecting user. `.host` selects the local
+    /// host; for example, `alice@.host` connects as the local user `alice`.
+    /// With `@` syntax, an omitted user means the current user and an omitted
+    /// machine means `.host`. Without `@`, the connecting user is root.
+    /// Connecting into containers requires appropriate privileges.
+    ///
+    /// Accepts Rust strings, C strings, their owned forms, and `Cow` through
+    /// [`crate::CStrArgument`]. The returned bus does not borrow the input.
+    /// Interior NUL bytes return `InvalidInput`; libsystemd validates the
+    /// machine syntax and reports connection and permission errors.
+    ///
+    /// Unlike [`Bus::default_system`], each call creates its own connection.
+    /// Dropping the returned bus releases its reference to the connection.
+    /// This corresponds to [`sd_bus_open_system_machine`], available since
+    /// systemd 221. Supported machine syntax depends on the installed version.
+    ///
+    /// [`sd_bus_open_system_machine`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use systemd::bus::Bus;
+    /// let machine = String::from("my-container");
+    /// let bus = Bus::open_system_machine(&machine)?;
+    /// drop(machine); // The bus does not retain a borrow of the input.
+    /// println!("{:?}", bus.unique_name()?);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system_machine<'a>(machine: impl CStrArgument<'a>) -> crate::Result<Bus> {
+        let machine = machine.try_into_cstr()?;
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: machine stays alive throughout the call. On success,
+        // libsystemd initializes bus and transfers one owned reference to us.
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_open_system_machine(bus.as_mut_ptr(), machine.as_ptr())
+        })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
 }
 
 impl fmt::Debug for BusRef {
@@ -989,6 +1312,43 @@ impl fmt::Debug for BusRef {
 }
 
 impl BusRef {
+    /// Synchronously write all queued outgoing messages to the connection.
+    ///
+    /// May block while the peer is slow to read. Success means the outgoing
+    /// queue is empty; it does not acknowledge receipt or processing by the
+    /// destination. Use this before [`BusRef::close`] to send pending messages.
+    ///
+    /// Flushing a shared default connection affects every user of that
+    /// connection. Library code should normally manage an independent
+    /// connection from [`Bus::open_system`] or [`Bus::open_user`].
+    ///
+    /// This corresponds to [`sd_bus_flush`].
+    ///
+    /// [`sd_bus_flush`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_close.html
+    #[inline]
+    pub fn flush(&mut self) -> crate::Result<()> {
+        ffi_result(unsafe { ffi::bus::sd_bus_flush(self.as_ptr()) })?;
+        Ok(())
+    }
+
+    /// Close the connection and discard its incoming and outgoing queues.
+    ///
+    /// This is idempotent and does not release this bus reference. Other
+    /// references to the same native connection also observe it as closed.
+    /// Further sends and receives fail. Call [`BusRef::flush`] first if pending
+    /// outgoing messages should be sent before closing.
+    ///
+    /// Closing a shared default connection affects every user of that
+    /// connection; normally close only independent connections you own.
+    ///
+    /// This corresponds to [`sd_bus_close`].
+    ///
+    /// [`sd_bus_close`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_close.html
+    #[inline]
+    pub fn close(&mut self) {
+        unsafe { ffi::bus::sd_bus_close(self.as_ptr()) };
+    }
+
     /// Returns the file descriptor used to communicate from a message bus object. This descriptor
     /// can be used with `poll(3)` or a similar function to wait for I/O events on the specified
     /// bus connection object.
@@ -1188,12 +1548,18 @@ impl BusRef {
     ///
     /// [`sd_bus_message_new_signal`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_signal.html
     #[inline]
-    pub fn new_signal(
+    pub fn new_signal<'s>(
         &mut self,
-        path: &ObjectPath,
-        interface: &InterfaceName,
-        member: &MemberName,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
+        member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
+        let interface = interface.try_into_cstr()?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
+        let member = member.try_into_cstr()?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_signal(
@@ -1212,13 +1578,21 @@ impl BusRef {
     ///
     /// [`sd_bus_message_new_method_call`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_new_method_call.html
     #[inline]
-    pub fn new_method_call(
+    pub fn new_method_call<'s>(
         &mut self,
-        dest: &BusName,
-        path: &ObjectPath,
-        interface: &InterfaceName,
-        member: &MemberName,
+        dest: impl CStrArgument<'s>,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
+        member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
+        let interface = interface.try_into_cstr()?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
+        let member = member.try_into_cstr()?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_method_call(
@@ -1244,7 +1618,13 @@ impl BusRef {
     ///
     /// [`sd_bus_request_name`]: https://www.freedesktop.org/software/systemd/man/sd_bus_request_name.html
     #[inline]
-    pub fn request_name(&mut self, name: &BusName, flags: u64) -> super::Result<()> {
+    pub fn request_name<'s>(
+        &mut self,
+        name: impl CStrArgument<'s>,
+        flags: u64,
+    ) -> super::Result<()> {
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
         })?;
@@ -1252,16 +1632,18 @@ impl BusRef {
     }
 
     #[inline]
-    pub fn request_name_async<F>(
+    pub fn request_name_async<'s, F>(
         &mut self,
-        name: &BusName,
+        name: impl CStrArgument<'s>,
         flags: u64,
         callback: F,
     ) -> super::Result<()>
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let f: extern "C" fn(
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
@@ -1283,13 +1665,15 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
     /// This blocks. To get async behavior, use `request_name` directly.
     #[inline]
-    pub fn release_name(&self, name: &BusName) -> super::Result<()> {
+    pub fn release_name<'s>(&self, name: impl CStrArgument<'s>) -> super::Result<()> {
+        let name = name.try_into_cstr()?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _)
         })?;
@@ -1300,11 +1684,13 @@ impl BusRef {
     ///
     /// [`sd_bus_add_object`]: https://www.freedesktop.org/software/systemd/man/sd_bus_add_object.html
     #[inline]
-    pub fn add_object<F>(&self, path: &ObjectPath, callback: F) -> super::Result<()>
+    pub fn add_object<'s, F>(&self, path: impl CStrArgument<'s>, callback: F) -> super::Result<()>
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let f: extern "C" fn(
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
@@ -1324,12 +1710,14 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
     #[inline]
-    pub fn add_object_manager(&self, path: &ObjectPath) -> super::Result<()> {
+    pub fn add_object_manager<'s>(&self, path: impl CStrArgument<'s>) -> super::Result<()> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_add_object_manager(
                 self.as_ptr(),
@@ -1340,21 +1728,20 @@ impl BusRef {
         Ok(())
     }
 
-    // pub fn add_object_vtable<T: Any + 'static>(&self,
-    //                                           path: ObjectPath,
-    //                                           interface: InterfaceName,
-    //                                           vtable: Vtable<T>,
-    //                                           userdata: T)
-    //                                           -> super::Result<()> {
-    //    let u = Box::into_raw(Box::new(userdata));
-    //    ffi_result(unsafe {ffi::bus::sd_bus_add_object_vtable(self.raw,
-    //                                               ptr::null_mut(),
-    //                                               path.as_ptr() as *const _,
-    //                                               interface.as_ptr() as *const _,
-    //                                               vtable.as_ptr(),
-    //                                               Box::into_raw(Box::new(T)))})?;
-    //    Ok(())
-    // }
+    /// Register an interface for the bus's lifetime. The registration owns its
+    /// vtable, strings, and callbacks; failed registrations release them.
+    pub fn add_object_vtable<'s>(
+        &self,
+        path: impl CStrArgument<'s>,
+        interface: impl CStrArgument<'s>,
+        vtable: Vtable,
+    ) -> crate::Result<()> {
+        let path = path.try_into_cstr()?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
+        let interface = interface.try_into_cstr()?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
+        vtable.register(self, path, interface)
+    }
 
     // emit_signal
     // emit_properties_changed
@@ -1456,7 +1843,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_set_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_destination.html
     #[inline]
-    pub fn set_destination(&mut self, dest: &BusName) -> super::Result<()> {
+    pub fn set_destination<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_set_destination(self.as_ptr(), dest as *const _ as *const _)
         })?;
@@ -1703,7 +2092,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
-    pub fn send_to(&mut self, dest: &BusName) -> super::Result<u64> {
+    pub fn send_to<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<u64> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         // self.bus().send_to(self, dest)
         let mut c = MaybeUninit::uninit();
         ffi_result(unsafe {
@@ -1726,7 +2117,9 @@ impl MessageRef {
     ///
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
-    pub fn send_to_no_reply(&mut self, dest: &BusName) -> super::Result<()> {
+    pub fn send_to_no_reply<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
+        let dest = dest.try_into_cstr()?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         // self.bus().send_to_no_reply(self, dest)
         ffi_result(unsafe {
             ffi::bus::sd_bus_send_to(
@@ -1783,7 +2176,7 @@ impl MessageRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + 'static + Sync + Send,
     {
-        let f: extern "C" fn(
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
@@ -1805,7 +2198,7 @@ impl MessageRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
@@ -1868,9 +2261,12 @@ impl MessageRef {
     /// Open a container for writing. `contents` describes its members without
     /// the outer container delimiters. Close it after appending all members.
     /// If appending or closing fails, discard the partially written message.
-    pub fn open_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<()> {
-        let contents = std::ffi::CString::new(contents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    pub fn open_container<'a>(
+        &mut self,
+        kind: ContainerType,
+        contents: impl CStrArgument<'a>,
+    ) -> crate::Result<()> {
+        let contents = contents.try_into_cstr()?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_open_container(
                 self.as_ptr(),
@@ -1912,9 +2308,12 @@ impl<'a> MessageIter<'a> {
     /// Enter the next container with the expected kind and member signature.
     /// Returns false at the end of an enclosing array. A mismatching signature
     /// returns an error without consuming the value.
-    pub fn enter_container(&mut self, kind: ContainerType, contents: &str) -> crate::Result<bool> {
-        let contents = std::ffi::CString::new(contents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    pub fn enter_container<'s>(
+        &mut self,
+        kind: ContainerType,
+        contents: impl CStrArgument<'s>,
+    ) -> crate::Result<bool> {
+        let contents = contents.try_into_cstr()?;
         Ok(ffi_result(unsafe {
             ffi::bus::sd_bus_message_enter_container(self.raw, kind as c_char, contents.as_ptr())
         })? > 0)
@@ -2045,33 +2444,3 @@ impl<'a> MessageIter<'a> {
         V::from_message(self)
     }
 }
-
-/*
-struct Vtable;
-struct VtableBuilder<T> {
-    Vec<ffi::bus::sd_bus_vtable>,
-}
-
-type PropertyGet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-type PropertySet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-
-
-impl VtableBuilder {
-    fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
-        /* verify */
-        /* track */
-    }
-
-    fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
-    }
-
-    fn property_writable(mut self, member: &str, signature: &str, get: PropertyGet, set: PropertySet) {
-    }
-
-    fn signal(mut self, member: &str, signature: &str) {
-    }
-
-    fn create(mut self) -> Vtable {
-    }
-}
-*/

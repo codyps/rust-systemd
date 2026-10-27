@@ -20,6 +20,9 @@ pub use journal::{Journal, JournalLog, JournalRecord, JournalSeek, JournalWaitRe
 use libc::{c_char, c_void, free, strlen};
 pub use std::io::{Error, Result};
 
+mod cstring;
+pub use self::cstring::CStrArgument;
+
 #[cfg(any(feature = "journal", feature = "bus"))]
 fn usec_from_duration(duration: std::time::Duration) -> u64 {
     let sub_usecs = duration.subsec_micros() as u64;
