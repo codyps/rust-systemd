@@ -1961,7 +1961,22 @@ impl<'a> MessageIter<'a> {
     // FIXME: consider renaming
     /// Read the next value. Borrowed strings and paths remain valid for the
     /// message's lifetime, so later reads can proceed while those views are held.
-    /// They cannot outlive the owning message:
+    /// For a message containing two strings, both views can be returned to a
+    /// caller that keeps the message alive:
+    ///
+    /// ```
+    /// use systemd::bus::MessageRef;
+    /// use utf8_cstr::Utf8CStr;
+    ///
+    /// fn read_pair(message: &mut MessageRef) -> systemd::Result<(&Utf8CStr, &Utf8CStr)> {
+    ///     let mut iter = message.iter()?;
+    ///     let first: &Utf8CStr = iter.next()?.expect("expected the first string");
+    ///     let second: &Utf8CStr = iter.next()?.expect("expected the second string");
+    ///     Ok((first, second))
+    /// }
+    /// ```
+    ///
+    /// The borrowed views cannot outlive the owning message:
     ///
     /// ```compile_fail
     /// fn escape(mut message: systemd::bus::Message) -> &'static utf8_cstr::Utf8CStr {
