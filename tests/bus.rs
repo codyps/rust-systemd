@@ -22,6 +22,11 @@ fn call() {
     assert!(m.error().is_none());
     let reply = m.call(0).unwrap();
     assert!(reply.error().is_none());
+    assert!(reply.sender().is_some());
+    assert_eq!(
+        reply.destination().unwrap(),
+        b.unique_name().unwrap().as_ref()
+    );
 
     let name = Utf8CStr::from_bytes(b"org.example.TestError\0").unwrap();
     let message = Utf8CStr::from_bytes(b"A distinct error message\0").unwrap();
@@ -80,4 +85,24 @@ fn bad_signature_on_call() {
 
     let r = m.call(0).err().unwrap();
     println!("{r:?}");
+}
+
+#[test]
+fn missing_headers_are_optional_and_debuggable() {
+    let mut b = bus::Bus::default_system().unwrap();
+    let path = bus::ObjectPath::from_bytes(b"/org/example/Test\0").unwrap();
+    let interface = bus::InterfaceName::from_bytes(b"org.example.Test\0").unwrap();
+    let member = bus::MemberName::from_bytes(b"Changed\0").unwrap();
+    let signal = b.new_signal(path, interface, member).unwrap();
+    assert_eq!(signal.sender(), None);
+    assert_eq!(signal.destination(), None);
+    assert!(format!("{:?}", *signal).contains("None"));
+
+    let destination = bus::BusName::from_bytes(b"org.example.Test\0").unwrap();
+    let call = b
+        .new_method_call(destination, path, interface, member)
+        .unwrap();
+    assert_eq!(call.sender(), None);
+    assert_eq!(call.destination().unwrap().to_bytes(), b"org.example.Test");
+    assert!(format!("{:?}", *call).contains("sender: None"));
 }
