@@ -94,18 +94,6 @@ The explicit unsafe `*_unset_environment` variants clear environment variables
 and require the caller to prevent all concurrent environment access. Use those
 only during single-threaded startup before spawning threads.
 
-sd-bus
-------
-
-Message `sender()` and `destination()` return `Option<&CStr>` because valid
-messages can omit these headers. Message iterators support consecutive reads,
-including borrowed strings and object paths that remain valid for the message's
-lifetime.
-
-Object callbacks remain registered until their bus is destroyed. Asynchronous
-call and name-request callbacks release their captured state when the operation
-completes or their bus is destroyed.
-
 
 License
 -------
