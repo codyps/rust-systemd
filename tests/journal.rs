@@ -4,22 +4,8 @@
 use log::log;
 use systemd::sd_journal_log;
 
-use std::path::Path;
 use systemd::id128;
 use systemd::journal;
-
-// Some systems don't have a running journal, which causes our tests to fail currently
-//
-// TODO: adjust tests that use this to generate a fixed journal if possible, or ship some test
-// data.
-fn have_journal() -> bool {
-    if !Path::new("/run/systemd/journal/").exists() {
-        println!("missing journal files");
-        false
-    } else {
-        true
-    }
-}
 
 #[test]
 #[deny(deprecated)]
@@ -189,12 +175,7 @@ fn log_macro_returns_result() {
 
 #[test]
 fn cursor() {
-    if !have_journal() {
-        return;
-    }
-
-    let mut j = journal::OpenOptions::default().open().unwrap();
-    log!(log::Level::Info, "rust-systemd test_seek entry");
+    let mut j = fixture_journal();
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
     let _s = j.cursor().unwrap();
@@ -202,23 +183,25 @@ fn cursor() {
 
 #[test]
 fn ts() {
-    if !have_journal() {
-        return;
-    }
-
-    let mut j = journal::OpenOptions::default().open().unwrap();
-    log!(log::Level::Info, "rust-systemd ts entry");
+    let mut j = fixture_journal();
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
     let _s = j.timestamp().unwrap();
     j.seek(journal::JournalSeek::Tail).unwrap();
     j.previous().unwrap();
     let (u1, entry_boot_id) = j.monotonic_timestamp().unwrap();
-    assert!(u1 > 0);
-    let boot_id = id128::Id128::from_boot().unwrap();
-    assert!(boot_id == entry_boot_id);
-    let u2 = j.monotonic_timestamp_current_boot().unwrap();
-    assert_eq!(u1, u2);
+    assert_eq!(u1, 3_000_000);
+    assert_eq!(entry_boot_id, fixture_boot_id());
+    if id128::Id128::from_boot().unwrap() == fixture_boot_id() {
+        assert_eq!(j.monotonic_timestamp_current_boot().unwrap(), u1);
+    } else {
+        assert_eq!(
+            j.monotonic_timestamp_current_boot()
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::ESTALE)
+        );
+    }
 }
 
 #[test]
@@ -247,12 +230,7 @@ fn empty_journal() {
 
 #[test]
 fn test_timestamp() {
-    if !have_journal() {
-        return;
-    }
-
-    let mut j = journal::OpenOptions::default().open().unwrap();
-    log!(log::Level::Info, "rust-systemd ts entry");
+    let mut j = fixture_journal();
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next().unwrap();
     let timestamp_system_time = j.timestamp().unwrap();
@@ -268,11 +246,7 @@ fn test_timestamp() {
 
 #[test]
 fn test_seek() {
-    let mut j = journal::OpenOptions::default().open().unwrap();
-    if !have_journal() {
-        return;
-    }
-    log!(log::Level::Info, "rust-systemd test_seek entry");
+    let mut j = fixture_journal();
     j.seek(journal::JournalSeek::Head).unwrap();
     j.next_entry().unwrap();
     let c1 = j.cursor().unwrap();
@@ -294,77 +268,36 @@ fn test_seek() {
 
 #[test]
 fn test_simple_match() {
-    if !have_journal() {
-        return;
-    }
-    let key = "RUST_TEST_MARKER";
-    let value = "RUST_SYSTEMD_SIMPLE_MATCH";
-    let msg = "MESSAGE=rust-systemd test_match";
-    let filter = format!("{key}={value}");
-    let mut j = journal::OpenOptions::default().open().unwrap();
-
-    // check for positive matches
-
-    // seek tail
-    j.seek(journal::JournalSeek::Tail).unwrap();
-    j.previous().unwrap();
+    let key = "REVIEW_GROUP";
+    let value = "one";
+    let mut j = fixture_journal();
     j.match_add(key, value).unwrap();
-
-    journal::send(&[&filter, msg]).unwrap();
-    let mut waits = 0;
-    loop {
-        if j.next().unwrap() == 0 {
-            if waits > 5 {
-                panic!("got to end of journal without finding our entry");
-            }
-
-            waits += 1;
-            j.wait(Some(std::time::Duration::from_secs(1))).unwrap();
-            continue;
-        }
-
-        let entryval = j.get_data(key).unwrap();
-        println!("k,v: {key:?}, {entryval:?}");
-        if entryval.is_none() {
-            println!("E: {}", j.display_entry_data());
-            continue;
-        }
-
-        assert_eq!(entryval.unwrap().value().unwrap(), value.as_bytes());
-        break;
+    let mut matches = 0;
+    while j.next().unwrap() != 0 {
+        assert_eq!(
+            j.get_data(key).unwrap().unwrap().value(),
+            Some(value.as_bytes())
+        );
+        matches += 1;
     }
-
-    // check for negative matches
-    j.seek(journal::JournalSeek::Tail).unwrap();
-    j.previous().unwrap();
+    assert_eq!(matches, 2);
+    j.seek_head().unwrap();
     j.match_flush()
         .unwrap()
         .match_add("NOKEY", "NOVALUE")
         .unwrap();
-    journal::send(&[msg]).unwrap();
-    while j.next().unwrap() != 0 {
-        assert!(j.get_data("NO_KEY").unwrap().is_none())
-    }
+    assert_eq!(j.next().unwrap(), 0);
 }
 
 #[test]
 fn get_data() {
-    if !have_journal() {
-        return;
-    }
-
-    let mut j = journal::OpenOptions::default().open().unwrap();
-    j.seek_tail().unwrap();
-    journal::send(&["RUST_TEST_MARKER=1"]).unwrap();
-    j.match_add("RUST_TEST_MARKER", "1").unwrap();
-
-    loop {
-        if j.next().unwrap() == 0 {
-            break;
-        }
-
+    let mut j = fixture_journal();
+    let mut entries = 0;
+    while j.next().unwrap() != 0 {
         assert_eq!(j.get_data("THIS_DOES_NOT_EXIST").unwrap(), None);
+        entries += 1;
     }
+    assert_eq!(entries, 3);
 }
 
 #[test]
@@ -390,6 +323,69 @@ fn fixture_boot_id() -> id128::Id128 {
         std::ffi::CStr::from_bytes_with_nul(b"11111111111111111111111111111111\0").unwrap(),
     )
     .unwrap()
+}
+
+#[test]
+fn await_next_entry_drains_available_entries() {
+    let mut j = fixture_journal();
+    for message in [
+        "first fixture entry",
+        "second fixture entry",
+        "third fixture entry",
+    ] {
+        let record = j.await_next_entry(Some(std::time::Duration::ZERO)).unwrap();
+        assert_eq!(record.unwrap()["MESSAGE"], message);
+    }
+    assert!(j
+        .await_next_entry(Some(std::time::Duration::ZERO))
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn await_next_entry_honors_timeout_after_file_notifications() {
+    let mut j = fixture_journal();
+    j.match_add("NO_MATCHING_FIELD", "value").unwrap();
+    let timeout = std::time::Duration::from_millis(60);
+    let started = std::time::Instant::now();
+    assert!(j.await_next_entry(Some(timeout)).unwrap().is_none());
+    assert!(started.elapsed() >= timeout);
+}
+
+#[test]
+fn await_next_entry_without_timeout_waits_for_matching_data() {
+    let directory =
+        std::env::temp_dir().join(format!("rust-systemd-journal-wait-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let cleanup = Cleanup(directory);
+    let mut j = journal::OpenDirectoryOptions::default()
+        .open_directory(cleanup.0.to_str().unwrap())
+        .unwrap();
+    let destination = cleanup.0.join("system.journal");
+    let writer = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        // Rename a complete journal into place so the reader observes a file
+        // invalidation event followed by matching entries, without journald.
+        let staging = destination.with_extension("staging");
+        std::fs::copy(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/journal.journal"
+            ),
+            &staging,
+        )
+        .unwrap();
+        std::fs::rename(staging, destination).unwrap();
+    });
+    let record = j.await_next_entry(None).unwrap();
+    writer.join().unwrap();
+    assert_eq!(record.unwrap()["MESSAGE"], "first fixture entry");
 }
 
 #[test]

@@ -48,7 +48,7 @@ impl sd_bus_vtable {
             if #[cfg(target_endian = "little")] {
                 (flags << 8) | typ as u64
             } else if #[cfg(target_endian = "big")] {
-                (typ as u64) | (flags << 8)
+                ((typ as u64) << 56) | flags
             } else {
                 compile_error!("unsupported target_endian")
             }
@@ -82,13 +82,20 @@ impl sd_bus_vtable {
 
 #[test]
 fn vtable_bitfield() {
-    let b: sd_bus_vtable = sd_bus_vtable {
-        type_and_flags: sd_bus_vtable::type_and_flags(0xAA, 0xBBCCBB),
-        ..Default::default()
-    };
+    for typ in [0, b'<', b'M', 0xAA, u8::MAX] {
+        for flags in [0, 1, 0xBBCCBB, 0xFFFF << 40, (1_u64 << 56) - 1] {
+            let b = sd_bus_vtable {
+                type_and_flags: sd_bus_vtable::type_and_flags(typ, flags),
+                ..Default::default()
+            };
 
-    assert_eq!(b.typ(), 0xAA);
-    assert_eq!(b.flags(), 0xBBCCBB);
+            assert_eq!(b.typ(), typ);
+            assert_eq!(b.flags(), flags);
+            // The first C bitfield occupies the first byte in memory on both
+            // little- and big-endian targets.
+            assert_eq!(b.type_and_flags.to_ne_bytes()[0], typ);
+        }
+    }
 }
 
 #[test]

@@ -45,3 +45,7 @@ all-features = true
 
 [workspace]
 members = ["libsystemd-sys"]
+
+[[test]]
+name = "daemon-environment"
+harness = false

@@ -88,6 +88,12 @@ the process by systemd on socket activation. Since raw filehandles are not well
 supported in Rust, it's likely these functions will mostly be helpful in
 managing program flow; actual socket code will have to use the libc crate.
 
+Daemon functions leave the process environment unchanged. For example, use
+`daemon::listen_fds()` and `daemon::notify(state.iter())` without a boolean flag.
+The explicit unsafe `*_unset_environment` variants clear environment variables
+and require the caller to prevent all concurrent environment access. Use those
+only during single-threaded startup before spawning threads.
+
 
 License
 -------

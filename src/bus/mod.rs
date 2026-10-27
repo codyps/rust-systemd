@@ -610,12 +610,10 @@ impl Error {
 
     pub fn new(name: &Utf8CStr, message: Option<&Utf8CStr>) -> Error {
         let v = RawError::with(name, message);
-
-        Error {
-            raw: v,
-            name_len: name.len() + 1,
-            message_len: message.map_or(0, |x| x.len() + 1),
-        }
+        // SAFETY: sd_bus_error_set supplies valid error storage, including its
+        // static NoMemory fallback if allocation fails. Cache the actual native
+        // lengths, which can differ from the caller's strings in that case.
+        unsafe { Self::from_raw(v) }
     }
 
     pub fn name(&self) -> &Utf8CStr {
@@ -754,10 +752,10 @@ impl RawError {
     // reference. Consider caching length info somewhere.
     #[inline]
     pub fn message(&self) -> Option<&Utf8CStr> {
-        if self.is_set() {
-            Some(unsafe { Utf8CStr::from_ptr_unchecked(self.inner.name) })
-        } else {
+        if self.inner.message.is_null() {
             None
+        } else {
+            Some(unsafe { Utf8CStr::from_ptr_unchecked(self.inner.message) })
         }
     }
 
@@ -783,10 +781,11 @@ impl Drop for RawError {
 impl Clone for RawError {
     #[inline]
     fn clone(&self) -> RawError {
-        let mut e = MaybeUninit::<ffi::bus::sd_bus_error>::uninit();
+        let mut e = Self::new();
+        // SAFETY: sd_bus_error_copy requires an initialized, empty destination.
+        // Copying an unset source leaves that destination unchanged.
         unsafe { ffi::bus::sd_bus_error_copy(e.as_mut_ptr(), &self.inner) };
-        let e = unsafe { e.assume_init() };
-        e.into()
+        e
     }
 }
 
@@ -816,6 +815,22 @@ fn t_raw_error() {
     let name = Utf8CStr::from_bytes(b"name\0").unwrap();
     let message = Utf8CStr::from_bytes(b"error\0").unwrap();
     RawError::new().set(name, Some(message))
+}
+
+#[test]
+fn raw_error_clone_initializes_storage() {
+    let empty = RawError::default().clone();
+    assert!(empty.name().is_none());
+    assert!(empty.message().is_none());
+    let name = Utf8CStr::from_bytes(b"org.example.TestError\0").unwrap();
+    let message = Utf8CStr::from_bytes(b"distinct error message\0").unwrap();
+    for message in [Some(message), None] {
+        let original = RawError::with(name, message);
+        let copy = original.clone();
+        drop(original);
+        assert_eq!(copy.name().unwrap().as_ref().to_bytes(), name.as_bytes());
+        assert_eq!(copy.message(), message);
+    }
 }
 
 /* XXX: fixme: return code does have meaning! */
@@ -1519,9 +1534,18 @@ impl MessageRef {
 
     /// This corresponds to [`sd_bus_message_get_error`]
     ///
+    /// Returns `None` when this message is not an error reply. The returned
+    /// error borrows its storage from this message.
+    ///
     /// [`sd_bus_message_get_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_error.html
-    pub fn error(&self) -> &RawError {
-        unsafe { RawError::from_ptr(ffi::bus::sd_bus_message_get_error(self.as_ptr())) }
+    pub fn error(&self) -> Option<&RawError> {
+        let error = unsafe { ffi::bus::sd_bus_message_get_error(self.as_ptr()) };
+        if error.is_null() {
+            None
+        } else {
+            // SAFETY: libsystemd owns this non-null error for the message's lifetime.
+            Some(unsafe { RawError::from_ptr(error) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_errno`]

@@ -990,21 +990,35 @@ impl JournalRef {
         }
     }
 
-    /// Wait for the next entry to appear. Returns `Ok(None)` if there were no
-    /// new entries in the given wait time.
-    /// Pass wait_time `None` to wait for an unlimited period for new entries.
+    /// Read the next entry, waiting if no entry is currently available.
+    /// Existing entries after the cursor are returned immediately. To follow
+    /// only new entries, seek to the journal's tail before calling this method.
+    ///
+    /// Returns `Ok(None)` only after the given wait time expires without an
+    /// entry. `None` waits indefinitely, including across file-change events
+    /// that do not produce a matching entry.
     pub fn await_next_entry(
         &mut self,
         wait_time: Option<time::Duration>,
     ) -> Result<Option<JournalRecord>> {
-        match self.wait(wait_time)? {
-            JournalWaitResult::Nop => Ok(None),
-            JournalWaitResult::Append => self.next_entry(),
-
-            // This is possibly wrong, but I can't generate a scenario with
-            // ..::Invalidate and neither systemd's journalctl,
-            // systemd-journal-upload, and other utilities handle that case.
-            JournalWaitResult::Invalidate => self.next_entry(),
+        let started = time::Instant::now();
+        loop {
+            if let Some(entry) = self.next_entry()? {
+                return Ok(Some(entry));
+            }
+            let remaining = match wait_time {
+                Some(timeout) => {
+                    let elapsed = started.elapsed();
+                    if elapsed >= timeout {
+                        return Ok(None);
+                    }
+                    Some(timeout - elapsed)
+                }
+                None => None,
+            };
+            // A notification can reflect rotation or an internal refresh rather
+            // than a matching entry. Retry with the caller's remaining budget.
+            self.wait(remaining)?;
         }
     }
 
