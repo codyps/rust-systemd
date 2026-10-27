@@ -104,6 +104,8 @@ extern "C" {
     ) -> c_int;
 
     pub fn sd_journal_get_usage(j: *mut sd_journal, bytes: *mut u64) -> c_int;
+    pub fn sd_journal_has_persistent_files(j: *mut sd_journal) -> c_int;
+    pub fn sd_journal_has_runtime_files(j: *mut sd_journal) -> c_int;
 
     pub fn sd_journal_query_unique(j: *mut sd_journal, field: *const c_char) -> c_int;
     pub fn sd_journal_enumerate_unique(
