@@ -754,10 +754,10 @@ impl RawError {
     // reference. Consider caching length info somewhere.
     #[inline]
     pub fn message(&self) -> Option<&Utf8CStr> {
-        if self.is_set() {
-            Some(unsafe { Utf8CStr::from_ptr_unchecked(self.inner.name) })
-        } else {
+        if self.inner.message.is_null() {
             None
+        } else {
+            Some(unsafe { Utf8CStr::from_ptr_unchecked(self.inner.message) })
         }
     }
 
@@ -1519,9 +1519,18 @@ impl MessageRef {
 
     /// This corresponds to [`sd_bus_message_get_error`]
     ///
+    /// Returns `None` when this message is not an error reply. The returned
+    /// error borrows its storage from this message.
+    ///
     /// [`sd_bus_message_get_error`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_error.html
-    pub fn error(&self) -> &RawError {
-        unsafe { RawError::from_ptr(ffi::bus::sd_bus_message_get_error(self.as_ptr())) }
+    pub fn error(&self) -> Option<&RawError> {
+        let error = unsafe { ffi::bus::sd_bus_message_get_error(self.as_ptr()) };
+        if error.is_null() {
+            None
+        } else {
+            // SAFETY: libsystemd owns this non-null error for the message's lifetime.
+            Some(unsafe { RawError::from_ptr(error) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_errno`]
