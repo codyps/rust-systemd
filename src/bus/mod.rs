@@ -1446,6 +1446,9 @@ impl BusRef {
     /// work.
     ///
     /// Returns `true` if any I/O was seen.
+    /// `None` waits indefinitely. Finite timeouts are truncated to microseconds;
+    /// values at or above `u64::MAX` microseconds return `EOVERFLOW` because
+    /// that value is reserved for infinity.
     ///
     ///
     /// This corresponds to [`sd_bus_wait`].
@@ -1453,12 +1456,11 @@ impl BusRef {
     /// [`sd_bus_wait`]: https://www.freedesktop.org/software/systemd/man/sd_bus_wait.html
     #[inline]
     pub fn wait(&mut self, timeout: Option<Duration>) -> super::Result<bool> {
-        Ok(ffi_result(unsafe {
-            ffi::bus::sd_bus_wait(
-                self.as_ptr(),
-                timeout.map(usec_from_duration).unwrap_or(u64::MAX),
-            )
-        })? > 0)
+        let timeout = timeout
+            .map(usec_from_duration)
+            .transpose()?
+            .unwrap_or(u64::MAX);
+        Ok(ffi_result(unsafe { ffi::bus::sd_bus_wait(self.as_ptr(), timeout) })? > 0)
     }
 
     /// Get the unique name (address) of this connection to this `Bus`.

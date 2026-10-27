@@ -40,9 +40,38 @@ mod cstring;
 pub use self::cstring::CStrArgument;
 
 #[cfg(any(feature = "journal", feature = "bus"))]
-fn usec_from_duration(duration: std::time::Duration) -> u64 {
-    let sub_usecs = duration.subsec_micros() as u64;
-    duration.as_secs() * 1_000_000 + sub_usecs
+fn usec_from_duration(duration: std::time::Duration) -> Result<u64> {
+    duration
+        .as_secs()
+        .checked_mul(1_000_000)
+        .and_then(|usecs| usecs.checked_add(u64::from(duration.subsec_micros())))
+        // UINT64_MAX is libsystemd's infinity sentinel, reserved for None.
+        .filter(|&usecs| usecs != u64::MAX)
+        .ok_or_else(|| Error::from_raw_os_error(libc::EOVERFLOW))
+}
+
+#[cfg(all(test, any(feature = "journal", feature = "bus")))]
+#[test]
+fn finite_timeout_conversion_checks_overflow_and_reserves_infinity() {
+    use std::time::Duration;
+    for (duration, expected) in [
+        (Duration::ZERO, 0),
+        (Duration::from_nanos(999), 0),
+        (Duration::new(2, 123_456_789), 2_123_456),
+        (Duration::from_micros(u64::MAX - 1), u64::MAX - 1),
+    ] {
+        assert_eq!(usec_from_duration(duration).unwrap(), expected);
+    }
+    for duration in [
+        Duration::from_micros(u64::MAX),
+        Duration::from_micros(u64::MAX) + Duration::from_micros(1),
+        Duration::MAX,
+    ] {
+        assert_eq!(
+            usec_from_duration(duration).unwrap_err().raw_os_error(),
+            Some(libc::EOVERFLOW)
+        );
+    }
 }
 
 /// Convert a systemd ffi return value into a Result

@@ -326,6 +326,22 @@ fn fixture_boot_id() -> id128::Id128 {
 }
 
 #[test]
+fn finite_wait_timeouts_return_overflow_errors() {
+    let mut journal = fixture_journal();
+    for timeout in [
+        std::time::Duration::from_micros(u64::MAX),
+        std::time::Duration::from_micros(u64::MAX) + std::time::Duration::from_micros(1),
+        std::time::Duration::MAX,
+    ] {
+        assert_eq!(
+            journal.wait(Some(timeout)).unwrap_err().raw_os_error(),
+            Some(libc::EOVERFLOW)
+        );
+    }
+    journal.wait(Some(std::time::Duration::ZERO)).unwrap();
+}
+
+#[test]
 fn await_next_entry_drains_available_entries() {
     let mut j = fixture_journal();
     for message in [

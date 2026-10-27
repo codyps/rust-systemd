@@ -970,10 +970,15 @@ impl JournalRef {
 
     /// Wait for next entry to arrive.
     /// Using a `wait_time` of `None` will wait for an unlimited period for new entries.
+    /// Finite timeouts are truncated to microseconds. Values at or above
+    /// `u64::MAX` microseconds return `EOVERFLOW`; that value denotes infinity.
     ///
     /// Corresponds to `sd_journal_wait()`.
     pub fn wait(&mut self, wait_time: Option<time::Duration>) -> Result<JournalWaitResult> {
-        let time = wait_time.map(usec_from_duration).unwrap_or(u64::MAX);
+        let time = wait_time
+            .map(usec_from_duration)
+            .transpose()?
+            .unwrap_or(u64::MAX);
 
         match ffi_result(unsafe { ffi::sd_journal_wait(self.as_ptr(), time) })? {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
