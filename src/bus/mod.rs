@@ -33,6 +33,8 @@ use super::usec_from_duration;
 use utf8_cstr::Utf8CStr;
 
 pub mod types;
+mod vtable;
+pub use self::vtable::{Vtable, VtableFlags};
 
 /**
  * Result type for dbus calls that contains errors returned by remote services (and local errors as
@@ -666,6 +668,24 @@ impl Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        let mut raw = RawError::default();
+        // Preserve native errno errors; other I/O errors become a generic D-Bus
+        // failure. sd_bus_error_set_errno also supplies its allocation fallback.
+        unsafe {
+            ffi::bus::sd_bus_error_set_errno(
+                raw.as_mut_ptr(),
+                error
+                    .raw_os_error()
+                    .filter(|code| *code > 0)
+                    .unwrap_or(libc::EIO),
+            );
+            Self::from_raw(raw)
+        }
+    }
+}
+
 impl ::std::error::Error for Error {
     fn description(&self) -> &str {
         match self.message() {
@@ -889,28 +909,22 @@ where
     }
 }
 
-extern "C" fn raw_destroy_cb_message_handler<F>(userdata: *mut c_void)
-where
-    F: Fn(&mut MessageRef) -> Result<()>,
-{
+extern "C" fn raw_destroy_userdata<F>(userdata: *mut c_void) {
     let _: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
 }
 
 // `slot` is the caller-owned reference returned by a successful registration;
-// `callback` is its userdata, allocated by Box::into_raw and not otherwise owned.
-unsafe fn float_callback_slot<F>(
+// `userdata` was allocated by Box::into_raw and is not otherwise owned.
+unsafe fn float_userdata_slot<F>(
     slot: *mut ffi::bus::sd_bus_slot,
-    callback: *mut F,
-) -> crate::Result<()>
-where
-    F: Fn(&mut MessageRef) -> Result<()>,
-{
+    userdata: *mut F,
+) -> crate::Result<()> {
     if let Err(error) = ffi_result(unsafe {
-        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_cb_message_handler::<F>))
+        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_userdata::<F>))
     }) {
         // Destroy-callback installation failed, so Rust still owns the userdata.
         unsafe { ffi::bus::sd_bus_slot_unref(slot) };
-        drop(unsafe { Box::from_raw(callback) });
+        drop(unsafe { Box::from_raw(userdata) });
         return Err(error);
     }
 
@@ -1283,7 +1297,7 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
@@ -1324,7 +1338,7 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
@@ -1340,21 +1354,16 @@ impl BusRef {
         Ok(())
     }
 
-    // pub fn add_object_vtable<T: Any + 'static>(&self,
-    //                                           path: ObjectPath,
-    //                                           interface: InterfaceName,
-    //                                           vtable: Vtable<T>,
-    //                                           userdata: T)
-    //                                           -> super::Result<()> {
-    //    let u = Box::into_raw(Box::new(userdata));
-    //    ffi_result(unsafe {ffi::bus::sd_bus_add_object_vtable(self.raw,
-    //                                               ptr::null_mut(),
-    //                                               path.as_ptr() as *const _,
-    //                                               interface.as_ptr() as *const _,
-    //                                               vtable.as_ptr(),
-    //                                               Box::into_raw(Box::new(T)))})?;
-    //    Ok(())
-    // }
+    /// Register an interface for the bus's lifetime. The registration owns its
+    /// vtable, strings, and callbacks; failed registrations release them.
+    pub fn add_object_vtable(
+        &self,
+        path: &ObjectPath,
+        interface: &InterfaceName,
+        vtable: Vtable,
+    ) -> crate::Result<()> {
+        vtable.register(self, path, interface)
+    }
 
     // emit_signal
     // emit_properties_changed
@@ -1805,7 +1814,7 @@ impl MessageRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => unsafe { float_callback_slot(slot, b) },
+            Ok(_) => unsafe { float_userdata_slot(slot, b) },
         }
     }
 
@@ -2045,33 +2054,3 @@ impl<'a> MessageIter<'a> {
         V::from_message(self)
     }
 }
-
-/*
-struct Vtable;
-struct VtableBuilder<T> {
-    Vec<ffi::bus::sd_bus_vtable>,
-}
-
-type PropertyGet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-type PropertySet<T> = fn(Bus, ObjectPath, InterfaceName, MessageRef, &mut T, &mut Error) -> c_int;
-
-
-impl VtableBuilder {
-    fn method(mut self, member: &str, signature: &str, result: &str, handler: MessageHandler) {
-        /* verify */
-        /* track */
-    }
-
-    fn property(mut self, member: &str, signature: &str, get: PropertyGet) {
-    }
-
-    fn property_writable(mut self, member: &str, signature: &str, get: PropertyGet, set: PropertySet) {
-    }
-
-    fn signal(mut self, member: &str, signature: &str) {
-    }
-
-    fn create(mut self) -> Vtable {
-    }
-}
-*/

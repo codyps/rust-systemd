@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 use systemd::bus;
 use utf8_cstr::Utf8CStr;
 
+#[path = "bus-vtable/mod.rs"]
+mod vtable;
+
 struct Canary(Arc<AtomicUsize>);
 
 impl Drop for Canary {
@@ -244,7 +247,11 @@ impl Drop for PrivateBus {
 fn callback_lifetimes_on_private_bus() {
     const CHILD_CASE: &str = "RUST_SYSTEMD_BUS_CALLBACK_CASE";
     if let Ok(case) = std::env::var(CHILD_CASE) {
-        if case == "containers" {
+        if case == "vtable" {
+            vtable::round_trip();
+        } else if case == "vtable-errors" {
+            vtable::registration_errors();
+        } else if case == "containers" {
             container_round_trip();
         } else if case == "persistent" {
             persistent_object();
@@ -266,6 +273,8 @@ fn callback_lifetimes_on_private_bus() {
         .unwrap();
     assert!(!address.is_empty(), "private bus failed to start");
     for case in [
+        "vtable",
+        "vtable-errors",
         "containers",
         "persistent",
         "call-complete",

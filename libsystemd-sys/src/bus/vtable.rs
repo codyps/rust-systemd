@@ -31,6 +31,9 @@ pub enum SdBusVtableFlag {
 
 #[derive(Clone, Debug, Default)]
 #[repr(C)]
+/// The original v221 vtable layout, also accepted by newer libsystemd releases.
+/// It omits the argument-name fields added in v242. The start entry advertises
+/// this layout's element size so libsystemd uses the correct stride.
 pub struct sd_bus_vtable {
     type_and_flags: u64,
     // NOTE: assumes that usize == pointer size == size_t
@@ -41,6 +44,88 @@ pub struct sd_bus_vtable {
 // bitfields. `c2rust-bitfields` only supports little endian. None of the other bitfield crates
 // claim compatibility with C (which is what we require here).
 impl sd_bus_vtable {
+    fn entry<T>(typ: SdBusVtableType, flags: u64, data: T) -> Self {
+        let mut entry = Self {
+            type_and_flags: Self::type_and_flags(typ as u8, flags),
+            ..Self::default()
+        };
+        assert!(std::mem::size_of::<T>() <= std::mem::size_of_val(&entry.union_data));
+        assert!(std::mem::align_of::<T>() <= std::mem::align_of::<usize>());
+        // SAFETY: only the repr(C) union members below are passed here. The
+        // destination has sufficient size/alignment and its unused bytes are zero.
+        unsafe { std::ptr::write(entry.union_data.as_mut_ptr().cast::<T>(), data) };
+        entry
+    }
+
+    pub fn start(flags: u64) -> Self {
+        Self::entry(
+            SdBusVtableType::Start,
+            flags,
+            sd_bus_table_start {
+                element_size: std::mem::size_of::<Self>(),
+            },
+        )
+    }
+
+    pub fn end() -> Self {
+        Self::entry(SdBusVtableType::End, 0, 0usize)
+    }
+
+    pub fn method(
+        member: *const c_char,
+        signature: *const c_char,
+        result: *const c_char,
+        handler: sd_bus_message_handler_t,
+        offset: size_t,
+        flags: u64,
+    ) -> Self {
+        Self::entry(
+            SdBusVtableType::Method,
+            flags,
+            sd_bus_table_method {
+                member,
+                signature,
+                result,
+                handler,
+                offset,
+            },
+        )
+    }
+
+    pub fn signal(member: *const c_char, signature: *const c_char, flags: u64) -> Self {
+        Self::entry(
+            SdBusVtableType::Signal,
+            flags,
+            sd_bus_table_signal { member, signature },
+        )
+    }
+
+    pub fn property(
+        member: *const c_char,
+        signature: *const c_char,
+        get: sd_bus_property_get_t,
+        set: sd_bus_property_set_t,
+        offset: size_t,
+        writable: bool,
+        flags: u64,
+    ) -> Self {
+        Self::entry(
+            if writable {
+                SdBusVtableType::WritableProperty
+            } else {
+                SdBusVtableType::Property
+            },
+            flags,
+            sd_bus_table_property {
+                member,
+                signature,
+                get,
+                set,
+                offset,
+            },
+        )
+    }
+
     pub fn type_and_flags(typ: u8, flags: u64) -> u64 {
         assert!(flags <= ((1 << 56) - 1));
 
