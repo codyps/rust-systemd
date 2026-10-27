@@ -1,3 +1,21 @@
+//! D-Bus connections and messages.
+//!
+//! Functions taking object paths, bus names, interface names, or member names
+//! accept both the checked types and convertible strings through
+//! [`crate::CStrArgument`]. Rust strings, C strings, owned strings, and `Cow`
+//! inputs are validated before the native call. Invalid values return an
+//! `InvalidInput` error; callers do not need to construct checked wrappers.
+//!
+//! ```
+//! use std::ffi::CString;
+//! use systemd::bus::{BusRef, Message};
+//!
+//! fn request(bus: &mut BusRef) -> systemd::Result<Message> {
+//!     bus.new_method_call("org.example.Service", "/org/example/Object",
+//!         CString::new("org.example.Interface").unwrap(), "Ping")
+//! }
+//! ```
+
 // Persistent issues:
 //
 //  - callbacks trigger allocation

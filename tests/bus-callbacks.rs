@@ -102,13 +102,20 @@ fn persistent_object() {
     let mut server = bus::Bus::default_system().unwrap();
     let mut client = bus::Bus::default_user().unwrap();
     client.unique_name().unwrap();
+    server
+        .request_name(String::from("org.example.ConvertibleName"), 0)
+        .unwrap();
+    server
+        .release_name(std::ffi::CString::new("org.example.ConvertibleName").unwrap())
+        .unwrap();
     let drops = Arc::new(AtomicUsize::new(0));
     let calls = Arc::new(AtomicUsize::new(0));
     let canary = Canary(drops.clone());
     let observed = calls.clone();
     let path = bus::ObjectPath::from_bytes(b"/org/example/CompletePath\0").unwrap();
+    let owned_path = std::ffi::CString::new(path.to_bytes()).unwrap();
     server
-        .add_object(path, move |message| {
+        .add_object(owned_path, move |message| {
             let _keep_alive = &canary;
             {
                 let mut iter = message.iter().unwrap();
