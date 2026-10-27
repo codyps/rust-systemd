@@ -11,9 +11,17 @@ After the merged commit passes the full `build` workflow on master, release-plz
 publishes the crates in dependency order and creates GitHub releases. Tags keep
 the existing `systemd-<version>` and `libsystemd-sys-<version>` formats.
 
-The publish job checks out the exact commit tested by CI. Publishing is restricted
-to successful master push runs from this repository and to merged release PRs
-(`release_always = false`).
+The release workflow runs on master pushes, identifies a merged generated release
+PR, and calls the full `build` workflow as a required dependency of publication.
+The publish job checks out that exact commit. Ordinary master pushes skip the
+release validation and publish jobs; normal master CI still runs independently.
+The gate requires a merged PR from a `release-plz-` branch in this repository and
+the generated release-plz footer in its body. Keep that footer when editing the PR.
+`release_always = false` also remains enabled in release-plz.
+
+Publishing uses a `push` event: crates.io trusted publishing rejects the
+`workflow_run` event. Release PR refreshes through `workflow_dispatch` do not
+publish.
 
 ## Trusted publishing setup
 

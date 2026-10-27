@@ -4,10 +4,6 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
-  workflow_run:
-    workflows: [build]
-    types: [completed]
-    branches: [master]
 
 permissions:
   contents: read
@@ -73,14 +69,37 @@ jobs:
             git push origin "HEAD:$release_branch"
           fi
 
-  publish:
+  release-commit:
     if: >-
       github.repository == 'codyps/rust-systemd' &&
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.head_branch == 'master' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      is_release: ${{ steps.gate.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check for a merged generated release PR
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release_gate.py >> "$GITHUB_OUTPUT"
+
+  validate-release:
+    needs: release-commit
+    if: needs.release-commit.outputs.is_release == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: [release-commit, validate-release]
+    if: needs.release-commit.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -93,7 +112,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable

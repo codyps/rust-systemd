@@ -5,6 +5,7 @@ on:
       - 'staging'
       - 'trying'
   pull_request:
+  workflow_call:
 
 name: build
 
