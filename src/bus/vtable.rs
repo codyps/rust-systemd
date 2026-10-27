@@ -241,7 +241,7 @@ impl Vtable {
         callbacks: Callbacks,
     ) -> crate::Result<Self> {
         let member = member.try_into_cstr()?.into_owned();
-        MemberName::from_bytes(member.as_bytes_with_nul()).map_err(invalid)?;
+        MemberName::from_bytes(member.as_bytes_with_nul())?;
         if self.entries.iter().any(|e| {
             e.member == member
                 && std::mem::discriminant(&e.callbacks) == std::mem::discriminant(&callbacks)

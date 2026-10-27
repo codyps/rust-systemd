@@ -117,10 +117,10 @@ fn invalid_argument(error: impl fmt::Display) -> std::io::Error {
  */
 pub type Result<T> = result::Result<T, Error>;
 
-fn validate_c_string(bytes: &[u8]) -> result::Result<(), &'static str> {
-    CStr::from_bytes_with_nul(bytes)
-        .map(|_| ())
-        .map_err(|_| "Expected exactly one trailing NUL byte and no interior NUL bytes")
+fn validate_c_string(bytes: &[u8]) -> crate::Result<()> {
+    CStr::from_bytes_with_nul(bytes).map(|_| ()).map_err(|_| {
+        invalid_argument("Expected exactly one trailing NUL byte and no interior NUL bytes")
+    })
 }
 
 /**
@@ -146,14 +146,17 @@ impl ObjectPath {
      * Create a path reference from a u8 slice. Performs all checking needed to ensure requirements
      * are met.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&ObjectPath, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&ObjectPath> {
         if b.is_empty() {
-            return Err("Path must have at least 1 character ('/')");
+            return Err(invalid_argument(
+                "Path must have at least 1 character ('/')",
+            ));
         }
         validate_c_string(b)?;
 
         if b[0] != b'/' {
-            return Err("Path must begin with '/'");
+            return Err(invalid_argument("Path must begin with '/'"));
         }
 
         for w in b.windows(2) {
@@ -163,7 +166,9 @@ impl ObjectPath {
             match c {
                 b'/' => {
                     if prev == b'/' {
-                        return Err("Path must not have 2 '/' next to each other");
+                        return Err(invalid_argument(
+                            "Path must not have 2 '/' next to each other",
+                        ));
                     }
                 }
                 b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' => {
@@ -171,18 +176,24 @@ impl ObjectPath {
                 }
                 b'\0' => {
                     if prev == b'/' && b.len() != 2 {
-                        return Err("Path must not end in '/' unless it is the root path");
+                        return Err(invalid_argument(
+                            "Path must not end in '/' unless it is the root path",
+                        ));
                     }
 
                     return Ok(unsafe { ObjectPath::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err("Invalid character in path, only '[A-Z][a-z][0-9]_/' allowed");
+                    return Err(invalid_argument(
+                        "Invalid character in path, only '[A-Z][a-z][0-9]_/' allowed",
+                    ));
                 }
             }
         }
 
-        Err("Path must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Path must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -252,21 +263,22 @@ impl InterfaceName {
      *  Interface names must not being with a '.' character
      * sd-bus additionally requires nul ('\0') termination of the interface name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&InterfaceName, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&InterfaceName> {
         if b.is_empty() {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
         }
         if b.len() > 256 {
-            return Err("Must not exceed 255 characters");
+            return Err(invalid_argument("Must not exceed 255 characters"));
         }
         validate_c_string(b)?;
 
         match b[0] {
-            b'.' => return Err("Name must not begin with '.'"),
+            b'.' => return Err(invalid_argument("Name must not begin with '.'")),
             b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Name must only begin with '[A-Z][a-z]_'")),
         }
 
         let mut periods = 0;
@@ -276,7 +288,9 @@ impl InterfaceName {
             match c {
                 b'.' => {
                     if prev == b'.' {
-                        return Err("Name must not have 2 '.' next to each other");
+                        return Err(invalid_argument(
+                            "Name must not have 2 '.' next to each other",
+                        ));
                     }
 
                     periods += 1;
@@ -286,30 +300,32 @@ impl InterfaceName {
                 }
                 b'0'..=b'9' => {
                     if prev == b'.' {
-                        return Err("Name element must not start with '[0-9]'");
+                        return Err(invalid_argument("Name element must not start with '[0-9]'"));
                     }
                     // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
-                        return Err("Name must not end in '.'");
+                        return Err(invalid_argument("Name must not end in '.'"));
                     }
 
                     if periods < 1 {
-                        return Err("Name must have at least 2 elements");
+                        return Err(invalid_argument("Name must have at least 2 elements"));
                     }
                     return Ok(unsafe { InterfaceName::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in interface name, only '[A-Z][a-z][0-9]_\\.' \
                                 allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -377,26 +393,27 @@ impl BusName {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.is_empty() {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
         }
 
         if b.len() > 256 {
-            return Err("Must be shorter than 255 characters");
+            return Err(invalid_argument("Must be shorter than 255 characters"));
         }
         validate_c_string(b)?;
 
         let mut is_unique = false;
         match b[0] {
-            b'.' => return Err("Name must not begin with '.'"),
+            b'.' => return Err(invalid_argument("Name must not begin with '.'")),
             b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'-' => {
                 // Ok
             }
             b':' => {
                 is_unique = true; /* Ok */
             }
-            _ => return Err("Name must only begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Name must only begin with '[A-Z][a-z]_'")),
         }
 
         let mut periods = 0;
@@ -406,7 +423,7 @@ impl BusName {
             match c {
                 b'.' => {
                     if prev == b'.' || prev == b':' {
-                        return Err("Elements may not be empty");
+                        return Err(invalid_argument("Elements may not be empty"));
                     }
 
                     periods += 1;
@@ -416,29 +433,31 @@ impl BusName {
                 }
                 b'0'..=b'9' => {
                     if prev == b'.' && !is_unique {
-                        return Err("Name element must not start with '[0-9]'");
+                        return Err(invalid_argument("Name element must not start with '[0-9]'"));
                     }
                     // otherwise, Ok
                 }
                 b'\0' => {
                     if prev == b'.' && b.len() != 1 {
-                        return Err("Name must not end in '.'");
+                        return Err(invalid_argument("Name must not end in '.'"));
                     }
 
                     if periods < 1 {
-                        return Err("Name must have at least 2 elements");
+                        return Err(invalid_argument("Name must have at least 2 elements"));
                     }
                     return Ok(unsafe { BusName::from_bytes_unchecked(b) });
                 }
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in bus name, only '[A-Z][a-z][0-9]_\\.' allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -502,13 +521,14 @@ impl MemberName {
      *
      * sd-bus additionally requires nul ('\0') termination of the bus name.
      */
-    pub fn from_bytes(b: &[u8]) -> result::Result<&Self, &'static str> {
+    /// Invalid syntax or NUL termination returns an `InvalidInput` error.
+    pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.len() < 2 {
-            return Err("Name must have more than 0 characters");
+            return Err(invalid_argument("Name must have more than 0 characters"));
         }
 
         if b.len() > 256 {
-            return Err("Must be shorter than 255 characters");
+            return Err(invalid_argument("Must be shorter than 255 characters"));
         }
         validate_c_string(b)?;
 
@@ -516,7 +536,7 @@ impl MemberName {
             b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
                 // Ok
             }
-            _ => return Err("Must begin with '[A-Z][a-z]_'"),
+            _ => return Err(invalid_argument("Must begin with '[A-Z][a-z]_'")),
         }
 
         for c in b {
@@ -526,14 +546,16 @@ impl MemberName {
                 }
                 b'\0' => return Ok(unsafe { Self::from_bytes_unchecked(b) }),
                 _ => {
-                    return Err(
+                    return Err(invalid_argument(
                         "Invalid character in member name, only '[A-Z][a-z][0-9]_' allowed",
-                    );
+                    ));
                 }
             }
         }
 
-        Err("Name must be terminated in a '\\0' byte (for use by sd-bus)")
+        Err(invalid_argument(
+            "Name must be terminated in a '\\0' byte (for use by sd-bus)",
+        ))
     }
 
     /// # Safety
@@ -727,7 +749,7 @@ impl Error {
         message: Option<impl CStrArgument<'a>>,
     ) -> crate::Result<Error> {
         let name = name.try_into_cstr()?;
-        InterfaceName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
+        InterfaceName::from_bytes(name.to_bytes_with_nul())?;
         let message = message.map(|m| m.try_into_cstr()).transpose()?;
         let name = Utf8CStr::from_bytes(name.to_bytes_with_nul())
             .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
@@ -1110,6 +1132,150 @@ impl Bus {
         ffi_result(unsafe { ffi::bus::sd_bus_default_system(b.as_mut_ptr()) })?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
+
+    /// Open a new, independent connection to the user or system bus.
+    ///
+    /// libsystemd selects the user bus in a user session context and the
+    /// system bus otherwise. The connection is independent of the connections
+    /// returned by [`Bus::default`]. Use [`Bus::open_user`] or
+    /// [`Bus::open_system`] to select the bus explicitly.
+    ///
+    /// This corresponds to [`sd_bus_open`].
+    ///
+    /// [`sd_bus_open`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    #[inline]
+    pub fn open() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to the current user's bus.
+    ///
+    /// Uses `DBUS_SESSION_BUS_ADDRESS`, or the bus under `XDG_RUNTIME_DIR`
+    /// when no explicit address is set. Each invocation creates its own
+    /// connection, independent of [`Bus::default_user`].
+    ///
+    /// This corresponds to [`sd_bus_open_user`].
+    ///
+    /// [`sd_bus_open_user`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    #[inline]
+    pub fn open_user() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open_user(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to the local system bus.
+    ///
+    /// Uses `DBUS_SYSTEM_BUS_ADDRESS`, or the standard system-bus address
+    /// when no explicit address is set. Each invocation creates its own
+    /// connection, independent of [`Bus::default_system`]. Flush outgoing
+    /// messages and close the connection explicitly when shutting it down.
+    /// Dropping a bus only releases its reference; queued messages can keep
+    /// the connection alive.
+    ///
+    /// This corresponds to [`sd_bus_open_system`].
+    ///
+    /// [`sd_bus_open_system`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use systemd::bus::Bus;
+    /// let mut bus = Bus::open_system()?;
+    /// // Send messages using this connection.
+    /// let result = bus.flush();
+    /// bus.close(); // Close even if flushing failed.
+    /// result?;
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system() -> crate::Result<Bus> {
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: success initializes bus and transfers one owned reference.
+        ffi_result(unsafe { ffi::bus::sd_bus_open_system(bus.as_mut_ptr()) })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open an independent connection to a remote system bus over SSH.
+    ///
+    /// `host` accepts libsystemd's `[user@]host[:port][/machine]` syntax.
+    /// An optional machine selects a container on that host; entering a
+    /// container requires appropriate privileges on the remote host.
+    /// SSH authentication and transport setup are handled by libsystemd.
+    ///
+    /// Accepts Rust strings, C strings, their owned forms, and `Cow` through
+    /// [`crate::CStrArgument`]. The returned bus does not borrow the input.
+    /// Interior NUL bytes return `InvalidInput`; native syntax and connection
+    /// errors are returned as operating-system errors. The connection starts
+    /// during this call; further authentication or transport errors can surface
+    /// when processing messages or making calls.
+    ///
+    /// This corresponds to [`sd_bus_open_system_remote`].
+    ///
+    /// [`sd_bus_open_system_remote`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use std::ffi::CString;
+    /// use systemd::bus::Bus;
+    /// let target = CString::new("alice@example.org:2222/my-container").unwrap();
+    /// let bus = Bus::open_system_remote(target)?;
+    /// println!("{:?}", bus.unique_name()?);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system_remote<'a>(host: impl CStrArgument<'a>) -> crate::Result<Bus> {
+        let host = host.try_into_cstr()?;
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: host stays live throughout the call. Success initializes
+        // bus and transfers one owned reference to the returned connection.
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_open_system_remote(bus.as_mut_ptr(), host.as_ptr())
+        })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
+
+    /// Open a new, independent connection to a local machine's system bus.
+    ///
+    /// `machine` names a local container known to systemd. It can include a
+    /// `user@` prefix to select the connecting user. `.host` selects the local
+    /// host; for example, `alice@.host` connects as the local user `alice`.
+    /// With `@` syntax, an omitted user means the current user and an omitted
+    /// machine means `.host`. Without `@`, the connecting user is root.
+    /// Connecting into containers requires appropriate privileges.
+    ///
+    /// Accepts Rust strings, C strings, their owned forms, and `Cow` through
+    /// [`crate::CStrArgument`]. The returned bus does not borrow the input.
+    /// Interior NUL bytes return `InvalidInput`; libsystemd validates the
+    /// machine syntax and reports connection and permission errors.
+    ///
+    /// Unlike [`Bus::default_system`], each call creates its own connection.
+    /// Dropping the returned bus releases its reference to the connection.
+    /// This corresponds to [`sd_bus_open_system_machine`], available since
+    /// systemd 221. Supported machine syntax depends on the installed version.
+    ///
+    /// [`sd_bus_open_system_machine`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_default.html
+    ///
+    /// ```no_run
+    /// use systemd::bus::Bus;
+    /// let machine = String::from("my-container");
+    /// let bus = Bus::open_system_machine(&machine)?;
+    /// drop(machine); // The bus does not retain a borrow of the input.
+    /// println!("{:?}", bus.unique_name()?);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    #[inline]
+    pub fn open_system_machine<'a>(machine: impl CStrArgument<'a>) -> crate::Result<Bus> {
+        let machine = machine.try_into_cstr()?;
+        let mut bus = MaybeUninit::uninit();
+        // SAFETY: machine stays alive throughout the call. On success,
+        // libsystemd initializes bus and transfers one owned reference to us.
+        ffi_result(unsafe {
+            ffi::bus::sd_bus_open_system_machine(bus.as_mut_ptr(), machine.as_ptr())
+        })?;
+        Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
+    }
 }
 
 impl fmt::Debug for BusRef {
@@ -1146,6 +1312,43 @@ impl fmt::Debug for BusRef {
 }
 
 impl BusRef {
+    /// Synchronously write all queued outgoing messages to the connection.
+    ///
+    /// May block while the peer is slow to read. Success means the outgoing
+    /// queue is empty; it does not acknowledge receipt or processing by the
+    /// destination. Use this before [`BusRef::close`] to send pending messages.
+    ///
+    /// Flushing a shared default connection affects every user of that
+    /// connection. Library code should normally manage an independent
+    /// connection from [`Bus::open_system`] or [`Bus::open_user`].
+    ///
+    /// This corresponds to [`sd_bus_flush`].
+    ///
+    /// [`sd_bus_flush`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_close.html
+    #[inline]
+    pub fn flush(&mut self) -> crate::Result<()> {
+        ffi_result(unsafe { ffi::bus::sd_bus_flush(self.as_ptr()) })?;
+        Ok(())
+    }
+
+    /// Close the connection and discard its incoming and outgoing queues.
+    ///
+    /// This is idempotent and does not release this bus reference. Other
+    /// references to the same native connection also observe it as closed.
+    /// Further sends and receives fail. Call [`BusRef::flush`] first if pending
+    /// outgoing messages should be sent before closing.
+    ///
+    /// Closing a shared default connection affects every user of that
+    /// connection; normally close only independent connections you own.
+    ///
+    /// This corresponds to [`sd_bus_close`].
+    ///
+    /// [`sd_bus_close`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_close.html
+    #[inline]
+    pub fn close(&mut self) {
+        unsafe { ffi::bus::sd_bus_close(self.as_ptr()) };
+    }
+
     /// Returns the file descriptor used to communicate from a message bus object. This descriptor
     /// can be used with `poll(3)` or a similar function to wait for I/O events on the specified
     /// bus connection object.
@@ -1352,13 +1555,11 @@ impl BusRef {
         member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
         let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         let interface = interface.try_into_cstr()?;
-        let interface =
-            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
         let member = member.try_into_cstr()?;
-        let member =
-            MemberName::from_bytes(member.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_signal(
@@ -1385,15 +1586,13 @@ impl BusRef {
         member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
         let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         let interface = interface.try_into_cstr()?;
-        let interface =
-            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
         let member = member.try_into_cstr()?;
-        let member =
-            MemberName::from_bytes(member.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
         let mut m = MaybeUninit::uninit();
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_new_method_call(
@@ -1425,7 +1624,7 @@ impl BusRef {
         flags: u64,
     ) -> super::Result<()> {
         let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
         })?;
@@ -1443,7 +1642,7 @@ impl BusRef {
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
         let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1474,7 +1673,7 @@ impl BusRef {
     #[inline]
     pub fn release_name<'s>(&self, name: impl CStrArgument<'s>) -> super::Result<()> {
         let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _)
         })?;
@@ -1490,7 +1689,7 @@ impl BusRef {
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
         let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1518,7 +1717,7 @@ impl BusRef {
     #[inline]
     pub fn add_object_manager<'s>(&self, path: impl CStrArgument<'s>) -> super::Result<()> {
         let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_add_object_manager(
                 self.as_ptr(),
@@ -1538,10 +1737,9 @@ impl BusRef {
         vtable: Vtable,
     ) -> crate::Result<()> {
         let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
         let interface = interface.try_into_cstr()?;
-        let interface =
-            InterfaceName::from_bytes(interface.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
         vtable.register(self, path, interface)
     }
 
@@ -1647,7 +1845,7 @@ impl MessageRef {
     #[inline]
     pub fn set_destination<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
         let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         ffi_result(unsafe {
             ffi::bus::sd_bus_message_set_destination(self.as_ptr(), dest as *const _ as *const _)
         })?;
@@ -1896,7 +2094,7 @@ impl MessageRef {
     #[inline]
     pub fn send_to<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<u64> {
         let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         // self.bus().send_to(self, dest)
         let mut c = MaybeUninit::uninit();
         ffi_result(unsafe {
@@ -1921,7 +2119,7 @@ impl MessageRef {
     #[inline]
     pub fn send_to_no_reply<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
         let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul()).map_err(invalid_argument)?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
         // self.bus().send_to_no_reply(self, dest)
         ffi_result(unsafe {
             ffi::bus::sd_bus_send_to(

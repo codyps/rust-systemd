@@ -3,17 +3,28 @@
 use systemd::bus::{BusName, InterfaceName, MemberName, ObjectPath};
 
 #[test]
-fn name_wrappers_validate_the_entire_c_string() {
+fn name_wrappers_validate_the_entire_c_string() -> Result<(), Box<dyn std::error::Error>> {
     macro_rules! check {
         ($name:ty, $valid:expr) => {{
             let valid: &[u8] = $valid;
-            let name = <$name>::from_bytes(valid).unwrap();
+            let name = <$name>::from_bytes(valid)?;
             assert_eq!(name.to_bytes_with_nul(), valid);
-            assert!(<$name>::from_bytes(&valid[..valid.len() - 1]).is_err());
+            assert_eq!(name.as_ptr().cast::<u8>(), valid.as_ptr());
+            assert_eq!(
+                <$name>::from_bytes(&valid[..valid.len() - 1])
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::InvalidInput
+            );
             for suffix in [&b"suffix"[..], &b"\0"[..], &b"suffix\0"[..], &b"\xff\0"[..]] {
                 let mut invalid = valid.to_vec();
                 invalid.extend_from_slice(suffix);
-                assert!(<$name>::from_bytes(&invalid).is_err(), "{:?}", invalid);
+                assert_eq!(
+                    <$name>::from_bytes(&invalid).unwrap_err().kind(),
+                    std::io::ErrorKind::InvalidInput,
+                    "{:?}",
+                    invalid
+                );
             }
             // SAFETY: valid is a live, validated NUL-terminated name.
             let pointer_name = unsafe { <$name>::from_ptr_unchecked(valid.as_ptr().cast()) };
@@ -27,6 +38,28 @@ fn name_wrappers_validate_the_entire_c_string() {
     check!(BusName, b":1.123\0");
     check!(InterfaceName, b"org.example.Complete\0");
     check!(MemberName, b"Complete\0");
+    Ok(())
+}
+
+#[test]
+fn name_validation_errors_propagate_as_standard_errors() {
+    macro_rules! check {
+        ($name:ty, $invalid:expr) => {{
+            fn parse(bytes: &[u8]) -> Result<&$name, Box<dyn std::error::Error>> {
+                Ok(<$name>::from_bytes(bytes)?)
+            }
+            for bytes in [&b""[..], &b"\0"[..], &b"\xff\0"[..], &$invalid[..]] {
+                let error = parse(bytes).unwrap_err();
+                let error = error.downcast_ref::<std::io::Error>().unwrap();
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+                assert!(!error.to_string().is_empty());
+            }
+        }};
+    }
+    check!(ObjectPath, b"/invalid/path/\0");
+    check!(BusName, b"org.0invalid\0");
+    check!(InterfaceName, b"org.0invalid\0");
+    check!(MemberName, b"invalid.member\0");
 }
 
 #[test]

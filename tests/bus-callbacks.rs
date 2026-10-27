@@ -241,6 +241,137 @@ fn container_round_trip() {
     }
 }
 
+fn machine_connections() {
+    use std::borrow::Cow;
+    use std::ffi::{CStr, CString};
+
+    // @.host selects this host and our current user. The subprocess points
+    // its system-bus address at the private daemon, so no container or root
+    // privileges are needed and the real host bus is never contacted.
+    let default = bus::Bus::default_system().unwrap();
+    let mut names = vec![default.unique_name().unwrap().to_bytes().to_vec()];
+    fn check<'a>(machine: impl systemd::CStrArgument<'a>, names: &mut Vec<Vec<u8>>) {
+        let mut connection = bus::Bus::open_system_machine(machine).unwrap();
+        let name = connection.unique_name().unwrap().to_bytes().to_vec();
+        assert!(!names.contains(&name), "connection must be independent");
+        names.push(name);
+        // Owned inputs have already been dropped; the connection must remain
+        // usable, including the native authentication and method-call path.
+        let mut reply = get_id(&mut connection).call(1_000_000).unwrap();
+        let id: String = reply.iter().unwrap().next().unwrap().unwrap();
+        assert!(!id.is_empty());
+    }
+    check("@.host", &mut names);
+    check(String::from("@.host"), &mut names);
+    let rust_string = String::from("@.host");
+    check(&rust_string, &mut names);
+    let c_string = CString::new("@.host").unwrap();
+    check(c_string.as_c_str(), &mut names);
+    check(&c_string, &mut names);
+    check(c_string, &mut names);
+    check(Cow::<str>::Borrowed("@.host"), &mut names);
+    check(Cow::<str>::Owned(String::from("@.host")), &mut names);
+    check(
+        Cow::<CStr>::Owned(CString::new("@.host").unwrap()),
+        &mut names,
+    );
+}
+
+fn independent_connections() {
+    let mut defaults = [
+        bus::Bus::default().unwrap(),
+        bus::Bus::default_system().unwrap(),
+        bus::Bus::default_user().unwrap(),
+    ];
+    let mut names: Vec<_> = defaults
+        .iter()
+        .map(|bus| bus.unique_name().unwrap().to_bytes().to_vec())
+        .collect();
+    let opens = [bus::Bus::open, bus::Bus::open_system, bus::Bus::open_user];
+    let scopes = [
+        defaults[0].scope().unwrap().to_bytes().to_vec(),
+        b"system".to_vec(),
+        b"user".to_vec(),
+    ];
+    for (open, scope) in opens.iter().zip(&scopes) {
+        for _ in 0..2 {
+            let mut connection = open().unwrap();
+            assert_eq!(connection.scope().unwrap().to_bytes(), scope);
+            let name = connection.unique_name().unwrap().to_bytes().to_vec();
+            assert!(!names.contains(&name), "connection must be independent");
+            names.push(name);
+            let mut reply = get_id(&mut connection).call(1_000_000).unwrap();
+            let id: String = reply.iter().unwrap().next().unwrap().unwrap();
+            assert!(!id.is_empty());
+            connection.close();
+        }
+    }
+    // Closing independent connections must leave the shared defaults usable.
+    for default in &mut defaults {
+        get_id(default).call(1_000_000).unwrap();
+    }
+}
+
+fn connection_errors() {
+    macro_rules! check {
+        ($open:path, $native:path) => {{
+            let mut native = std::ptr::null_mut();
+            // SAFETY: native is a valid output. This subprocess has invalid
+            // addresses for both local buses, so no host connection is made.
+            let result = unsafe { $native(&mut native) };
+            if result >= 0 {
+                unsafe { libsystemd_sys::bus::sd_bus_unref(native) };
+                panic!("invalid bus address unexpectedly succeeded");
+            }
+            assert_eq!($open().err().unwrap().raw_os_error(), Some(-result));
+        }};
+    }
+    check!(bus::Bus::open, libsystemd_sys::bus::sd_bus_open);
+    check!(
+        bus::Bus::open_system,
+        libsystemd_sys::bus::sd_bus_open_system
+    );
+    check!(bus::Bus::open_user, libsystemd_sys::bus::sd_bus_open_user);
+}
+
+fn flush_and_close() {
+    let mut receiver = bus::Bus::open_user().unwrap();
+    let destination = receiver.unique_name().unwrap().to_owned();
+    let mut sender = bus::Bus::open_system().unwrap();
+    {
+        let mut signal = sender
+            .new_signal("/org/example/Shutdown", "org.example.Shutdown", "Flushed")
+            .unwrap();
+        signal.set_destination(destination).unwrap();
+        signal.append("before close").unwrap();
+        signal.send_no_reply().unwrap();
+    }
+    let mut alias = sender.clone();
+    sender.flush().unwrap();
+    assert_eq!(sender.n_queued_write().unwrap(), 0);
+    sender.close();
+    sender.close(); // Closing an already closed connection is harmless.
+    assert_eq!(alias.fd().unwrap_err().raw_os_error(), Some(libc::ENOTCONN));
+    assert_eq!(
+        alias.flush().unwrap_err().raw_os_error(),
+        Some(libc::ENOTCONN)
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(Some(mut message)) = receiver.process().unwrap() {
+            if message.member().map(|name| name.to_bytes()) == Some(b"Flushed") {
+                let text: String = message.iter().unwrap().next().unwrap().unwrap();
+                assert_eq!(text, "before close");
+                break;
+            }
+        }
+        assert!(Instant::now() < deadline, "flushed message not received");
+        receiver.wait(Some(Duration::from_millis(10))).unwrap();
+    }
+    receiver.close();
+}
+
 struct PrivateBus(Child);
 
 impl Drop for PrivateBus {
@@ -254,7 +385,15 @@ impl Drop for PrivateBus {
 fn callback_lifetimes_on_private_bus() {
     const CHILD_CASE: &str = "RUST_SYSTEMD_BUS_CALLBACK_CASE";
     if let Ok(case) = std::env::var(CHILD_CASE) {
-        if case == "vtable" {
+        if case == "connections" {
+            independent_connections();
+        } else if case == "connection-errors" {
+            connection_errors();
+        } else if case == "flush-close" {
+            flush_and_close();
+        } else if case == "machine" {
+            machine_connections();
+        } else if case == "vtable" {
             vtable::round_trip();
         } else if case == "vtable-errors" {
             vtable::registration_errors();
@@ -280,6 +419,10 @@ fn callback_lifetimes_on_private_bus() {
         .unwrap();
     assert!(!address.is_empty(), "private bus failed to start");
     for case in [
+        "connections",
+        "connection-errors",
+        "flush-close",
+        "machine",
         "vtable",
         "vtable-errors",
         "containers",
@@ -291,6 +434,11 @@ fn callback_lifetimes_on_private_bus() {
         "name-drop",
         "name-failed",
     ] {
+        let bus_address = if case == "connection-errors" {
+            "rust-systemd-invalid:"
+        } else {
+            address.trim()
+        };
         let mut child = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
@@ -298,8 +446,8 @@ fn callback_lifetimes_on_private_bus() {
                 "--nocapture",
             ])
             .env(CHILD_CASE, case)
-            .env("DBUS_SYSTEM_BUS_ADDRESS", address.trim())
-            .env("DBUS_SESSION_BUS_ADDRESS", address.trim())
+            .env("DBUS_SYSTEM_BUS_ADDRESS", bus_address)
+            .env("DBUS_SESSION_BUS_ADDRESS", bus_address)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

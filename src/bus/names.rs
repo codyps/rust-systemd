@@ -1,5 +1,5 @@
 use super::types::{FromSdBusMessage, SdBusBasicType, SdBusType, ToSdBusMessage};
-use super::{invalid_argument, BusName, InterfaceName, MemberName, ObjectPath};
+use super::{BusName, InterfaceName, MemberName, ObjectPath};
 use crate::CStrArgument;
 use std::borrow::{Borrow, Cow};
 use std::convert::TryFrom;
@@ -22,11 +22,11 @@ macro_rules! checked_name {
             #[allow(clippy::new_ret_no_self)] // Self is a borrowed, unsized string type.
             pub fn new<'a>(value: impl CStrArgument<'a>) -> crate::Result<Cow<'a, Self>> {
                 match value.try_into_cstr()? {
-                    Cow::Borrowed(value) => Self::from_bytes(value.to_bytes_with_nul())
-                        .map(Cow::Borrowed)
-                        .map_err(invalid_argument),
+                    Cow::Borrowed(value) => {
+                        Self::from_bytes(value.to_bytes_with_nul()).map(Cow::Borrowed)
+                    }
                     Cow::Owned(value) => {
-                        Self::from_bytes(value.as_bytes_with_nul()).map_err(invalid_argument)?;
+                        Self::from_bytes(value.as_bytes_with_nul())?;
                         Ok(Cow::Owned($owned { inner: value }))
                     }
                 }
