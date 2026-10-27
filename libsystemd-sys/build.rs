@@ -11,7 +11,10 @@ fn feature(name: &str) -> bool {
 fn requirements() -> Vec<(&'static str, &'static [&'static str])> {
     let mut groups = vec![(
         "the base API (systemd 233 or equivalent)",
-        &["sd_id128_get_machine_app_specific"][..],
+        &[
+            "sd_id128_get_machine_app_specific",
+            "sd_listen_fds_with_names",
+        ][..],
     )];
     if feature("BUS") {
         groups.push((

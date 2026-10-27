@@ -9,6 +9,7 @@ use crate::CStrArgument;
 use ::ffi::daemon as ffi;
 use libc::{c_char, c_uint};
 use libc::{SOCK_DGRAM, SOCK_RAW, SOCK_STREAM};
+use std::ffi::{CStr, CString};
 use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::os::unix::io::FromRawFd;
@@ -135,6 +136,159 @@ pub fn listen_fds() -> Result<ListenFds> {
 /// Call this during single-threaded startup before spawning any threads.
 pub unsafe fn listen_fds_unset_environment() -> Result<ListenFds> {
     unsafe { ListenFds::new(true) }
+}
+
+/// Socket-activation descriptors paired with their names, in native order.
+///
+/// This collection owns the names, preserving their original bytes. Descriptor
+/// numbers start at 3, as with [`ListenFds`]. Names may repeat; use
+/// [`Self::iter_named`] to select every descriptor with a given name.
+///
+/// The descriptors remain raw file descriptors: dropping this collection does
+/// not close them. Repeated calls with the environment retained refer to the
+/// same descriptors and do not create independent ownership of them.
+#[derive(Debug)]
+pub struct ListenFdsWithNames {
+    names: Vec<CString>,
+}
+
+impl ListenFdsWithNames {
+    unsafe fn new(unset_environment: bool) -> Result<Self> {
+        let mut native = NativeFdNames(ptr::null_mut());
+        // SAFETY: native is a writable output. The caller permits environment
+        // mutation when requested; false leaves the environment unchanged.
+        let count = ffi_result(unsafe {
+            ffi::sd_listen_fds_with_names(unset_environment as c_int, &mut native.0)
+        })?;
+        let mut names = Vec::with_capacity(count as usize);
+        if count > 0 {
+            // SAFETY: a positive native result supplies count non-null string
+            // pointers in a live array owned by native. Avoid a null slice for
+            // the zero-descriptor result, which may leave the output null.
+            let pointers = unsafe { std::slice::from_raw_parts(native.0, count as usize) };
+            for &name in pointers {
+                // SAFETY: each string is NUL-terminated and remains live until
+                // the guard is dropped. Copy into Rust-owned CString storage;
+                // native allocations must be released using libc::free.
+                names.push(unsafe { CStr::from_ptr(name) }.to_owned());
+            }
+        }
+        Ok(Self { names })
+    }
+
+    /// Number of passed descriptors, including those with duplicate names.
+    pub fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    /// Whether no descriptors were passed to this process.
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Iterate over raw descriptor numbers and borrowed names in native order.
+    pub fn iter(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (Fd, &CStr)> + DoubleEndedIterator + std::iter::FusedIterator + '_
+    {
+        self.names
+            .iter()
+            .enumerate()
+            // The native count is bounded by INT_MAX - LISTEN_FDS_START.
+            .map(|(index, name)| (LISTEN_FDS_START + index as Fd, name.as_c_str()))
+    }
+
+    /// Iterate over all descriptor numbers with this name, preserving order.
+    ///
+    /// Accepts Rust strings, C strings, their owned forms, and `Cow`. A single
+    /// trailing NUL is accepted; interior NUL bytes return `InvalidInput`.
+    pub fn iter_named<'a>(
+        &'a self,
+        name: impl CStrArgument<'a>,
+    ) -> Result<impl DoubleEndedIterator<Item = Fd> + std::iter::FusedIterator + 'a> {
+        let name = name.try_into_cstr()?;
+        Ok(self
+            .iter()
+            .filter_map(move |(fd, candidate)| (candidate == name.as_ref()).then_some(fd)))
+    }
+}
+
+// Own the native string vector until every name has been copied, including
+// during unwinding. Neither the vector nor its elements use Rust's allocator.
+struct NativeFdNames(*mut *mut c_char);
+
+impl Drop for NativeFdNames {
+    fn drop(&mut self) {
+        if self.0.is_null() {
+            return;
+        }
+        // SAFETY: sd_listen_fds_with_names transfers a malloc-allocated,
+        // null-terminated vector of malloc-allocated strings on success.
+        // The output starts null and is left unchanged on errors/no activation.
+        unsafe {
+            let mut current = self.0;
+            while !(*current).is_null() {
+                libc::free((*current).cast());
+                current = current.add(1);
+            }
+            libc::free(self.0.cast());
+        }
+    }
+}
+
+/// Read socket-activation descriptors and their names without clearing the
+/// process environment.
+///
+/// Corresponds to [`sd_listen_fds_with_names`], available since systemd 227.
+/// Reads `LISTEN_PID`, `LISTEN_FDS`, and `LISTEN_FDNAMES` (and `LISTEN_PIDFDID`
+/// on supporting versions). No activation for this process returns an empty
+/// collection. Missing names are reported as `unknown`; a name-count mismatch
+/// returns `EINVAL`. The native call sets `FD_CLOEXEC` on passed descriptors;
+/// some flags may already have changed if it later reports an error.
+///
+/// The collection owns only the names and does not close descriptors on drop.
+///
+/// [`sd_listen_fds_with_names`]: https://www.freedesktop.org/software/systemd/man/latest/sd_listen_fds.html
+///
+/// ```
+/// use systemd::daemon;
+/// let descriptors = daemon::listen_fds_with_names()?;
+/// for (fd, name) in descriptors.iter() {
+///     println!("descriptor {fd}: {name:?}");
+/// }
+/// for fd in descriptors.iter_named("http")? {
+///     println!("HTTP descriptor: {fd}");
+/// }
+/// # Ok::<(), std::io::Error>(())
+/// ```
+pub fn listen_fds_with_names() -> Result<ListenFdsWithNames> {
+    // SAFETY: false prevents libsystemd from modifying the environment.
+    unsafe { ListenFdsWithNames::new(false) }
+}
+
+/// Like [`listen_fds_with_names`], but clears the socket-activation environment
+/// variables supported by the installed libsystemd, including on errors.
+///
+/// # Safety
+///
+/// The caller must ensure no other thread or signal handler reads or modifies
+/// the process environment, including indirectly through C library functions.
+/// Call during single-threaded startup before spawning any threads.
+///
+/// ```no_run
+/// use systemd::daemon;
+/// // SAFETY: startup code ensures no concurrent environment access.
+/// let descriptors = unsafe { daemon::listen_fds_with_names_unset_environment() }?;
+/// # Ok::<(), std::io::Error>(())
+/// ```
+///
+/// Clearing the environment requires an explicit unsafe call:
+///
+/// ```compile_fail
+/// let descriptors = systemd::daemon::listen_fds_with_names_unset_environment();
+/// ```
+pub unsafe fn listen_fds_with_names_unset_environment() -> Result<ListenFdsWithNames> {
+    unsafe { ListenFdsWithNames::new(true) }
 }
 
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is

@@ -2,6 +2,10 @@ use super::{c_char, c_int, c_uint, pid_t, size_t};
 
 extern "C" {
     pub fn sd_listen_fds(unset_environment: c_int) -> c_int;
+    pub fn sd_listen_fds_with_names(
+        unset_environment: c_int,
+        names: *mut *mut *mut c_char,
+    ) -> c_int;
     pub fn sd_is_fifo(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_is_special(fd: c_int, path: *const c_char) -> c_int;
     pub fn sd_is_socket(fd: c_int, family: c_int, sock_type: c_int, listening: c_int) -> c_int;

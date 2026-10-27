@@ -6,6 +6,9 @@ use std::process::Command;
 use std::time::Duration;
 use systemd::daemon;
 
+#[path = "daemon-fd-names/mod.rs"]
+mod fd_names;
+
 fn check_environment(names: &[&str], unset: bool) {
     for name in names {
         assert_eq!(env::var_os(name).is_none(), unset, "{name}");
@@ -17,6 +20,7 @@ fn child(case: &str, unset: bool) {
     // environment access and libsystemd calls happen sequentially in main.
     unsafe {
         match case {
+            case if case.starts_with("names-") => fd_names::run(case, unset),
             "listen" | "listen-error" => {
                 env::set_var(
                     "LISTEN_PID",
@@ -111,7 +115,11 @@ fn main() {
         "notify",
         "pid-notify",
         "pid-notify-with-fds",
-    ] {
+    ]
+    .iter()
+    .copied()
+    .chain(fd_names::CASES.iter().copied())
+    {
         for mode in ["keep", "unset"] {
             let output = Command::new(env::current_exe().unwrap())
                 .args(["--daemon-environment-child", case, mode])
