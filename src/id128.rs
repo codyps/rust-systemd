@@ -96,6 +96,8 @@ impl Id128 {
         Ok(r)
     }
 
+    #[cfg(feature = "systemd_v240")]
+    #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v240")))]
     pub fn from_boot_app_specific(app_id: &Id128) -> Result<Id128> {
         let mut r = Id128::default();
         ffi_result(unsafe {

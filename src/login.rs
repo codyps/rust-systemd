@@ -268,6 +268,8 @@ pub fn session_uid<'a, S: CStrArgument<'a>>(session: S) -> Result<uid_t> {
 /// Retrieves the start time of the specified session as microseconds since Unix epoch.
 ///
 /// Corresponds to `sd_session_get_start_time()`.
+#[cfg(feature = "systemd_v254")]
+#[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v254")))]
 pub fn get_session_start_time<'a, S: CStrArgument<'a>>(session: S) -> Result<u64> {
     let session = session.try_into_cstr()?;
     let mut start_time_usec: u64 = 0;
@@ -278,6 +280,8 @@ pub fn get_session_start_time<'a, S: CStrArgument<'a>>(session: S) -> Result<u64
 }
 
 /// Alias for [`get_session_start_time()`].
+#[cfg(feature = "systemd_v254")]
+#[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v254")))]
 pub fn session_start_time<'a, S: CStrArgument<'a>>(session: S) -> Result<u64> {
     get_session_start_time(session)
 }

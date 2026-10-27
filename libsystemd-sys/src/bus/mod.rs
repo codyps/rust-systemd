@@ -138,7 +138,9 @@ extern "C" {
     pub fn sd_bus_get_allow_interactive_authorization(bus: *mut sd_bus) -> c_int;
     pub fn sd_bus_set_exit_on_disconnect(bus: *mut sd_bus, b: c_int) -> c_int;
     pub fn sd_bus_get_exit_on_disconnect(bus: *mut sd_bus) -> c_int;
+    #[cfg(feature = "systemd_v240")]
     pub fn sd_bus_set_close_on_exit(bus: *mut sd_bus, b: c_int) -> c_int;
+    #[cfg(feature = "systemd_v240")]
     pub fn sd_bus_get_close_on_exit(bus: *mut sd_bus) -> c_int;
     pub fn sd_bus_set_watch_bind(bus: *mut sd_bus, b: c_int) -> c_int;
     pub fn sd_bus_get_watch_bind(bus: *mut sd_bus) -> c_int;
@@ -154,6 +156,7 @@ extern "C" {
 
     pub fn sd_bus_ref(bus: *mut sd_bus) -> *mut sd_bus;
     pub fn sd_bus_unref(bus: *mut sd_bus) -> *mut sd_bus;
+    #[cfg(feature = "systemd_v241")]
     pub fn sd_bus_close_unref(bus: *mut sd_bus) -> *mut sd_bus;
     pub fn sd_bus_flush_close_unref(bus: *mut sd_bus) -> *mut sd_bus;
 
@@ -218,7 +221,9 @@ extern "C" {
     pub fn sd_bus_get_n_queued_read(bus: *mut sd_bus, ret: *mut u64) -> c_int;
     pub fn sd_bus_get_n_queued_write(bus: *mut sd_bus, ret: *mut u64) -> c_int;
 
+    #[cfg(feature = "systemd_v240")]
     pub fn sd_bus_set_method_call_timeout(bus: *mut sd_bus, usec: u64) -> c_int;
+    #[cfg(feature = "systemd_v240")]
     pub fn sd_bus_get_method_call_timeout(bus: *mut sd_bus, ret: *mut u64) -> c_int;
 
     pub fn sd_bus_add_filter(

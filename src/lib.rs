@@ -1,6 +1,22 @@
 #![cfg_attr(feature = "unstable-doc-cfg", feature(doc_cfg))]
 #![warn(rust_2018_idioms)]
 
+//! Rust interfaces to libsystemd and compatible libraries.
+//!
+//! Native APIs introduced in newer releases require explicit Cargo features:
+//! `systemd_v240` enables boot-specific application IDs and bus timeout APIs;
+//! `systemd_v241` adds the raw close-and-unref helper; `systemd_v245` adds
+//! journal namespaces; `systemd_v254` adds session start-time queries. Each
+//! version feature includes the earlier version features. The default `bus`
+//! feature requires the callback-lifetime APIs from systemd 239. With bus
+//! disabled, the base APIs require systemd 233 or equivalent capabilities.
+//!
+//! The build script checks required native symbols by linking a probe for the
+//! target without running it. This includes explicit `SYSTEMD_LIB_DIR` and
+//! `SYSTEMD_LIBS` selections and libraries selected by `SYSTEMD_PKG_NAME`,
+//! including libelogind. Disable unsupported features or install a library
+//! providing the selected APIs when the capability check fails.
+
 #[cfg(all(feature = "journal", doctest))]
 doc_comment::doctest!("../README.md", readme);
 
@@ -24,9 +40,38 @@ mod cstring;
 pub use self::cstring::CStrArgument;
 
 #[cfg(any(feature = "journal", feature = "bus"))]
-fn usec_from_duration(duration: std::time::Duration) -> u64 {
-    let sub_usecs = duration.subsec_micros() as u64;
-    duration.as_secs() * 1_000_000 + sub_usecs
+fn usec_from_duration(duration: std::time::Duration) -> Result<u64> {
+    duration
+        .as_secs()
+        .checked_mul(1_000_000)
+        .and_then(|usecs| usecs.checked_add(u64::from(duration.subsec_micros())))
+        // UINT64_MAX is libsystemd's infinity sentinel, reserved for None.
+        .filter(|&usecs| usecs != u64::MAX)
+        .ok_or_else(|| Error::from_raw_os_error(libc::EOVERFLOW))
+}
+
+#[cfg(all(test, any(feature = "journal", feature = "bus")))]
+#[test]
+fn finite_timeout_conversion_checks_overflow_and_reserves_infinity() {
+    use std::time::Duration;
+    for (duration, expected) in [
+        (Duration::ZERO, 0),
+        (Duration::from_nanos(999), 0),
+        (Duration::new(2, 123_456_789), 2_123_456),
+        (Duration::from_micros(u64::MAX - 1), u64::MAX - 1),
+    ] {
+        assert_eq!(usec_from_duration(duration).unwrap(), expected);
+    }
+    for duration in [
+        Duration::from_micros(u64::MAX),
+        Duration::from_micros(u64::MAX) + Duration::from_micros(1),
+        Duration::MAX,
+    ] {
+        assert_eq!(
+            usec_from_duration(duration).unwrap_err().raw_os_error(),
+            Some(libc::EOVERFLOW)
+        );
+    }
 }
 
 /// Convert a systemd ffi return value into a Result

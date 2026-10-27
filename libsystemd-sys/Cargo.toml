@@ -15,7 +15,10 @@ default = ["bus", "journal"]
 
 bus = []
 journal = []
-systemd_v245 = []
+systemd_v240 = []
+systemd_v241 = ["systemd_v240"]
+systemd_v245 = ["systemd_v241"]
+systemd_v254 = ["systemd_v245"]
 
 [dependencies]
 cfg-if = "1.0.4"

@@ -15,7 +15,10 @@ default = ["bus", "journal"]
 
 bus = ["libsystemd-sys/bus"]
 journal = ["libsystemd-sys/journal"]
-systemd_v245 = ["libsystemd-sys/systemd_v245"]
+systemd_v240 = ["libsystemd-sys/systemd_v240"]
+systemd_v241 = ["systemd_v240", "libsystemd-sys/systemd_v241"]
+systemd_v245 = ["systemd_v241", "libsystemd-sys/systemd_v245"]
+systemd_v254 = ["systemd_v245", "libsystemd-sys/systemd_v254"]
 unstable-doc-cfg = []
 
 [dependencies]
@@ -31,6 +34,7 @@ serde = { version = "1", default-features = false, optional = true }
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
 version = "0.9.5"
+default-features = false
 
 [dev-dependencies]
 version-sync = "0.9.2"
