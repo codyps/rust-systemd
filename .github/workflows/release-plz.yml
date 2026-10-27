@@ -26,10 +26,20 @@ jobs:
       group: release-plz-pr
       cancel-in-progress: false
     steps:
+      - name: Create release PR token
+        if: vars.RELEASE_PLZ_APP_CLIENT_ID != ''
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_PLZ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Check release metadata
         run: python3 .github/scripts/sync_release.py --check
@@ -44,11 +54,11 @@ jobs:
           command: release-pr
           version: 0.4.1
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       - name: Synchronize release metadata
         if: steps.release.outputs.prs_created == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail

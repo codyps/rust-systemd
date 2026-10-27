@@ -36,16 +36,35 @@ See the [crates.io trusted publishing documentation](https://crates.io/docs/trus
 
 ## Release PR checks
 
-The release PR job uses the repository's built-in GitHub token. After opening or
-updating the PR, it synchronizes both README examples and the minimum
-`libsystemd-sys` dependency. GitHub requires a maintainer to select **Approve
-workflows to run** on the bot's PR before its normal `pull_request` CI can run.
-Approve the workflow for the final branch commit, wait for CI, then merge the
-release PR when ready. Updates from the bot can require approval again.
+After opening or updating the release PR, the job synchronizes both README examples
+and the minimum `libsystemd-sys` dependency. A GitHub App installation token allows
+the PR and subsequent pushes to trigger normal `pull_request` CI automatically.
+The same token is used for checkout, release-plz, and metadata pushes. It is scoped
+to this repository with Contents and Pull requests write permissions, and revoked
+when the job finishes. Publishing uses the built-in GitHub token and crates.io OIDC.
 
-This setup needs no GitHub App or personal access token. A GitHub App installation
-token could remove the workflow approval step in a future configuration.
-Manually dispatched CI does not satisfy GitHub's required PR checks; see
+Configure the App once:
+
+1. [Create a private GitHub App](https://github.com/settings/apps/new?name=codyps-rust-systemd-releases&url=https%3A%2F%2Fgithub.com%2Fcodyps%2Frust-systemd&public=false&webhook_active=false&contents=write&pull_requests=write).
+   Grant **Contents: Read and write** and **Pull requests: Read and write**.
+   Leave webhooks disabled and installation limited to this account.
+2. Install it on `codyps/rust-systemd` only. Generate a private key in its settings.
+3. Store the downloaded PEM as the repository Actions secret
+   `RELEASE_PLZ_APP_PRIVATE_KEY`, then set the repository Actions variable
+   `RELEASE_PLZ_APP_CLIENT_ID` to the App's **Client ID**. For example:
+
+   ```sh
+   gh secret set RELEASE_PLZ_APP_PRIVATE_KEY --repo codyps/rust-systemd < /path/to/private-key.pem
+   gh variable set RELEASE_PLZ_APP_CLIENT_ID --repo codyps/rust-systemd --body 'YOUR_APP_CLIENT_ID'
+   ```
+
+4. Dispatch `Release-plz` on master to refresh the release PR. Wait for its CI,
+   then merge the release PR when ready.
+
+Until the Client ID variable is configured, the job falls back to the built-in
+GitHub token. In that mode, a maintainer must select **Approve workflows to run**
+on the bot's PR; updates from the bot can require approval again.
+Manually dispatched CI does not satisfy required PR checks; see
 [GitHub's status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
 
 The minimum sys-crate dependency follows its workspace version so consumers cannot
