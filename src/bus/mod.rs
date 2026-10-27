@@ -600,7 +600,10 @@ pub struct RawError {
 impl RawError {
     /// # Safety
     ///
-    /// `ptr` must point to a valid `sd_bus_error` which has a lifetime of at least `'a`.
+    /// `ptr` must point to an initialized `sd_bus_error` for at least `'a`.
+    /// Non-null embedded pointers must remain valid NUL-terminated UTF-8 strings
+    /// for that lifetime; the name must be a valid D-Bus error name. The native
+    /// owner must not free or change the error while this view is borrowed.
     pub unsafe fn from_ptr<'a>(ptr: *const ffi::bus::sd_bus_error) -> &'a Self {
         // this is incredibly questionable: we're casting it through to a wrapper struct. It's
         // unclear if we're providing everything necessary for this to work right.
@@ -728,13 +731,53 @@ impl Default for RawError {
     }
 }
 
-impl From<ffi::bus::sd_bus_error> for RawError {
-    fn from(inner: ffi::bus::sd_bus_error) -> Self {
+impl RawError {
+    /// Take ownership of a native error. Dropping this wrapper calls
+    /// `sd_bus_error_free`; it does not copy or validate the embedded pointers.
+    ///
+    /// # Safety
+    ///
+    /// `inner` must be an initialized `sd_bus_error`. Non-null name and message
+    /// pointers must refer to valid NUL-terminated UTF-8 strings for this
+    /// wrapper's entire lifetime, and a non-null name must be a valid D-Bus error
+    /// name. Owned storage must be compatible with `sd_bus_error_free` and must
+    /// not be freed elsewhere after this transfer. Non-owning strings must
+    /// remain live for the wrapper's lifetime; copying their pointers does not
+    /// extend their lifetime.
+    ///
+    /// ```
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// // SAFETY: this is an initialized, empty error with no owned storage.
+    /// let error = unsafe { RawError::from_raw(native) };
+    /// assert!(error.name().is_none());
+    /// ```
+    ///
+    /// Taking ownership requires an explicit unsafe block:
+    ///
+    /// ```compile_fail
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// let error = RawError::from_raw(native);
+    /// ```
+    ///
+    /// The unchecked native value cannot enter through a safe conversion either:
+    ///
+    /// ```compile_fail
+    /// use systemd::bus::RawError;
+    /// let native = libsystemd_sys::bus::sd_bus_error {
+    ///     name: std::ptr::null(), message: std::ptr::null(), need_free: 0,
+    /// };
+    /// let error = RawError::from(native);
+    /// ```
+    pub unsafe fn from_raw(inner: ffi::bus::sd_bus_error) -> Self {
         Self { inner }
     }
-}
 
-impl RawError {
     #[inline]
     fn new() -> Self {
         Default::default()
@@ -880,7 +923,9 @@ fn raw_error_clone_initializes_storage() {
 }
 
 /* XXX: fixme: return code does have meaning! */
-extern "C" fn raw_message_handler<F>(
+// SAFETY: libsystemd supplies a live message, userdata pointing to F retained by
+// its current slot, and an initialized writable error output.
+unsafe extern "C" fn raw_message_handler<F>(
     msg: *mut ffi::bus::sd_bus_message,
     userdata: *mut c_void,
     ret_error: *mut ffi::bus::sd_bus_error,
@@ -909,7 +954,9 @@ where
     }
 }
 
-extern "C" fn raw_destroy_userdata<F>(userdata: *mut c_void) {
+// SAFETY: userdata is the unique allocation from Box::into_raw, and native slot
+// teardown calls this once, after unregistering its callbacks and table.
+unsafe extern "C" fn raw_destroy_userdata<F>(userdata: *mut c_void) {
     let _: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
 }
 
@@ -1275,7 +1322,7 @@ impl BusRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let f: extern "C" fn(
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
@@ -1318,7 +1365,7 @@ impl BusRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let f: extern "C" fn(
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
@@ -1792,7 +1839,7 @@ impl MessageRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + 'static + Sync + Send,
     {
-        let f: extern "C" fn(
+        let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
             *mut ffi::bus::sd_bus_error,

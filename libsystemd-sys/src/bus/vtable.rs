@@ -34,6 +34,12 @@ pub enum SdBusVtableFlag {
 /// The original v221 vtable layout, also accepted by newer libsystemd releases.
 /// It omits the argument-name fields added in v242. The start entry advertises
 /// this layout's element size so libsystemd uses the correct stride.
+///
+/// Constructors only store raw pointers; they do not dereference them, invoke
+/// handlers, or take ownership. They impose no pointer validity requirements.
+/// Calling the unsafe `sd_bus_add_object_vtable`/`sd_bus_add_fallback_vtable`
+/// APIs requires a correctly terminated table and valid strings, callbacks,
+/// and userdata for the entire registration lifetime, including unregistration.
 pub struct sd_bus_vtable {
     type_and_flags: u64,
     union_data: VtableData,
@@ -89,6 +95,8 @@ impl sd_bus_vtable {
         Self::entry(SdBusVtableType::End, 0)
     }
 
+    /// Store a method descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
     pub fn method(
         member: *const c_char,
         signature: *const c_char,
@@ -108,12 +116,16 @@ impl sd_bus_vtable {
         entry
     }
 
+    /// Store a signal descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
     pub fn signal(member: *const c_char, signature: *const c_char, flags: u64) -> Self {
         let mut entry = Self::entry(SdBusVtableType::Signal, flags);
         entry.union_data.signal = sd_bus_table_signal { member, signature };
         entry
     }
 
+    /// Store a property descriptor without inspecting its pointers. The caller
+    /// must satisfy the registration API's safety contract before using it.
     pub fn property(
         member: *const c_char,
         signature: *const c_char,

@@ -316,7 +316,12 @@ unsafe fn find<'a>(
     })
 }
 
-fn invoke(error: *mut raw::sd_bus_error, callback: impl FnOnce() -> super::Result<()>) -> c_int {
+// SAFETY: error is null or points to an initialized, empty, writable error
+// output which may take ownership of the callback's error allocation.
+unsafe fn invoke(
+    error: *mut raw::sd_bus_error,
+    callback: impl FnOnce() -> super::Result<()>,
+) -> c_int {
     match catch_unwind(AssertUnwindSafe(callback)) {
         Ok(Ok(())) => 1,
         Ok(Err(failure)) => {
