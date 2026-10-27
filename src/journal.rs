@@ -17,29 +17,47 @@ use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::{fmt, io, ptr, result, slice, time};
 
-fn collect_and_send<T, S>(args: T) -> c_int
-where
-    T: Iterator<Item = S>,
-    S: AsRef<str>,
-{
+fn collect_and_send<'a>(args: impl Iterator<Item = &'a str>) -> Result<()> {
     let iovecs: Vec<const_iovec> = args
-        // SAFETY: we manually guarantee that the lifetime of const_iovec does not exceed that of
-        // the data it's referencing in order to avoid additional allocations.
+        // SAFETY: the fields borrow caller-owned strings that outlive this synchronous call.
+        // sd_journal_sendv neither modifies the fields nor retains their pointers after returning.
         .map(|x| unsafe { const_iovec::from_str(x) })
         .collect();
-    unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs.len() as c_int) }
+
+    let iovecs_len: c_int = iovecs
+        .len()
+        .try_into()
+        .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
+
+    let result = unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs_len) };
+    ffi_result(result).map(|_| ())
 }
 
 /// Send preformatted fields to systemd.
 ///
 /// This is a relatively low-level operation and probably not suitable unless
 /// you need precise control over which fields are sent to systemd.
-pub fn send(args: &[&str]) -> c_int {
-    collect_and_send(args.iter())
+///
+/// Returns `Ok(())` when libsystemd reports success, or an error containing its errno on failure.
+/// An empty field list or malformed field framing (such as a missing `=`) returns `EINVAL`.
+/// Field values may contain newlines or NUL bytes and are passed without trimming whitespace.
+///
+/// `Ok(())` does not mean the message was necessarily delivered: libsystemd also reports success
+/// when the journal socket is absent, and journald can discard messages or fields after accepting
+/// them.
+pub fn send(args: &[&str]) -> Result<()> {
+    collect_and_send(args.iter().copied())
 }
 
 /// Send a simple message to systemd-journald.
-pub fn print(lvl: u32, s: &str) -> c_int {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+///
+/// This submits `PRIORITY` and `MESSAGE` fields using `sd_journal_sendv`.
+/// Unlike native `sd_journal_print`, it preserves whitespace and does not validate that `lvl`
+/// is in the recommended range `0..=7`.
+pub fn print(lvl: u32, s: &str) -> Result<()> {
     send(&[&format!("PRIORITY={lvl}"), &format!("MESSAGE={s}")])
 }
 
@@ -67,18 +85,30 @@ impl From<log::Level> for SyslogLevel {
 }
 
 /// Record a log entry, with custom priority and location.
-pub fn log(level: usize, file: &str, line: u32, module_path: &str, args: &fmt::Arguments<'_>) {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+pub fn log(
+    level: usize,
+    file: &str,
+    line: u32,
+    module_path: &str,
+    args: &fmt::Arguments<'_>,
+) -> Result<()> {
     send(&[
         &format!("PRIORITY={level}"),
         &format!("MESSAGE={args}"),
         &format!("CODE_LINE={line}"),
         &format!("CODE_FILE={file}"),
         &format!("CODE_MODULE={module_path}"),
-    ]);
+    ])
 }
 
 /// Send a `log::Record` to systemd-journald.
-pub fn log_record(record: &Record<'_>) {
+///
+/// Returns `Ok(())` on success, or an `Error` on failure.
+/// See [`send`] for the limits of this success indication.
+pub fn log_record(record: &Record<'_>) -> Result<()> {
     let keys = [
         format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
         format!("MESSAGE={}", record.args()),
@@ -90,10 +120,17 @@ pub fn log_record(record: &Record<'_>) {
         record.module_path().map(|path| format!("CODE_FUNC={path}")),
     ];
 
-    collect_and_send(keys.iter().chain(opt_keys.iter().flatten()));
+    collect_and_send(
+        keys.iter()
+            .chain(opt_keys.iter().flatten())
+            .map(String::as_str),
+    )
 }
 
 /// Logger implementation over systemd-journald.
+///
+/// Journal errors are ignored because [`Log::log`] cannot return them. Use [`log_record`]
+/// directly when errors need to be handled.
 pub struct JournalLog;
 impl Log for JournalLog {
     fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
@@ -101,7 +138,7 @@ impl Log for JournalLog {
     }
 
     fn log(&self, record: &Record<'_>) {
-        log_record(record);
+        let _ = log_record(record);
     }
 
     fn flush(&self) {
@@ -675,6 +712,36 @@ impl JournalRef {
         ffi_result(unsafe { ffi::sd_journal_get_fd(self.as_ptr()) })
     }
 
+    /// Returns the total disk space used by journal files currently accessible
+    /// through this `Journal` handle, in bytes.
+    ///
+    /// Corresponds to `sd_journal_get_usage()`.
+    pub fn usage(&self) -> Result<u64> {
+        let mut bytes: u64 = 0;
+        ffi_result(unsafe { ffi::sd_journal_get_usage(self.as_ptr(), &mut bytes) })?;
+        Ok(bytes)
+    }
+
+    /// Returns `true` if persistent journal files have been found under `/var`.
+    ///
+    /// This reports journal file discovery, not the type of the underlying filesystem.
+    ///
+    /// Corresponds to `sd_journal_has_persistent_files()`.
+    pub fn has_persistent_files(&self) -> Result<bool> {
+        let r = ffi_result(unsafe { ffi::sd_journal_has_persistent_files(self.as_ptr()) })?;
+        Ok(r > 0)
+    }
+
+    /// Returns `true` if runtime journal files have been found under `/run`.
+    ///
+    /// This reports journal file discovery, not the type of the underlying filesystem.
+    ///
+    /// Corresponds to `sd_journal_has_runtime_files()`.
+    pub fn has_runtime_files(&self) -> Result<bool> {
+        let r = ffi_result(unsafe { ffi::sd_journal_has_runtime_files(self.as_ptr()) })?;
+        Ok(r > 0)
+    }
+
     /// Fields that are longer that this number of bytes _may_ be truncated when retrieved by this [`Journal`]
     /// instance.
     ///
@@ -787,6 +854,61 @@ impl JournalRef {
         }
 
         Ok(ret)
+    }
+
+    /// Prepare enumeration of unique values for a specified field across all accessible entries.
+    ///
+    /// Journal match filters set with [`Self::match_add()`] do not restrict this enumeration.
+    ///
+    /// After calling this, use [`enumerate_unique()`] to iterate through the unique values and
+    /// [`restart_unique()`] to reset the enumeration.
+    ///
+    /// Corresponds to `sd_journal_query_unique()`.
+    pub fn query_unique<A: CStrArgument>(&mut self, field: A) -> Result<()> {
+        let f = field.into_cstr();
+        crate::ffi_result(unsafe {
+            ffi::sd_journal_query_unique(self.as_ptr(), f.as_ref().as_ptr())
+        })
+        .map(|_| ())
+    }
+
+    /// Restart the iteration of unique values previously set up by [`query_unique()`].
+    ///
+    /// Corresponds to `sd_journal_restart_unique()`.
+    pub fn restart_unique(&mut self) {
+        unsafe { ffi::sd_journal_restart_unique(self.as_ptr()) }
+    }
+
+    /// Obtain the next unique value for the field selected with [`query_unique()`].
+    ///
+    /// The returned [`JournalEntryField`] wraps the raw "FIELD=value" bytes. Use
+    /// [`JournalEntryField::value()`] to access only the value portion.
+    ///
+    /// Safety/lifetime notes are identical to those of [`enumerate_data()`]: the returned slice is
+    /// only valid until the next call to one of the enumeration/get functions on this `JournalRef`.
+    ///
+    /// Corresponds to `sd_journal_enumerate_unique()`.
+    pub fn enumerate_unique(&mut self) -> Result<Option<JournalEntryField<'_>>> {
+        let mut data = MaybeUninit::<*const c_void>::uninit();
+        let mut data_len = MaybeUninit::uninit();
+        let r = crate::ffi_result(unsafe {
+            ffi::sd_journal_enumerate_unique(
+                self.as_ptr(),
+                data.as_mut_ptr(),
+                data_len.as_mut_ptr(),
+            )
+        });
+
+        let v = r?;
+
+        if v == 0 {
+            return Ok(None);
+        }
+
+        // SAFETY: see notes above; cast void pointer to u8 for slice construction.
+        let ptr = unsafe { data.assume_init() } as *const u8;
+        let b = unsafe { std::slice::from_raw_parts(ptr, data_len.assume_init()) };
+        Ok(Some(b.into()))
     }
 
     /// Iterate over journal entries.
@@ -1028,6 +1150,62 @@ impl JournalRef {
             )
         })?;
         Ok(monotonic_timestamp_us)
+    }
+
+    /// Returns the realtime cutoff timestamps of the journal.
+    /// (i.e. the timestamps of the first and last entries)
+    ///
+    /// Timestamps are in microseconds since the Unix epoch. Returns `None` if the journal
+    /// contains no suitable entries.
+    ///
+    /// Corresponds to `sd_journal_get_cutoff_realtime_usec()`.
+    pub fn cutoff_realtime_usec(&self) -> Result<Option<(u64, u64)>> {
+        let mut from: u64 = 0;
+        let mut to: u64 = 0;
+        let r = ffi_result(unsafe {
+            ffi::sd_journal_get_cutoff_realtime_usec(self.as_ptr(), &mut from, &mut to)
+        })?;
+        Ok(if r == 0 { None } else { Some((from, to)) })
+    }
+
+    /// Returns the realtime cutoff timestamps of the journal as SystemTime.
+    ///
+    /// Returns `None` if the journal contains no suitable entries.
+    pub fn cutoff_realtime(&self) -> Result<Option<(time::SystemTime, time::SystemTime)>> {
+        Ok(self.cutoff_realtime_usec()?.map(|(from, to)| {
+            (
+                system_time_from_realtime_usec(from),
+                system_time_from_realtime_usec(to),
+            )
+        }))
+    }
+
+    /// Returns the monotonic cutoff timestamps of the journal for the given boot ID.
+    ///
+    /// Timestamps are in microseconds since boot. Returns `None` if the journal contains
+    /// no suitable entries for this boot ID.
+    ///
+    /// Corresponds to `sd_journal_get_cutoff_monotonic_usec()`.
+    pub fn cutoff_monotonic_usec(&self, boot_id: Id128) -> Result<Option<(u64, u64)>> {
+        let mut from: u64 = 0;
+        let mut to: u64 = 0;
+        let r = ffi_result(unsafe {
+            ffi::sd_journal_get_cutoff_monotonic_usec(
+                self.as_ptr(),
+                boot_id.inner,
+                &mut from,
+                &mut to,
+            )
+        })?;
+        Ok(if r == 0 { None } else { Some((from, to)) })
+    }
+
+    /// Returns the monotonic cutoff timestamps of the journal for the current boot.
+    ///
+    /// Returns `None` if the journal contains no suitable entries for the current boot.
+    pub fn cutoff_monotonic_usec_current_boot(&self) -> Result<Option<(u64, u64)>> {
+        let boot_id = Id128::from_boot()?;
+        self.cutoff_monotonic_usec(boot_id)
     }
 
     /// Adds a match by which to filter the entries of the journal.
