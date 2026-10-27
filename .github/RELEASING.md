@@ -38,9 +38,15 @@ See the [crates.io trusted publishing documentation](https://crates.io/docs/trus
 
 The release PR job uses the repository's built-in GitHub token. After opening or
 updating the PR, it synchronizes both README examples and the minimum
-`libsystemd-sys` dependency, then explicitly dispatches `build.yml` on the final
-release branch commit. This runs the required CI without needing a GitHub App,
-personal access token, or manual workflow approval for the bot's PR event.
+`libsystemd-sys` dependency. GitHub requires a maintainer to select **Approve
+workflows to run** on the bot's PR before its normal `pull_request` CI can run.
+Approve the workflow for the final branch commit, wait for CI, then merge the
+release PR when ready. Updates from the bot can require approval again.
+
+This setup needs no GitHub App or personal access token. A GitHub App installation
+token could remove the workflow approval step in a future configuration.
+Manually dispatched CI does not satisfy GitHub's required PR checks; see
+[GitHub's status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
 
 The minimum sys-crate dependency follows its workspace version so consumers cannot
 resolve an older sys crate that lacks newly added FFI declarations.
