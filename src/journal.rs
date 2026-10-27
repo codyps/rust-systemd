@@ -108,29 +108,48 @@ pub fn log(
 ///
 /// Returns `Ok(())` on success, or an `Error` on failure.
 /// See [`send`] for the limits of this success indication.
+/// For custom message formatting, use [`JournalLog::with_formatter`] and
+/// [`FormattedJournalLog::log_record`].
 pub fn log_record(record: &Record<'_>) -> Result<()> {
-    let keys = [
-        format!("PRIORITY={}", SyslogLevel::from(record.level()) as usize),
-        format!("MESSAGE={}", record.args()),
-        format!("TARGET={}", record.target()),
-    ];
-    let opt_keys = [
+    log_record_with_formatter(record, &default_formatter)
+}
+
+fn default_formatter(out: &mut dyn fmt::Write, record: &Record<'_>) -> fmt::Result {
+    write!(out, "{}", record.args())
+}
+
+fn format_record(
+    record: &Record<'_>,
+    formatter: &impl Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result,
+) -> Result<[Option<String>; 6]> {
+    let mut message = String::from("MESSAGE=");
+    formatter(&mut message, record).map_err(io::Error::other)?;
+    Ok([
+        Some(format!(
+            "PRIORITY={}",
+            SyslogLevel::from(record.level()) as usize
+        )),
+        Some(message),
+        Some(format!("TARGET={}", record.target())),
         record.line().map(|line| format!("CODE_LINE={line}")),
         record.file().map(|file| format!("CODE_FILE={file}")),
         record.module_path().map(|path| format!("CODE_FUNC={path}")),
-    ];
+    ])
+}
 
-    collect_and_send(
-        keys.iter()
-            .chain(opt_keys.iter().flatten())
-            .map(String::as_str),
-    )
+fn log_record_with_formatter(
+    record: &Record<'_>,
+    formatter: &impl Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result,
+) -> Result<()> {
+    let fields = format_record(record, formatter)?;
+    collect_and_send(fields.iter().flatten().map(String::as_str))
 }
 
 /// Logger implementation over systemd-journald.
 ///
 /// Journal errors are ignored because [`Log::log`] cannot return them. Use [`log_record`]
 /// directly when errors need to be handled.
+/// Use [`Self::with_formatter`] to customize the message text.
 pub struct JournalLog;
 impl Log for JournalLog {
     fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
@@ -148,8 +167,88 @@ impl Log for JournalLog {
 
 static LOGGER: JournalLog = JournalLog;
 impl JournalLog {
+    /// Install the default logger globally. Set the maximum level separately with
+    /// [`log::set_max_level`].
     pub fn init() -> result::Result<(), SetLoggerError> {
         log::set_logger(&LOGGER)
+    }
+
+    /// Create a logger with a custom formatter for the journal's `MESSAGE` field.
+    ///
+    /// The formatter receives the complete record and writes the message value, without a
+    /// `MESSAGE=` prefix. The structured priority, target, and available source-location fields
+    /// are still sent separately. Newlines, NUL bytes, and whitespace in the message are preserved.
+    ///
+    /// The formatter can capture state. It must be `Send + Sync`, and must also be `'static`
+    /// when the logger is installed globally. Avoid logging through the `log` facade inside
+    /// the formatter, since that would call the formatter recursively once installed.
+    ///
+    /// ```
+    /// use systemd::journal::JournalLog;
+    ///
+    /// JournalLog::with_formatter(|out, record| {
+    ///     write!(out, "[{}] {}", record.target(), record.args())
+    /// }).install()?;
+    /// log::set_max_level(log::LevelFilter::Info);
+    /// log::info!(target: "my-service", "ready");
+    /// # Ok::<(), log::SetLoggerError>(())
+    /// ```
+    pub fn with_formatter<F>(formatter: F) -> FormattedJournalLog<F>
+    where
+        F: Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result + Send + Sync,
+    {
+        FormattedJournalLog { formatter }
+    }
+}
+
+/// A journal logger with a custom message formatter, created by [`JournalLog::with_formatter`].
+///
+/// Only `MESSAGE` is customized; the record's structured fields retain their normal values.
+/// Formatting and journal errors are ignored by [`Log::log`], which cannot return errors.
+/// Use [`Self::log_record`] to handle them directly.
+pub struct FormattedJournalLog<F> {
+    formatter: F,
+}
+
+impl<F> FormattedJournalLog<F>
+where
+    F: Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result + Send + Sync,
+{
+    /// Send a record using this logger's formatter.
+    ///
+    /// Returns an I/O error of kind [`io::ErrorKind::Other`] containing [`fmt::Error`] if
+    /// formatting fails. In that case, no record is submitted. Native journal errors are
+    /// returned unchanged. See [`send`] for the limits of a successful result.
+    pub fn log_record(&self, record: &Record<'_>) -> Result<()> {
+        log_record_with_formatter(record, &self.formatter)
+    }
+
+    /// Install this logger globally, returning an error if a logger is already installed.
+    ///
+    /// This consumes the logger and retains it for the lifetime of the process on success.
+    /// Set the maximum level separately with [`log::set_max_level`].
+    pub fn install(self) -> result::Result<(), SetLoggerError>
+    where
+        F: 'static,
+    {
+        log::set_boxed_logger(Box::new(self))
+    }
+}
+
+impl<F> Log for FormattedJournalLog<F>
+where
+    F: Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result + Send + Sync,
+{
+    fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &Record<'_>) {
+        let _ = self.log_record(record);
+    }
+
+    fn flush(&self) {
+        // There is no flushing required.
     }
 }
 
@@ -1267,5 +1366,107 @@ impl AsRawFd for JournalRef {
     #[inline]
     fn as_raw_fd(&self) -> c_int {
         self.fd().unwrap()
+    }
+}
+
+#[cfg(test)]
+mod formatting_tests {
+    use super::*;
+
+    #[test]
+    fn default_message_and_metadata_are_preserved() {
+        for (level, priority) in [
+            (Level::Error, "PRIORITY=3"),
+            (Level::Warn, "PRIORITY=4"),
+            (Level::Info, "PRIORITY=5"),
+            (Level::Debug, "PRIORITY=6"),
+            (Level::Trace, "PRIORITY=7"),
+        ] {
+            let record = Record::builder()
+                .args(format_args!("  unchanged\nmessage\0  "))
+                .level(level)
+                .target("my-service")
+                .file(Some("service.rs"))
+                .line(Some(42))
+                .module_path(Some("service::worker"))
+                .build();
+            let fields = format_record(&record, &default_formatter).unwrap();
+            assert_eq!(
+                fields.map(|field| field.unwrap()),
+                [
+                    priority,
+                    "MESSAGE=  unchanged\nmessage\0  ",
+                    "TARGET=my-service",
+                    "CODE_LINE=42",
+                    "CODE_FILE=service.rs",
+                    "CODE_FUNC=service::worker",
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn custom_message_keeps_structured_fields_and_borrows_state() {
+        let prefix = String::from("worker");
+        let logger = JournalLog::with_formatter(|out, record| {
+            write!(out, "{prefix}: [{}] {}\n\0", record.target(), record.args())
+        });
+        let record = Record::builder()
+            .args(format_args!("ready"))
+            .level(Level::Warn)
+            .target("my-service")
+            .file(Some("service.rs"))
+            .line(Some(42))
+            .module_path(Some("service::worker"))
+            .build();
+        let fields = format_record(&record, &logger.formatter).unwrap();
+        assert_eq!(
+            fields.map(|field| field.unwrap()),
+            [
+                "PRIORITY=4",
+                "MESSAGE=worker: [my-service] ready\n\0",
+                "TARGET=my-service",
+                "CODE_LINE=42",
+                "CODE_FILE=service.rs",
+                "CODE_FUNC=service::worker",
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_custom_message_and_missing_locations_are_supported() {
+        let record = Record::builder().args(format_args!("ignored")).build();
+        let fields = format_record(&record, &|_, _| Ok(())).unwrap();
+        assert_eq!(
+            fields.each_ref().map(|field| field.as_deref()),
+            [
+                Some("PRIORITY=5"),
+                Some("MESSAGE="),
+                Some("TARGET="),
+                None,
+                None,
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn formatting_failure_returns_error_and_facade_ignores_it() {
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let logger = JournalLog::with_formatter(|out, _| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            out.write_str("partial message")?;
+            Err(fmt::Error)
+        });
+        let record = Record::builder().build();
+        let error = logger.log_record(&record).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert!(error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<fmt::Error>()
+            .is_some());
+        Log::log(&logger, &record);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }

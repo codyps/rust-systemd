@@ -152,11 +152,14 @@ fn journal_errors_are_returned() {
     let fields = &["MESSAGE=Test descriptor exhaustion"];
     let args = format_args!("Test descriptor exhaustion");
     let record = log::Record::builder().args(args).build();
+    let logger =
+        journal::JournalLog::with_formatter(|out, record| write!(out, "custom: {}", record.args()));
     for result in [
         journal::send(fields),
         journal::print(6, "Test descriptor exhaustion"),
         journal::log(6, file!(), line!(), module_path!(), &args),
         journal::log_record(&record),
+        logger.log_record(&record),
         sd_journal_log!(6, "Test descriptor exhaustion"),
     ] {
         assert_eq!(result.unwrap_err().raw_os_error(), Some(libc::EMFILE));
@@ -164,6 +167,49 @@ fn journal_errors_are_returned() {
 
     // The log facade has no Result return, so its adapter remains best-effort.
     log::Log::log(&journal::JournalLog, &record);
+    log::Log::log(&logger, &record);
+}
+
+#[test]
+fn formatted_logger_install() {
+    const CHILD_ENV: &str = "RUST_SYSTEMD_TEST_FORMATTED_LOGGER";
+    if std::env::var_os(CHILD_ENV).is_none() {
+        // Global logger installation must be isolated from the default logger test.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "formatted_logger_install", "--nocapture"])
+            .env(CHILD_ENV, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let formatter_calls = Arc::clone(&calls);
+    let prefix = String::from("service");
+    journal::JournalLog::with_formatter(move |out, record| {
+        formatter_calls.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(record.target(), "formatted-install");
+        assert_eq!(record.level(), log::Level::Warn);
+        assert_eq!(record.file(), Some(file!()));
+        write!(out, "{prefix}: {}", record.args())
+    })
+    .install()
+    .unwrap();
+    log::set_max_level(log::LevelFilter::Info);
+    log::warn!(target: "formatted-install", "ready");
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert!(journal::JournalLog::init().is_err());
+    assert!(journal::JournalLog::with_formatter(|_, _| Ok(()))
+        .install()
+        .is_err());
 }
 
 #[test]
