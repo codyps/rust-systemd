@@ -23,7 +23,7 @@ impl VtableFlags {
     /// Advertise change notifications; the application must emit the signals.
     pub const PROPERTY_EMITS_CHANGE: Self = Self(1 << 5);
     pub const PROPERTY_EMITS_INVALIDATION: Self = Self(1 << 6);
-    /// Exclude this property from GetAll unless explicitly requested.
+    /// Exclude this property from GetAll; clients must request it with Get.
     pub const PROPERTY_EXPLICIT: Self = Self(1 << 7);
 
     pub const fn empty() -> Self {
@@ -145,10 +145,13 @@ pub struct Vtable {
 }
 
 impl Vtable {
+    /// Create an empty interface definition.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Declare a method. `signature` and `result` describe sequences of input
+    /// and output arguments; an empty string means no arguments.
     pub fn method<F>(
         self,
         member: &str,
@@ -169,10 +172,12 @@ impl Vtable {
         )
     }
 
+    /// Declare a signal for introspection. Emit it using [`BusRef::new_signal`].
     pub fn signal(self, member: &str, signature: &str, flags: VtableFlags) -> crate::Result<Self> {
         self.add(member, signature, "", flags, Callbacks::Signal)
     }
 
+    /// Declare a read-only property with one complete value type as its signature.
     pub fn property<F>(
         self,
         member: &str,
@@ -195,6 +200,8 @@ impl Vtable {
         )
     }
 
+    /// Declare a readable and writable property. The setter's iterator starts
+    /// at the bare value inside the incoming variant, without rewinding.
     pub fn writable_property<G, S>(
         self,
         member: &str,
