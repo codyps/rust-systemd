@@ -65,7 +65,7 @@ pub trait ToSdBusMessage {
  * may need to add a `from_message_to()` that takes a reference, much like `Clone`.
  */
 pub trait FromSdBusMessage<'a> {
-    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
         Self: Sized;
 }
@@ -77,7 +77,7 @@ impl<T: SdBusMessageDirect> ToSdBusMessage for T {
 }
 
 impl<'a, T: SdBusMessageDirect + 'a> FromSdBusMessage<'a> for T {
-    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
         Self: Sized,
     {
@@ -168,7 +168,7 @@ impl ToSdBusMessage for UnixFd {
 }
 
 impl<'a> FromSdBusMessage<'a> for UnixFd {
-    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
         Self: Sized,
     {
@@ -189,7 +189,7 @@ impl ToSdBusMessage for &bus::ObjectPath {
 //
 // If we could use &MessageRef instead this could be useful.
 impl<'a> FromSdBusMessage<'a> for &'a bus::ObjectPath {
-    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
         Self: Sized,
     {
@@ -208,7 +208,7 @@ impl ToSdBusMessage for &Utf8CStr {
 }
 
 impl<'a> FromSdBusMessage<'a> for &'a Utf8CStr {
-    fn from_message(m: &'a mut MessageIter<'a>) -> crate::Result<Option<Self>>
+    fn from_message(m: &mut MessageIter<'a>) -> crate::Result<Option<Self>>
     where
         Self: Sized,
     {

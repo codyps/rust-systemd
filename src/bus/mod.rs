@@ -47,6 +47,12 @@ pub mod types;
  */
 pub type Result<T> = result::Result<T, Error>;
 
+fn validate_c_string(bytes: &[u8]) -> result::Result<(), &'static str> {
+    CStr::from_bytes_with_nul(bytes)
+        .map(|_| ())
+        .map_err(|_| "Expected exactly one trailing NUL byte and no interior NUL bytes")
+}
+
 /**
  * A wrapper which promises it always holds a valid dbus object path
  *
@@ -60,6 +66,7 @@ pub type Result<T> = result::Result<T, Error>;
  * - Further, sd-bus additionally requires nul ('\0') termination of paths.
  */
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct ObjectPath {
     inner: CStr,
 }
@@ -73,6 +80,7 @@ impl ObjectPath {
         if b.is_empty() {
             return Err("Path must have at least 1 character ('/')");
         }
+        validate_c_string(b)?;
 
         if b[0] != b'/' {
             return Err("Path must begin with '/'");
@@ -123,7 +131,7 @@ impl ObjectPath {
     /// - `b` must be a valid object path string
     #[inline]
     pub unsafe fn from_ptr_unchecked<'b>(b: *const c_char) -> &'b ObjectPath {
-        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
     }
 }
 
@@ -153,6 +161,7 @@ fn t_path() {
  * A wrapper which promises it always holds a validated dbus interface name
  */
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct InterfaceName {
     inner: CStr,
 }
@@ -177,6 +186,7 @@ impl InterfaceName {
         if b.is_empty() {
             return Err("Name must have more than 0 characters");
         }
+        validate_c_string(b)?;
 
         match b[0] {
             b'.' => return Err("Name must not begin with '.'"),
@@ -269,6 +279,7 @@ fn t_interface() {
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct BusName {
     inner: CStr,
 }
@@ -301,6 +312,7 @@ impl BusName {
         if b.len() > 256 {
             return Err("Must be shorter than 255 characters");
         }
+        validate_c_string(b)?;
 
         let mut is_unique = false;
         match b[0] {
@@ -372,7 +384,7 @@ impl BusName {
     /// - `b` must be a valid bus name string
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
-        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
     }
 }
 
@@ -397,6 +409,7 @@ fn t_busname() {
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct MemberName {
     inner: CStr,
 }
@@ -424,6 +437,7 @@ impl MemberName {
         if b.len() > 256 {
             return Err("Must be shorter than 255 characters");
         }
+        validate_c_string(b)?;
 
         match b[0] {
             b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
@@ -462,7 +476,7 @@ impl MemberName {
     /// `b` must point to a valid c-string, with lifetime at least `'a`
     #[inline]
     pub unsafe fn from_ptr_unchecked<'a>(b: *const c_char) -> &'a Self {
-        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes())
+        Self::from_bytes_unchecked(CStr::from_ptr(b).to_bytes_with_nul())
     }
 }
 
@@ -842,7 +856,9 @@ extern "C" fn raw_message_handler<F>(
 where
     F: Fn(&mut MessageRef) -> Result<()>,
 {
-    let m: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
+    // SAFETY: the slot owns this callback and libsystemd holds the slot alive
+    // during dispatch. Only the destroy callback reclaims the allocation.
+    let m = unsafe { &*(userdata as *const F) };
     let e = m(unsafe { MessageRef::from_ptr_mut(msg) });
 
     match e {
@@ -866,6 +882,31 @@ where
     F: Fn(&mut MessageRef) -> Result<()>,
 {
     let _: Box<F> = unsafe { Box::from_raw(userdata as *mut F) };
+}
+
+// `slot` is the caller-owned reference returned by a successful registration;
+// `callback` is its userdata, allocated by Box::into_raw and not otherwise owned.
+unsafe fn float_callback_slot<F>(
+    slot: *mut ffi::bus::sd_bus_slot,
+    callback: *mut F,
+) -> crate::Result<()>
+where
+    F: Fn(&mut MessageRef) -> Result<()>,
+{
+    if let Err(error) = ffi_result(unsafe {
+        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_cb_message_handler::<F>))
+    }) {
+        // Destroy-callback installation failed, so Rust still owns the userdata.
+        unsafe { ffi::bus::sd_bus_slot_unref(slot) };
+        drop(unsafe { Box::from_raw(callback) });
+        return Err(error);
+    }
+
+    let result = ffi_result(unsafe { ffi::bus::sd_bus_slot_set_floating(slot, 1) });
+    // On success the bus holds its own reference. On failure the slot remains
+    // regular and this unref destroys it, including its callback userdata.
+    unsafe { ffi::bus::sd_bus_slot_unref(slot) };
+    result.map(|_| ())
 }
 
 foreign_type! {
@@ -959,8 +1000,10 @@ impl BusRef {
         ffi_result(unsafe { ffi::bus::sd_bus_get_events(self.as_ptr()) })
     }
 
-    /// Returns the time-out in us to pass to `poll()` or a similar call when waiting for events on
-    /// the specified bus connection.
+    /// Returns the absolute deadline in microseconds on `CLOCK_MONOTONIC`.
+    /// Subtract the current monotonic time before passing a relative timeout to
+    /// `poll()`; round up when converting microseconds to milliseconds. A value
+    /// of zero means poll without blocking; `u64::MAX` means no deadline.
     ///
     /// This corresponds to [`sd_bus_get_timeout`].
     ///
@@ -1211,7 +1254,6 @@ impl BusRef {
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
         ) -> c_int = raw_message_handler::<F>;
-        let d: extern "C" fn(*mut c_void) = raw_destroy_cb_message_handler::<F>;
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
         match unsafe {
@@ -1229,14 +1271,7 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => {
-                unsafe {
-                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
-                    // we don't want to take care of this one, let the bus handle it
-                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
-                }
-                Ok(())
-            }
+            Ok(_) => unsafe { float_callback_slot(slot, b) },
         }
     }
 
@@ -1262,7 +1297,6 @@ impl BusRef {
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
         ) -> c_int = raw_message_handler::<F>;
-        let d: extern "C" fn(*mut c_void) = raw_destroy_cb_message_handler::<F>;
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
         match crate::ffi_result(unsafe {
@@ -1278,13 +1312,7 @@ impl BusRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => {
-                unsafe {
-                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
-                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
-                }
-                Ok(())
-            }
+            Ok(_) => unsafe { float_callback_slot(slot, b) },
         }
     }
 
@@ -1497,21 +1525,29 @@ impl MessageRef {
     /// This corresponds to [`sd_bus_message_get_sender`]
     ///
     /// [`sd_bus_message_get_sender`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_sender.html
-    pub fn sender(&self) -> &CStr {
+    /// Returns `None` when the message has no sender header, as is normal for
+    /// locally constructed messages that have not been sent.
+    pub fn sender(&self) -> Option<&CStr> {
         let p = unsafe { ffi::bus::sd_bus_message_get_sender(self.as_ptr()) };
-        assert!(!p.is_null());
-
-        unsafe { CStr::from_ptr(p) }
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(p) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_destination`]
     ///
     /// [`sd_bus_message_get_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_destination.html
-    pub fn destination(&self) -> &CStr {
+    /// Returns `None` when the message has no destination header, including
+    /// broadcast signals.
+    pub fn destination(&self) -> Option<&CStr> {
         let p = unsafe { ffi::bus::sd_bus_message_get_destination(self.as_ptr()) };
-        assert!(!p.is_null());
-
-        unsafe { CStr::from_ptr(p) }
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(p) })
+        }
     }
 
     /// This corresponds to [`sd_bus_message_get_signature`]
@@ -1739,7 +1775,6 @@ impl MessageRef {
             *mut c_void,
             *mut ffi::bus::sd_bus_error,
         ) -> c_int = raw_message_handler::<F>;
-        let d: extern "C" fn(*mut c_void) = raw_destroy_cb_message_handler::<F>;
         let b = Box::into_raw(Box::new(callback));
         let mut slot = ptr::null_mut();
         match crate::ffi_result(unsafe {
@@ -1757,14 +1792,7 @@ impl MessageRef {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
             }
-            Ok(_) => {
-                unsafe {
-                    ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(d));
-                    // we don't want to take care of this one, let the bus handle it
-                    ffi::bus::sd_bus_slot_set_floating(slot, 1);
-                }
-                Ok(())
-            }
+            Ok(_) => unsafe { float_callback_slot(slot, b) },
         }
     }
 
@@ -1931,8 +1959,18 @@ impl<'a> MessageIter<'a> {
 
     // XXX: handle containers
     // FIXME: consider renaming
+    /// Read the next value. Borrowed strings and paths remain valid for the
+    /// message's lifetime, so later reads can proceed while those views are held.
+    /// They cannot outlive the owning message:
+    ///
+    /// ```compile_fail
+    /// fn escape(mut message: systemd::bus::Message) -> &'static utf8_cstr::Utf8CStr {
+    ///     let mut iter = message.iter().unwrap();
+    ///     iter.next().unwrap().unwrap()
+    /// }
+    /// ```
     #[allow(clippy::should_implement_trait)]
-    pub fn next<V: types::FromSdBusMessage<'a>>(&'a mut self) -> crate::Result<Option<V>> {
+    pub fn next<V: types::FromSdBusMessage<'a>>(&mut self) -> crate::Result<Option<V>> {
         V::from_message(self)
     }
 }
