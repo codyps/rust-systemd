@@ -4,8 +4,9 @@ Release-plz maintains a release PR with independent versions and changelogs for
 `systemd` and `libsystemd-sys`. Maintainers merge that PR when ready to release.
 Release PRs are not merged automatically.
 
-The initial versions are explicitly prepared as `systemd 0.11.0` for the journal
-API changes and `libsystemd-sys 0.9.5` for the new FFI declarations.
+The initial versions are explicitly prepared as `systemd 0.11.0` and
+`libsystemd-sys 0.10.0`. Both contain breaking API changes, including the new
+crate-owned error type, daemon signatures, and native API feature gates.
 
 After the merged commit passes the full `build` workflow on master, release-plz
 publishes the crates in dependency order and creates GitHub releases. Tags keep
@@ -83,7 +84,14 @@ documentation changes without triggering a sys-crate release.
 ## Reviewing and retrying releases
 
 Review the versions, changelogs, and API-check results in the release PR. When
-changing versions by hand, also run:
+the manifest version already exceeds the published version, release-plz keeps
+that version and only updates the changelog. A manually prepared version still
+needs a compatibility review, including default-feature builds and auto traits.
+Both crate archives include their own README and changelog. Published READMEs
+describe installation and usage; repository development guidance belongs in
+`CONTRIBUTING.md` or this file.
+
+When changing versions by hand, also run:
 
 ```sh
 python3 .github/scripts/sync_release.py

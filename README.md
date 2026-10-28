@@ -1,129 +1,139 @@
-rust-systemd
-============
+# systemd
 
-[crate docs (systemd)](http://docs.rs/crate/systemd)
+Rust interfaces to libsystemd for the journal, socket activation, service
+notifications, login sessions, IDs, and D-Bus. For direct C bindings, use
+[`libsystemd-sys`](https://crates.io/crates/libsystemd-sys).
 
-[crate docs (libsystemd-sys)](http://docs.rs/crate/libsystemd-sys)
+[API documentation](https://docs.rs/systemd) ·
+[Changelog](https://github.com/codyps/rust-systemd/blob/master/CHANGELOG.md)
 
-[systemd![Crates.io](https://img.shields.io/crates/v/systemd.svg?maxAge=2592000)](https://crates.io/crates/systemd)
+## Installation
 
-[libsystemd-sys![Crates.io](https://img.shields.io/crates/v/libsystemd-sys.svg?maxAge=2592000)](https://crates.io/crates/libsystemd-sys)
-
-
-In `Cargo.toml`:
 ```toml
 [dependencies]
 systemd = "0.11.0"
 ```
 
-Build Environment variables
----------------------------
+This crate links to a native libsystemd installation. With the default features,
+you need systemd 239 or a library providing equivalent APIs. Install your
+platform's libsystemd development package and pkg-config before building.
 
-By default, `libsystemd-sys` will use `pkg-config` to find `libsystemd`. It
-defaults to using the `libsystemd` package. To change the package looked up in
-pkg-config, set the `SYSTEMD_PKG_NAME` environment variable.
-
-If you want to override the source of the `libsystemd` directly, set the env
-var `SYSTEMD_LIB_DIR` to a path which contains the `libsystemd` to link
-against. Optionally, you may also set `SYSTEMD_LIBS` to indicate which
-libraries to link against. Libraries in the variable `SYSTEMD_LIBS` are colon
-(`:`) separated and may include a `KIND`. For example:
-`SYSTEMD_LIBS="static=foo:bar"`.
-
-
-elogind support
----------------
-
-Either set `SYSTEMD_PKG_NAME=libelogind` (name of the pkg-config file) or set
-both `SYSTEMD_LIBS=elogind` and set `SYSTEMD_LIB_DIR` to the appropriate
-directory.
-
-When using elogind, the apis needed for `journal` and `bus` features may not be completely
-available (elogind forked from an older version of systemd that may lack some
-of these APIs). If your application does not need these features, depend on
-`systemd` without the default features to allow maximum compatibility:
+The `journal` and `bus` features are enabled by default. To use only daemon,
+login, unit-name, and ID APIs:
 
 ```toml
 [dependencies]
 systemd = { version = "0.11.0", default-features = false }
 ```
 
-Note that there still may be some missing symbols. If you discover a link
-error, report it so that we can tweak the `systemd` crate to support it.
+Without `bus`, the base native requirements are systemd 233 or equivalent.
+A compatible libelogind can provide these base APIs; see native library selection
+below.
 
-journal
--------
-Journal sending is supported, and systemd::journal::Journal is a (low
-functionality) wrapper around the read API.
+## Write to the journal
 
-An example of the journal writing api:
+Send structured fields, including your own fields, in `NAME=value` form:
 
 ```rust
-use log::warn;
-use systemd::{journal, sd_journal_log};
+use systemd::journal;
 
 fn main() -> systemd::Result<()> {
-   journal::print(1, &format!("Rust can talk to the journal: {:?}", 4))?;
-   journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"])?;
-   journal::JournalLog::init().unwrap();
-   warn!("HI");
-   sd_journal_log!(4, "HI {:?}", 2)?;
-   Ok(())
+    journal::send(&[
+        "MESSAGE=Worker started",
+        "PRIORITY=6",
+        "WORKER=queue-a",
+    ])?;
+    Ok(())
 }
 ```
 
-`send`, `print`, `log`, `log_record`, and `sd_journal_log!` return a `Result`
-containing any error reported by libsystemd. Use `?` or handle the error explicitly.
+Journal submission functions return `systemd::Result<()>`. Success means
+libsystemd accepted the submission; it does not guarantee delivery to journald.
 
-Fallible systemd APIs use the crate-owned `systemd::Error`, which preserves native
-errno and I/O error kinds while adding operation and argument context. See the
-[`Error` documentation](https://docs.rs/systemd/latest/systemd/struct.Error.html)
-for migration from `std::io::Error` and conversion options.
+To use the `log` facade, also add `log = "0.4"` to your dependencies. You can
+customize the message while keeping priority, target, and source locations as
+structured journal fields:
 
-Releases
---------
+```rust
+use systemd::journal::JournalLog;
 
-Releases are prepared and published by release-plz. See the
-[release workflow and trusted publishing setup](https://github.com/codyps/rust-systemd/blob/master/.github/RELEASING.md).
+fn main() -> Result<(), log::SetLoggerError> {
+    JournalLog::with_formatter(|out, record| {
+        write!(out, "[{}] {}", record.target(), record.args())
+    }).install()?;
+    log::set_max_level(log::LevelFilter::Info);
+    log::info!(target: "worker", "ready");
+    Ok(())
+}
+```
 
-daemon
-------
-The daemon API mostly offers tools for working with raw filehandles passed to
-the process by systemd on socket activation. Since raw filehandles are not well
-supported in Rust, it's likely these functions will mostly be helpful in
-managing program flow; actual socket code will have to use the libc crate.
+## Read named socket-activation descriptors
 
-Daemon functions leave the process environment unchanged. For example, use
-`daemon::listen_fds()` and `daemon::notify(state.iter())` without a boolean flag.
-The explicit unsafe `*_unset_environment` variants clear environment variables
-and require the caller to prevent all concurrent environment access. Use those
-only during single-threaded startup before spawning threads.
+Services started by systemd can inspect the file descriptors supplied at startup:
 
+```rust
+use systemd::daemon;
 
-License
--------
+fn main() -> systemd::Result<()> {
+    let descriptors = daemon::listen_fds_with_names()?;
+    for fd in descriptors.iter_named("http")? {
+        println!("HTTP descriptor: {fd}");
+    }
+    Ok(())
+}
+```
 
-This library is free software; you can redistribute it and/or
-modify it under the terms of the GNU Lesser General Public
-License as published by the Free Software Foundation; either
-version 2.1 of the License, or (at your option) any later version.
+The returned descriptor numbers are borrowed process resources; dropping the
+metadata does not close them. Safe daemon functions leave the process environment
+unchanged. Explicit unsafe `*_unset_environment` variants are available for
+single-threaded startup code that can prevent all concurrent environment access.
 
-In addition to the permissions in the GNU Lesser General Public License, the
-authors give you unlimited permission to link the compiled version of this
-library into combinations with other programs, and to distribute those programs
-without any restriction coming from the use of this library. (The Lesser
-General Public License restrictions do apply in other respects; for example,
-they cover modification of the library, and distribution when not linked into
-another program.)
+## Other APIs
 
-This library is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-Lesser General Public License for more details.
+- [`journal`](https://docs.rs/systemd/latest/systemd/journal/) reads, filters,
+  seeks, and waits for journal entries.
+- [`bus`](https://docs.rs/systemd/latest/systemd/bus/) opens local, remote, and
+  container connections, sends typed messages, and registers service vtables.
+- [`login`](https://docs.rs/systemd/latest/systemd/login/) queries processes,
+  sessions, seats, and users.
+- [`id128`](https://docs.rs/systemd/latest/systemd/id128/) handles systemd IDs.
+- [`unit`](https://docs.rs/systemd/latest/systemd/unit/) escapes unit names.
 
-Contributions
--------------
+Fallible systemd operations return the crate-owned
+[`Error`](https://docs.rs/systemd/latest/systemd/struct.Error.html), with errno,
+I/O error kind, operation, argument context, and underlying cause where available.
+Its documentation includes migration from `std::io::Error` and conversion options.
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you shall be licensed as above, without any
-additional terms or conditions.
+## Native API features
+
+Enable a version feature only when your native library provides its APIs. Each
+version feature includes the earlier version features.
+
+| Feature | Additional APIs |
+| --- | --- |
+| `systemd_v240` | Boot-specific application IDs; bus method-call timeout APIs |
+| `systemd_v241` | Raw bus close-and-unref helper |
+| `systemd_v245` | Journal namespaces |
+| `systemd_v254` | Login session start-time queries |
+| `serde` | Serialization and deserialization of `Id128` |
+
+The build checks the selected library's symbols and reports missing capabilities.
+See the [API documentation](https://docs.rs/systemd) for feature requirements on
+individual functions.
+
+## Native library selection
+
+By default, pkg-config locates `libsystemd`. Set `SYSTEMD_PKG_NAME=libelogind`
+to select a compatible libelogind installation, with unsupported `bus` and
+`journal` features disabled.
+
+For a library outside pkg-config's search path, set `SYSTEMD_LIB_DIR` to its
+library directory. `SYSTEMD_LIBS` selects colon-separated library names, optionally
+with a linking kind, such as `SYSTEMD_LIBS=static=systemd`. For libelogind, use
+`SYSTEMD_LIBS=elogind` alongside the library directory.
+
+## License
+
+LGPL-2.1-or-later WITH GCC-exception-2.0. See
+[COPYING](https://github.com/codyps/rust-systemd/blob/master/COPYING) for the
+license and linking exception.

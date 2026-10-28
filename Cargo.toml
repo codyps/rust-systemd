@@ -6,7 +6,7 @@ license = "LGPL-2.1-or-later WITH GCC-exception-2.0"
 description = "A rust interface to libsystemd/libelogind provided APIs"
 repository = "https://github.com/codyps/rust-systemd"
 documentation = "https://docs.rs/crate/systemd"
-include = ["Cargo.toml", "src/**/*.rs", "COPYING", "README.md"]
+include = ["Cargo.toml", "src/**/*.rs", "COPYING", "/README.md", "/CHANGELOG.md"]
 readme = "README.md"
 edition = "2018"
 
@@ -33,7 +33,7 @@ serde = { version = "1", default-features = false, optional = true }
 
 [dependencies.libsystemd-sys]
 path = "libsystemd-sys"
-version = "0.9.5"
+version = "0.10.0"
 default-features = false
 
 [dev-dependencies]
