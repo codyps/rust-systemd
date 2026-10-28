@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/codyps/rust-systemd/compare/libsystemd-sys-0.10.0...libsystemd-sys-0.10.1) - 2026-10-28
+
+### Other
+
+- use main as the default branch
+
 ## [0.10.0](https://github.com/codyps/rust-systemd/compare/libsystemd-sys-0.9.4...libsystemd-sys-0.10.0) - 2026-10-28
 
 ### Breaking changes and migration

@@ -15,7 +15,7 @@ use the [`systemd` crate](https://crates.io/crates/systemd).
 
 ```toml
 [dependencies]
-libsystemd-sys = "0.10.0"
+libsystemd-sys = "0.10.1"
 ```
 
 Install your platform's libsystemd development package and pkg-config before
@@ -24,7 +24,7 @@ of systemd 239. To use the base APIs without those bindings:
 
 ```toml
 [dependencies]
-libsystemd-sys = { version = "0.10.0", default-features = false }
+libsystemd-sys = { version = "0.10.1", default-features = false }
 ```
 
 Base APIs require systemd 233 or equivalent capabilities from libelogind.
