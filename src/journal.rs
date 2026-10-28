@@ -1,9 +1,9 @@
 use super::{free_cstring, usec_from_duration, Result};
 use crate::ffi::const_iovec;
 use crate::ffi::journal as ffi;
-use crate::ffi_result;
+use crate::ffi_result_with_context as ffi_result;
 use crate::id128::Id128;
-use crate::CStrArgument;
+use crate::{CStrArgument, Error};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
 use libc::{c_char, c_int, size_t};
 use log::{self, Level, Log, Record, SetLoggerError};
@@ -24,13 +24,14 @@ fn collect_and_send<'a>(args: impl Iterator<Item = &'a str>) -> Result<()> {
         .map(|x| unsafe { const_iovec::from_str(x) })
         .collect();
 
-    let iovecs_len: c_int = iovecs
-        .len()
-        .try_into()
-        .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
+    let iovecs_len: c_int = iovecs.len().try_into().map_err(|_| {
+        Error::from_raw_os_error(libc::EINVAL)
+            .with_operation("sd_journal_sendv")
+            .with_argument("args")
+    })?;
 
     let result = unsafe { ffi::sd_journal_sendv(iovecs.as_ptr(), iovecs_len) };
-    ffi_result(result).map(|_| ())
+    ffi_result(result, "sd_journal_sendv").map(|_| ())
 }
 
 /// Send preformatted fields to systemd.
@@ -123,7 +124,11 @@ fn format_record(
     formatter: &impl Fn(&mut dyn fmt::Write, &Record<'_>) -> fmt::Result,
 ) -> Result<[Option<String>; 6]> {
     let mut message = String::from("MESSAGE=");
-    formatter(&mut message, record).map_err(io::Error::other)?;
+    formatter(&mut message, record).map_err(|error| {
+        Error::other(error)
+            .with_operation("format journal message")
+            .with_argument("formatter")
+    })?;
     Ok([
         Some(format!(
             "PRIORITY={}",
@@ -216,9 +221,9 @@ where
 {
     /// Send a record using this logger's formatter.
     ///
-    /// Returns an I/O error of kind [`io::ErrorKind::Other`] containing [`fmt::Error`] if
-    /// formatting fails. In that case, no record is submitted. Native journal errors are
-    /// returned unchanged. See [`send`] for the limits of a successful result.
+    /// Returns an error of kind [`io::ErrorKind::Other`] containing [`fmt::Error`] if
+    /// formatting fails. In that case, no record is submitted. Native journal errors retain
+    /// their errno and identify the failed operation. See [`send`] for the limits of success.
     pub fn log_record(&self, record: &Record<'_>) -> Result<()> {
         log_record_with_formatter(record, &self.formatter)
     }
@@ -682,7 +687,10 @@ impl Journal {
         }
 
         let mut jp = MaybeUninit::uninit();
-        crate::ffi_result(unsafe { ffi::sd_journal_open(jp.as_mut_ptr(), flags) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_open(jp.as_mut_ptr(), flags) },
+            "sd_journal_open",
+        )?;
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 
@@ -714,13 +722,21 @@ impl Journal {
             flags |= ffi::SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE;
         }
 
-        let ns = namespace.map(|a| a.try_into_cstr()).transpose()?;
+        let ns = namespace
+            .map(|a| {
+                a.try_into_cstr()
+                    .map_err(|error| error.with_argument("namespace"))
+            })
+            .transpose()?;
         let ns_p = ns
             .as_ref()
             .map(|a| a.as_ref().as_ptr())
             .unwrap_or(ptr::null());
         let mut jp = MaybeUninit::uninit();
-        crate::ffi_result(unsafe { ffi::sd_journal_open_namespace(jp.as_mut_ptr(), ns_p, flags) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_open_namespace(jp.as_mut_ptr(), ns_p, flags) },
+            "sd_journal_open_namespace",
+        )?;
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 
@@ -739,11 +755,16 @@ impl Journal {
             flags |= ffi::SD_JOURNAL_SYSTEM;
         }
 
-        let d_path = directory.try_into_cstr()?;
+        let d_path = directory
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("directory"))?;
         let mut jp = MaybeUninit::uninit();
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_open_directory(jp.as_mut_ptr(), d_path.as_ref().as_ptr(), flags)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe {
+                ffi::sd_journal_open_directory(jp.as_mut_ptr(), d_path.as_ref().as_ptr(), flags)
+            },
+            "sd_journal_open_directory",
+        )?;
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
 
@@ -753,7 +774,10 @@ impl Journal {
     ) -> Result<Journal> {
         let mut file_cstrs = Vec::new();
         for i in files {
-            file_cstrs.push(i.try_into_cstr()?);
+            file_cstrs.push(
+                i.try_into_cstr()
+                    .map_err(|error| error.with_argument("files"))?,
+            );
         }
 
         let mut file_ptrs = Vec::new();
@@ -764,9 +788,16 @@ impl Journal {
         file_ptrs.push(ptr::null());
 
         let mut jp = MaybeUninit::uninit();
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_open_files(jp.as_mut_ptr(), file_ptrs.as_ptr(), opts.extra_raw_flags)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe {
+                ffi::sd_journal_open_files(
+                    jp.as_mut_ptr(),
+                    file_ptrs.as_ptr(),
+                    opts.extra_raw_flags,
+                )
+            },
+            "sd_journal_open_files",
+        )?;
 
         Ok(unsafe { Journal::from_ptr(jp.assume_init()) })
     }
@@ -808,7 +839,10 @@ impl JournalRef {
     /// [`sd_journal_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_journal_get_fd.html
     #[inline]
     pub fn fd(&self) -> Result<c_int> {
-        ffi_result(unsafe { ffi::sd_journal_get_fd(self.as_ptr()) })
+        ffi_result(
+            unsafe { ffi::sd_journal_get_fd(self.as_ptr()) },
+            "sd_journal_get_fd",
+        )
     }
 
     /// Returns the total disk space used by journal files currently accessible
@@ -817,7 +851,10 @@ impl JournalRef {
     /// Corresponds to `sd_journal_get_usage()`.
     pub fn usage(&self) -> Result<u64> {
         let mut bytes: u64 = 0;
-        ffi_result(unsafe { ffi::sd_journal_get_usage(self.as_ptr(), &mut bytes) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_get_usage(self.as_ptr(), &mut bytes) },
+            "sd_journal_get_usage",
+        )?;
         Ok(bytes)
     }
 
@@ -827,7 +864,10 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_has_persistent_files()`.
     pub fn has_persistent_files(&self) -> Result<bool> {
-        let r = ffi_result(unsafe { ffi::sd_journal_has_persistent_files(self.as_ptr()) })?;
+        let r = ffi_result(
+            unsafe { ffi::sd_journal_has_persistent_files(self.as_ptr()) },
+            "sd_journal_has_persistent_files",
+        )?;
         Ok(r > 0)
     }
 
@@ -837,7 +877,10 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_has_runtime_files()`.
     pub fn has_runtime_files(&self) -> Result<bool> {
-        let r = ffi_result(unsafe { ffi::sd_journal_has_runtime_files(self.as_ptr()) })?;
+        let r = ffi_result(
+            unsafe { ffi::sd_journal_has_runtime_files(self.as_ptr()) },
+            "sd_journal_has_runtime_files",
+        )?;
         Ok(r > 0)
     }
 
@@ -847,9 +890,10 @@ impl JournalRef {
     /// Use [`set_data_threshold()`] to adjust.
     pub fn data_threshold(&mut self) -> Result<usize> {
         let mut curr_thresh = MaybeUninit::uninit();
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_get_data_threshold(self.as_ptr(), curr_thresh.as_mut_ptr())
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_get_data_threshold(self.as_ptr(), curr_thresh.as_mut_ptr()) },
+            "sd_journal_get_data_threshold",
+        )?;
 
         Ok(unsafe { curr_thresh.assume_init() })
     }
@@ -860,9 +904,10 @@ impl JournalRef {
     /// Setting this as small as possible for your application can allow the library to avoid
     /// decompressing large objects in full.
     pub fn set_data_threshold(&mut self, new_theshold: usize) -> Result<()> {
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_set_data_threshold(self.as_ptr(), new_theshold)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_set_data_threshold(self.as_ptr(), new_theshold) },
+            "sd_journal_set_data_threshold",
+        )?;
 
         Ok(())
     }
@@ -884,15 +929,20 @@ impl JournalRef {
     ) -> Result<Option<JournalEntryField<'_>>> {
         let mut data = MaybeUninit::uninit();
         let mut data_len = MaybeUninit::uninit();
-        let f = field.try_into_cstr()?;
-        match crate::ffi_result(unsafe {
-            ffi::sd_journal_get_data(
-                self.as_ptr(),
-                f.as_ref().as_ptr(),
-                data.as_mut_ptr(),
-                data_len.as_mut_ptr(),
-            )
-        }) {
+        let f = field
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("field"))?;
+        match crate::ffi_result_with_context(
+            unsafe {
+                ffi::sd_journal_get_data(
+                    self.as_ptr(),
+                    f.as_ref().as_ptr(),
+                    data.as_mut_ptr(),
+                    data_len.as_mut_ptr(),
+                )
+            },
+            "sd_journal_get_data",
+        ) {
             Ok(_) => Ok(Some(
                 unsafe { slice::from_raw_parts(data.assume_init(), data_len.assume_init()) }.into(),
             )),
@@ -915,9 +965,16 @@ impl JournalRef {
     pub fn enumerate_data(&mut self) -> Result<Option<JournalEntryField<'_>>> {
         let mut data = MaybeUninit::uninit();
         let mut data_len = MaybeUninit::uninit();
-        let r = crate::ffi_result(unsafe {
-            ffi::sd_journal_enumerate_data(self.as_ptr(), data.as_mut_ptr(), data_len.as_mut_ptr())
-        });
+        let r = crate::ffi_result_with_context(
+            unsafe {
+                ffi::sd_journal_enumerate_data(
+                    self.as_ptr(),
+                    data.as_mut_ptr(),
+                    data_len.as_mut_ptr(),
+                )
+            },
+            "sd_journal_enumerate_data",
+        );
 
         let v = r?;
 
@@ -967,10 +1024,13 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_query_unique()`.
     pub fn query_unique<'a, A: CStrArgument<'a>>(&mut self, field: A) -> Result<()> {
-        let f = field.try_into_cstr()?;
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_query_unique(self.as_ptr(), f.as_ref().as_ptr())
-        })
+        let f = field
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("field"))?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_query_unique(self.as_ptr(), f.as_ref().as_ptr()) },
+            "sd_journal_query_unique",
+        )
         .map(|_| ())
     }
 
@@ -993,13 +1053,16 @@ impl JournalRef {
     pub fn enumerate_unique(&mut self) -> Result<Option<JournalEntryField<'_>>> {
         let mut data = MaybeUninit::<*const c_void>::uninit();
         let mut data_len = MaybeUninit::uninit();
-        let r = crate::ffi_result(unsafe {
-            ffi::sd_journal_enumerate_unique(
-                self.as_ptr(),
-                data.as_mut_ptr(),
-                data_len.as_mut_ptr(),
-            )
-        });
+        let r = crate::ffi_result_with_context(
+            unsafe {
+                ffi::sd_journal_enumerate_unique(
+                    self.as_ptr(),
+                    data.as_mut_ptr(),
+                    data_len.as_mut_ptr(),
+                )
+            },
+            "sd_journal_enumerate_unique",
+        );
 
         let v = r?;
 
@@ -1019,32 +1082,44 @@ impl JournalRef {
     // TODO: consider renaming
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<u64> {
-        crate::ffi_result(unsafe { ffi::sd_journal_next(self.as_ptr()) })
-            .map(|v| v.try_into().unwrap())
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_next(self.as_ptr()) },
+            "sd_journal_next",
+        )
+        .map(|v| v.try_into().unwrap())
     }
 
     /// Iterate over journal entries, skipping `skip_count` of them
     ///
     /// Corresponds to `sd_journal_next_skip()`
     pub fn next_skip(&mut self, skip_count: u64) -> Result<u64> {
-        crate::ffi_result(unsafe { ffi::sd_journal_next_skip(self.as_ptr(), skip_count) })
-            .map(|v| v.try_into().unwrap())
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_next_skip(self.as_ptr(), skip_count) },
+            "sd_journal_next_skip",
+        )
+        .map(|v| v.try_into().unwrap())
     }
 
     /// Iterate in reverse over journal entries
     ///
     /// Corresponds to `sd_journal_previous()`
     pub fn previous(&mut self) -> Result<u64> {
-        crate::ffi_result(unsafe { ffi::sd_journal_previous(self.as_ptr()) })
-            .map(|v| v.try_into().unwrap())
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_previous(self.as_ptr()) },
+            "sd_journal_previous",
+        )
+        .map(|v| v.try_into().unwrap())
     }
 
     /// Iterate in reverse over journal entries, skipping `skip_count` of them.
     ///
     /// Corresponds to `sd_journal_previous_skip()`
     pub fn previous_skip(&mut self, skip_count: u64) -> Result<usize> {
-        crate::ffi_result(unsafe { ffi::sd_journal_previous_skip(self.as_ptr(), skip_count) })
-            .map(|v| v.try_into().unwrap())
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_previous_skip(self.as_ptr(), skip_count) },
+            "sd_journal_previous_skip",
+        )
+        .map(|v| v.try_into().unwrap())
     }
 
     /// Read the next entry from the journal. Returns `Ok(None)` if there
@@ -1079,21 +1154,27 @@ impl JournalRef {
             .transpose()?
             .unwrap_or(u64::MAX);
 
-        match ffi_result(unsafe { ffi::sd_journal_wait(self.as_ptr(), time) })? {
+        match ffi_result(
+            unsafe { ffi::sd_journal_wait(self.as_ptr(), time) },
+            "sd_journal_wait",
+        )? {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
             ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
             ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
-            _ => Err(io::Error::new(InvalidData, "Failed to wait for changes")),
+            _ => Err(Error::new(InvalidData, "Failed to wait for changes")),
         }
     }
 
     /// Get the journal state after receiving an an event when polling the journal file descriptor.
     pub fn process(&mut self) -> Result<JournalWaitResult> {
-        match ffi_result(unsafe { ffi::sd_journal_process(self.as_ptr()) })? {
+        match ffi_result(
+            unsafe { ffi::sd_journal_process(self.as_ptr()) },
+            "sd_journal_process",
+        )? {
             ffi::SD_JOURNAL_NOP => Ok(JournalWaitResult::Nop),
             ffi::SD_JOURNAL_APPEND => Ok(JournalWaitResult::Append),
             ffi::SD_JOURNAL_INVALIDATE => Ok(JournalWaitResult::Invalidate),
-            _ => Err(io::Error::new(InvalidData, "Failed to process journal")),
+            _ => Err(Error::new(InvalidData, "Failed to process journal")),
         }
     }
 
@@ -1151,40 +1232,53 @@ impl JournalRef {
 
     /// Corresponds to `sd_journal_seek_head()`
     pub fn seek_head(&mut self) -> Result<()> {
-        crate::ffi_result(unsafe { ffi::sd_journal_seek_head(self.as_ptr()) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_seek_head(self.as_ptr()) },
+            "sd_journal_seek_head",
+        )?;
 
         Ok(())
     }
 
     /// Corresponds to `sd_journal_seek_tail()`
     pub fn seek_tail(&mut self) -> Result<()> {
-        crate::ffi_result(unsafe { ffi::sd_journal_seek_tail(self.as_ptr()) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_seek_tail(self.as_ptr()) },
+            "sd_journal_seek_tail",
+        )?;
 
         Ok(())
     }
 
     /// Corresponds to `sd_journal_seek_monotonic_usec()`
     pub fn seek_monotonic_usec(&mut self, boot_id: Id128, usec: u64) -> Result<()> {
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_seek_monotonic_usec(self.as_ptr(), *boot_id.as_raw(), usec)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_seek_monotonic_usec(self.as_ptr(), *boot_id.as_raw(), usec) },
+            "sd_journal_seek_monotonic_usec",
+        )?;
 
         Ok(())
     }
 
     /// Corresponds to `sd_journal_seek_realtime_usec()`
     pub fn seek_realtime_usec(&mut self, usec: u64) -> Result<()> {
-        crate::ffi_result(unsafe { ffi::sd_journal_seek_realtime_usec(self.as_ptr(), usec) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_seek_realtime_usec(self.as_ptr(), usec) },
+            "sd_journal_seek_realtime_usec",
+        )?;
 
         Ok(())
     }
 
     /// Corresponds to `sd_journal_seek_cursor()`
     pub fn seek_cursor<'a, A: CStrArgument<'a>>(&mut self, cursor: A) -> Result<()> {
-        let c = cursor.try_into_cstr()?;
-        crate::ffi_result(unsafe {
-            ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ref().as_ptr())
-        })?;
+        let c = cursor
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("cursor"))?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::sd_journal_seek_cursor(self.as_ptr(), c.as_ref().as_ptr()) },
+            "sd_journal_seek_cursor",
+        )?;
 
         Ok(())
     }
@@ -1219,7 +1313,10 @@ impl JournalRef {
     pub fn cursor(&self) -> Result<String> {
         let mut c_cursor: *const c_char = ptr::null_mut();
 
-        ffi_result(unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &mut c_cursor) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_get_cursor(self.as_ptr(), &mut c_cursor) },
+            "sd_journal_get_cursor",
+        )?;
         let cursor = unsafe { free_cstring(c_cursor as *mut _).unwrap() };
         Ok(cursor)
     }
@@ -1228,9 +1325,14 @@ impl JournalRef {
     ///
     /// Corresponds to `sd_journal_test_cursor()`.
     pub fn test_cursor<'a, A: CStrArgument<'a>>(&self, cursor: A) -> Result<bool> {
-        let c = cursor.try_into_cstr()?;
-        ffi_result(unsafe { ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr()) })
-            .map(|v| v != 0)
+        let c = cursor
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("cursor"))?;
+        ffi_result(
+            unsafe { ffi::sd_journal_test_cursor(self.as_ptr(), c.as_ref().as_ptr()) },
+            "sd_journal_test_cursor",
+        )
+        .map(|v| v != 0)
     }
 
     /// Returns timestamp at which current journal entry was recorded.
@@ -1241,7 +1343,10 @@ impl JournalRef {
     /// Returns timestamp at which current journal entry was recorded in u64 format.
     pub fn timestamp_usec(&self) -> Result<u64> {
         let mut timestamp_us: u64 = 0;
-        ffi_result(unsafe { ffi::sd_journal_get_realtime_usec(self.as_ptr(), &mut timestamp_us) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_get_realtime_usec(self.as_ptr(), &mut timestamp_us) },
+            "sd_journal_get_realtime_usec",
+        )?;
         Ok(timestamp_us)
     }
 
@@ -1249,13 +1354,16 @@ impl JournalRef {
     pub fn monotonic_timestamp(&self) -> Result<(u64, Id128)> {
         let mut monotonic_timestamp_us: u64 = 0;
         let mut id = Id128::default();
-        ffi_result(unsafe {
-            ffi::sd_journal_get_monotonic_usec(
-                self.as_ptr(),
-                &mut monotonic_timestamp_us,
-                &mut id.inner,
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::sd_journal_get_monotonic_usec(
+                    self.as_ptr(),
+                    &mut monotonic_timestamp_us,
+                    &mut id.inner,
+                )
+            },
+            "sd_journal_get_monotonic_usec",
+        )?;
         Ok((monotonic_timestamp_us, id))
     }
 
@@ -1263,13 +1371,16 @@ impl JournalRef {
     /// the current entry is not from the current system boot.
     pub fn monotonic_timestamp_current_boot(&self) -> Result<u64> {
         let mut monotonic_timestamp_us: u64 = 0;
-        ffi_result(unsafe {
-            ffi::sd_journal_get_monotonic_usec(
-                self.as_ptr(),
-                &mut monotonic_timestamp_us,
-                ptr::null_mut(),
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::sd_journal_get_monotonic_usec(
+                    self.as_ptr(),
+                    &mut monotonic_timestamp_us,
+                    ptr::null_mut(),
+                )
+            },
+            "sd_journal_get_monotonic_usec",
+        )?;
         Ok(monotonic_timestamp_us)
     }
 
@@ -1283,9 +1394,10 @@ impl JournalRef {
     pub fn cutoff_realtime_usec(&self) -> Result<Option<(u64, u64)>> {
         let mut from: u64 = 0;
         let mut to: u64 = 0;
-        let r = ffi_result(unsafe {
-            ffi::sd_journal_get_cutoff_realtime_usec(self.as_ptr(), &mut from, &mut to)
-        })?;
+        let r = ffi_result(
+            unsafe { ffi::sd_journal_get_cutoff_realtime_usec(self.as_ptr(), &mut from, &mut to) },
+            "sd_journal_get_cutoff_realtime_usec",
+        )?;
         Ok(if r == 0 { None } else { Some((from, to)) })
     }
 
@@ -1310,14 +1422,17 @@ impl JournalRef {
     pub fn cutoff_monotonic_usec(&self, boot_id: Id128) -> Result<Option<(u64, u64)>> {
         let mut from: u64 = 0;
         let mut to: u64 = 0;
-        let r = ffi_result(unsafe {
-            ffi::sd_journal_get_cutoff_monotonic_usec(
-                self.as_ptr(),
-                boot_id.inner,
-                &mut from,
-                &mut to,
-            )
-        })?;
+        let r = ffi_result(
+            unsafe {
+                ffi::sd_journal_get_cutoff_monotonic_usec(
+                    self.as_ptr(),
+                    boot_id.inner,
+                    &mut from,
+                    &mut to,
+                )
+            },
+            "sd_journal_get_cutoff_monotonic_usec",
+        )?;
         Ok(if r == 0 { None } else { Some((from, to)) })
     }
 
@@ -1337,19 +1452,28 @@ impl JournalRef {
         filter.extend(val.into());
         let data = filter.as_ptr() as *const c_void;
         let datalen = filter.len() as size_t;
-        ffi_result(unsafe { ffi::sd_journal_add_match(self.as_ptr(), data, datalen) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_add_match(self.as_ptr(), data, datalen) },
+            "sd_journal_add_match",
+        )?;
         Ok(self)
     }
 
     /// Inserts a disjunction (i.e. logical OR) in the match list.
     pub fn match_or(&mut self) -> Result<&mut JournalRef> {
-        ffi_result(unsafe { ffi::sd_journal_add_disjunction(self.as_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_add_disjunction(self.as_ptr()) },
+            "sd_journal_add_disjunction",
+        )?;
         Ok(self)
     }
 
     /// Inserts a conjunction (i.e. logical AND) in the match list.
     pub fn match_and(&mut self) -> Result<&mut JournalRef> {
-        ffi_result(unsafe { ffi::sd_journal_add_conjunction(self.as_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::sd_journal_add_conjunction(self.as_ptr()) },
+            "sd_journal_add_conjunction",
+        )?;
         Ok(self)
     }
 
@@ -1461,6 +1585,8 @@ mod formatting_tests {
         let record = Record::builder().build();
         let error = logger.log_record(&record).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.operation(), Some("format journal message"));
+        assert_eq!(error.argument(), Some("formatter"));
         assert!(error
             .get_ref()
             .unwrap()

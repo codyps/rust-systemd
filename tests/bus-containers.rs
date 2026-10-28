@@ -236,7 +236,7 @@ fn failed_inner_decoder_restores_a_root_cursor() {
     impl<'a> FromSdBusMessage<'a> for Reject {
         fn from_message(message: &mut MessageIter<'a>) -> systemd::Result<Option<Self>> {
             assert_eq!(message.next::<u32>()?, Some(7));
-            Err(std::io::Error::new(
+            Err(systemd::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "test decoder failure",
             ))

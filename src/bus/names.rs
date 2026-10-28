@@ -21,7 +21,10 @@ macro_rules! checked_name {
             /// Invalid values return `InvalidInput`.
             #[allow(clippy::new_ret_no_self)] // Self is a borrowed, unsized string type.
             pub fn new<'a>(value: impl CStrArgument<'a>) -> crate::Result<Cow<'a, Self>> {
-                match value.try_into_cstr()? {
+                match value
+                    .try_into_cstr()
+                    .map_err(|error| error.with_argument("value"))?
+                {
                     Cow::Borrowed(value) => {
                         Self::from_bytes(value.to_bytes_with_nul()).map(Cow::Borrowed)
                     }
@@ -107,43 +110,43 @@ macro_rules! checked_name {
             }
         }
         impl std::str::FromStr for $owned {
-            type Err = std::io::Error;
+            type Err = crate::Error;
             fn from_str(value: &str) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
         }
         impl TryFrom<CString> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: CString) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
         }
         impl TryFrom<String> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: String) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
         }
         impl TryFrom<&CStr> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: &CStr) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
         }
         impl TryFrom<&str> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: &str) -> crate::Result<Self> {
                 value.parse()
             }
         }
         impl TryFrom<&String> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: &String) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
         }
         impl TryFrom<&CString> for $owned {
-            type Error = std::io::Error;
+            type Error = crate::Error;
             fn try_from(value: &CString) -> crate::Result<Self> {
                 Ok($name::new(value)?.into_owned())
             }
@@ -247,7 +250,7 @@ macro_rules! checked_name {
                 value
                     .map(|value| {
                         $name::from_bytes(value.to_bytes_with_nul()).map_err(|error| {
-                            std::io::Error::new(std::io::ErrorKind::InvalidData, error)
+                            crate::Error::new(std::io::ErrorKind::InvalidData, error)
                         })
                     })
                     .transpose()

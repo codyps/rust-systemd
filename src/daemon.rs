@@ -4,7 +4,7 @@
 /// [libsystemd](https://crates.io/crates/libsystemd) crate, and you may prefer to use it instead.
 use super::ffi::{c_int, pid_t, size_t};
 use super::{Error, Result};
-use crate::ffi_result;
+use crate::ffi_result_with_context as ffi_result;
 use crate::CStrArgument;
 use ::ffi::daemon as ffi;
 use libc::{c_char, c_uint};
@@ -75,7 +75,10 @@ pub struct ListenFds {
 impl ListenFds {
     // Constructs a new set from the number of file_descriptors
     unsafe fn new(unset_environment: bool) -> Result<Self> {
-        let num_fds = ffi_result(unsafe { ffi::sd_listen_fds(unset_environment as c_int) })?;
+        let num_fds = ffi_result(
+            unsafe { ffi::sd_listen_fds(unset_environment as c_int) },
+            "sd_listen_fds",
+        )?;
         Ok(Self { num_fds })
     }
 
@@ -157,9 +160,10 @@ impl ListenFdsWithNames {
         let mut native = NativeFdNames(ptr::null_mut());
         // SAFETY: native is a writable output. The caller permits environment
         // mutation when requested; false leaves the environment unchanged.
-        let count = ffi_result(unsafe {
-            ffi::sd_listen_fds_with_names(unset_environment as c_int, &mut native.0)
-        })?;
+        let count = ffi_result(
+            unsafe { ffi::sd_listen_fds_with_names(unset_environment as c_int, &mut native.0) },
+            "sd_listen_fds_with_names",
+        )?;
         let mut names = Vec::with_capacity(count as usize);
         if count > 0 {
             // SAFETY: a positive native result supplies count non-null string
@@ -206,7 +210,9 @@ impl ListenFdsWithNames {
         &'a self,
         name: impl CStrArgument<'a>,
     ) -> Result<impl DoubleEndedIterator<Item = Fd> + std::iter::FusedIterator + 'a> {
-        let name = name.try_into_cstr()?;
+        let name = name
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("name"))?;
         Ok(self
             .iter()
             .filter_map(move |(fd, candidate)| (candidate == name.as_ref()).then_some(fd)))
@@ -259,7 +265,7 @@ impl Drop for NativeFdNames {
 /// for fd in descriptors.iter_named("http")? {
 ///     println!("HTTP descriptor: {fd}");
 /// }
-/// # Ok::<(), std::io::Error>(())
+/// # Ok::<(), systemd::Error>(())
 /// ```
 pub fn listen_fds_with_names() -> Result<ListenFdsWithNames> {
     // SAFETY: false prevents libsystemd from modifying the environment.
@@ -279,7 +285,7 @@ pub fn listen_fds_with_names() -> Result<ListenFdsWithNames> {
 /// use systemd::daemon;
 /// // SAFETY: startup code ensures no concurrent environment access.
 /// let descriptors = unsafe { daemon::listen_fds_with_names_unset_environment() }?;
-/// # Ok::<(), std::io::Error>(())
+/// # Ok::<(), systemd::Error>(())
 /// ```
 ///
 /// Clearing the environment requires an explicit unsafe call:
@@ -294,19 +300,32 @@ pub unsafe fn listen_fds_with_names_unset_environment() -> Result<ListenFdsWithN
 /// Identifies whether the passed file descriptor is a FIFO.  If a path is
 /// supplied, the file descriptor must also match the path.
 pub fn is_fifo<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.try_into_cstr()).transpose()?;
-    let result =
-        ffi_result(unsafe { ffi::sd_is_fifo(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) })?;
+    let path = path
+        .map(|x| {
+            x.try_into_cstr()
+                .map_err(|error| error.with_argument("path"))
+        })
+        .transpose()?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_fifo(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) },
+        "sd_is_fifo",
+    )?;
     Ok(result != 0)
 }
 
 /// Identifies whether the passed file descriptor is a special character device.
 /// If a path is supplied, the file descriptor must also match the path.
 pub fn is_special<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.try_into_cstr()).transpose()?;
-    let result = ffi_result(unsafe {
-        ffi::sd_is_special(fd, path.as_ref().map_or(null(), |x| x.as_ptr()))
-    })?;
+    let path = path
+        .map(|x| {
+            x.try_into_cstr()
+                .map_err(|error| error.with_argument("path"))
+        })
+        .transpose()?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_special(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) },
+        "sd_is_special",
+    )?;
     Ok(result != 0)
 }
 
@@ -345,7 +364,10 @@ pub fn is_socket(
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
 
-    let result = ffi_result(unsafe { ffi::sd_is_socket(fd, c_family, c_socktype, c_listening) })?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_socket(fd, c_family, c_socktype, c_listening) },
+        "sd_is_socket",
+    )?;
     Ok(result != 0)
 }
 
@@ -364,9 +386,10 @@ pub fn is_socket_inet(
     let c_listening = get_c_listening(listening);
     let c_port = port.unwrap_or(0);
 
-    let result = ffi_result(unsafe {
-        ffi::sd_is_socket_inet(fd, c_family, c_socktype, c_listening, c_port)
-    })?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_socket_inet(fd, c_family, c_socktype, c_listening, c_port) },
+        "sd_is_socket_inet",
+    )?;
     Ok(result != 0)
 }
 
@@ -397,7 +420,12 @@ pub fn is_socket_unix<'a, S: CStrArgument<'a>>(
     listening: Listening,
     path: Option<S>,
 ) -> Result<bool> {
-    let path_cstr = path.map(|p| p.try_into_cstr()).transpose()?;
+    let path_cstr = path
+        .map(|p| {
+            p.try_into_cstr()
+                .map_err(|error| error.with_argument("path"))
+        })
+        .transpose()?;
     let c_socktype = get_c_socktype(socktype);
     let c_listening = get_c_listening(listening);
     let c_path: *const c_char;
@@ -414,18 +442,26 @@ pub fn is_socket_unix<'a, S: CStrArgument<'a>>(
         }
     }
 
-    let result = ffi_result(unsafe {
-        ffi::sd_is_socket_unix(fd, c_socktype, c_listening, c_path, c_length)
-    })?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_socket_unix(fd, c_socktype, c_listening, c_path, c_length) },
+        "sd_is_socket_unix",
+    )?;
     Ok(result != 0)
 }
 
 /// Identifies whether the passed file descriptor is a POSIX message queue. If a
 /// path is supplied, it will also verify the name.
 pub fn is_mq<'a, S: CStrArgument<'a>>(fd: Fd, path: Option<S>) -> Result<bool> {
-    let path = path.map(|x| x.try_into_cstr()).transpose()?;
-    let result =
-        ffi_result(unsafe { ffi::sd_is_mq(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) })?;
+    let path = path
+        .map(|x| {
+            x.try_into_cstr()
+                .map_err(|error| error.with_argument("path"))
+        })
+        .transpose()?;
+    let result = ffi_result(
+        unsafe { ffi::sd_is_mq(fd, path.as_ref().map_or(null(), |x| x.as_ptr())) },
+        "sd_is_mq",
+    )?;
     Ok(result != 0)
 }
 /// Converts a state map to a C-string for notify
@@ -545,21 +581,24 @@ where
     V: AsRef<str> + 'a,
 {
     let c_state = state_to_c_string(state);
-    let result = ffi_result(unsafe {
-        ffi::sd_pid_notify_with_fds(
-            pid,
-            unset_environment as c_int,
-            c_state.as_ptr(),
-            fds.as_ptr(),
-            fds.len() as c_uint,
-        )
-    })?;
+    let result = ffi_result(
+        unsafe {
+            ffi::sd_pid_notify_with_fds(
+                pid,
+                unset_environment as c_int,
+                c_state.as_ptr(),
+                fds.as_ptr(),
+                fds.len() as c_uint,
+            )
+        },
+        "sd_pid_notify_with_fds",
+    )?;
     Ok(result != 0)
 }
 
 /// Returns true if the system was booted with systemd.
 pub fn booted() -> Result<bool> {
-    let result = ffi_result(unsafe { ffi::sd_booted() })?;
+    let result = ffi_result(unsafe { ffi::sd_booted() }, "sd_booted")?;
     Ok(result != 0)
 }
 
@@ -584,6 +623,9 @@ pub unsafe fn watchdog_enabled_unset_environment() -> Result<u64> {
 
 unsafe fn watchdog_enabled_impl(unset_environment: bool) -> Result<u64> {
     let mut timeout: u64 = 0;
-    ffi_result(unsafe { ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout) })?;
+    ffi_result(
+        unsafe { ffi::sd_watchdog_enabled(unset_environment as c_int, &mut timeout) },
+        "sd_watchdog_enabled",
+    )?;
     Ok(timeout)
 }

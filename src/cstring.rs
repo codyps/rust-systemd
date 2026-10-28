@@ -29,8 +29,10 @@ pub trait CStrArgument<'a>: Sized {
     fn try_into_cstr(self) -> crate::Result<Cow<'a, CStr>>;
 }
 
-fn invalid(error: impl std::fmt::Display) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+fn invalid(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
+    crate::Error::new(std::io::ErrorKind::InvalidInput, error)
+        .with_operation("convert C string argument")
+        .with_argument("value")
 }
 
 fn borrowed(bytes: &[u8]) -> crate::Result<Cow<'_, CStr>> {

@@ -1,11 +1,11 @@
 use super::{FromSdBusMessage, SdBusMessageDirect, ToSdBusMessage, UnixFd};
 use crate::bus::{ContainerType, MessageIter, MessageRef};
-use crate::CStrArgument;
+use crate::{CStrArgument, Error};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{CStr, CString};
 use std::hash::{BuildHasher, Hash};
-use std::io::{Error, ErrorKind};
+use std::io::ErrorKind;
 use utf8_cstr::Utf8CStr;
 
 /// A value's complete D-Bus type signature, including container delimiters.
