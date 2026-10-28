@@ -5,7 +5,8 @@ use std::{borrow::Cow, error, fmt, io};
 /// [`Self::kind`] and [`Self::raw_os_error`] preserve the underlying I/O error's classification
 /// and errno, including when context is attached. [`Self::operation`] identifies the failed
 /// native operation when available; [`Self::argument`] identifies an invalid argument.
-/// Argument values are not automatically included in diagnostics.
+/// Context stores argument names rather than values. Underlying causes retain their own
+/// diagnostics and may contain input data.
 ///
 /// The representation is private so additional details can be added without changing this type.
 /// The original I/O error is available through [`Self::as_io_error`] and
