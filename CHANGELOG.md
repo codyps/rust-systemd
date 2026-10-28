@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/codyps/rust-systemd/compare/systemd-0.11.0...systemd-0.11.1) - 2026-10-28
+
+### Fixed
+
+- enable Serde allocation for standalone feature builds
+
 ## [0.11.0](https://github.com/codyps/rust-systemd/compare/systemd-0.10.1...systemd-0.11.0) - 2026-10-28
 
 ### Breaking changes and migration
