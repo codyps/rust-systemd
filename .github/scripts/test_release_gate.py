@@ -11,7 +11,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.pr = {
             "merged_at": "2026-10-27T00:00:00Z",
             "merge_commit_sha": self.commit,
-            "base": {"ref": "master"},
+            "base": {"ref": "main"},
             "head": {
                 "ref": "release-plz-2026-10-27T04-46-49Z",
                 "repo": {"full_name": self.repository},
@@ -37,6 +37,7 @@ class ReleaseGateTests(unittest.TestCase):
     def test_rejects_other_base_repository_or_branch(self):
         for path, value in (
             (("base", "ref"), "other"),
+            (("base", "ref"), "master"),
             (("head", "repo", "full_name"), "other/repository"),
             (("head", "ref"), "feature-branch"),
         ):

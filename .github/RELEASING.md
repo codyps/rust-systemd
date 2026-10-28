@@ -8,14 +8,14 @@ The initial versions are explicitly prepared as `systemd 0.11.0` and
 `libsystemd-sys 0.10.0`. Both contain breaking API changes, including the new
 crate-owned error type, daemon signatures, and native API feature gates.
 
-After the merged commit passes the full `build` workflow on master, release-plz
+After the merged commit passes the full `build` workflow on main, release-plz
 publishes the crates in dependency order and creates GitHub releases. Tags keep
 the existing `systemd-<version>` and `libsystemd-sys-<version>` formats.
 
-The release workflow runs on master pushes, identifies a merged generated release
+The release workflow runs on main pushes, identifies a merged generated release
 PR, and calls the full `build` workflow as a required dependency of publication.
-The publish job checks out that exact commit. Ordinary master pushes skip the
-release validation and publish jobs; normal master CI still runs independently.
+The publish job checks out that exact commit. Ordinary main pushes skip the
+release validation and publish jobs; normal main CI still runs independently.
 The gate requires a merged PR from a `release-plz-` branch in this repository and
 the generated release-plz footer in its body. Keep that footer when editing the PR.
 `release_always = false` also remains enabled in release-plz.
@@ -36,7 +36,7 @@ Register a GitHub Actions trusted publisher in the crates.io settings for **both
 | Workflow filename | `release-plz.yml` |
 | GitHub environment | `release` |
 
-The GitHub environment `release` permits deployments from master. No crates.io
+The GitHub environment `release` permits deployments from main. No crates.io
 API token is supplied to the workflow. Release-plz exchanges the publish job's
 OIDC identity for temporary credentials directly; a separate crates.io auth
 action is not needed. The legacy `CARGO_REGISTRY_TOKEN` secret is unused.
@@ -67,7 +67,7 @@ Configure the App once:
    gh variable set RELEASE_PLZ_APP_CLIENT_ID --repo codyps/rust-systemd --body 'YOUR_APP_CLIENT_ID'
    ```
 
-4. Dispatch `Release-plz` on master to refresh the release PR. Wait for its CI,
+4. Dispatch `Release-plz` on main to refresh the release PR. Wait for its CI,
    then merge the release PR when ready.
 
 Until the Client ID variable is configured, the job falls back to the built-in
@@ -98,7 +98,7 @@ python3 .github/scripts/sync_release.py
 cargo update --workspace
 ```
 
-Dispatch the `Release-plz` workflow on master to refresh the release PR manually.
+Dispatch the `Release-plz` workflow on main to refresh the release PR manually.
 To retry a failed publication, rerun its publish job from the Actions page; it
 retains the original tested commit. Configure trusted publishing for both crates
 before merging the first release PR.

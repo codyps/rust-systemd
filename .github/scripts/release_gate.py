@@ -9,7 +9,7 @@ def is_release_pr(pr: dict, repository: str, commit: str) -> bool:
     return (
         bool(pr.get("merged_at"))
         and pr.get("merge_commit_sha") == commit
-        and pr.get("base", {}).get("ref") == "master"
+        and pr.get("base", {}).get("ref") == "main"
         and pr.get("head", {}).get("repo", {}).get("full_name") == repository
         and pr.get("head", {}).get("ref", "").startswith("release-plz-")
         and "This PR was generated with [release-plz]" in (pr.get("body") or "")

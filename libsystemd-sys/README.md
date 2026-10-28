@@ -9,7 +9,7 @@ use the [`systemd` crate](https://crates.io/crates/systemd).
 
 [API documentation](https://docs.rs/libsystemd-sys) ·
 [Native API reference](https://www.freedesktop.org/software/systemd/man/latest/libsystemd.html) ·
-[Changelog](https://github.com/codyps/rust-systemd/blob/master/libsystemd-sys/CHANGELOG.md)
+[Changelog](https://github.com/codyps/rust-systemd/blob/main/libsystemd-sys/CHANGELOG.md)
 
 ## Installation
 
@@ -91,5 +91,5 @@ target programs.
 ## License
 
 LGPL-2.1-or-later WITH GCC-exception-2.0. See
-[COPYING](https://github.com/codyps/rust-systemd/blob/master/COPYING) for the
+[COPYING](https://github.com/codyps/rust-systemd/blob/main/COPYING) for the
 license and linking exception.
