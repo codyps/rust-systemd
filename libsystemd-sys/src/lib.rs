@@ -1,8 +1,4 @@
-//! Low-level bindings to libsystemd (and similar) libraries
-//!
-//! Items in this module correspond to systemd functions/types that are documented by the systemd
-//! (`sd_*`) man pages.
-
+#![doc = include_str!("../README.md")]
 #![warn(rust_2018_idioms)]
 
 pub use libc::{clockid_t, gid_t, iovec, pid_t, siginfo_t, signalfd_siginfo, size_t, uid_t};
