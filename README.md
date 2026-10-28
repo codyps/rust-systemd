@@ -5,7 +5,7 @@ notifications, login sessions, IDs, and D-Bus. For direct C bindings, use
 [`libsystemd-sys`](https://crates.io/crates/libsystemd-sys).
 
 [API documentation](https://docs.rs/systemd) ·
-[Changelog](https://github.com/codyps/rust-systemd/blob/master/CHANGELOG.md)
+[Changelog](https://github.com/codyps/rust-systemd/blob/main/CHANGELOG.md)
 
 ## Installation
 
@@ -135,5 +135,5 @@ with a linking kind, such as `SYSTEMD_LIBS=static=systemd`. For libelogind, use
 ## License
 
 LGPL-2.1-or-later WITH GCC-exception-2.0. See
-[COPYING](https://github.com/codyps/rust-systemd/blob/master/COPYING) for the
+[COPYING](https://github.com/codyps/rust-systemd/blob/main/COPYING) for the
 license and linking exception.

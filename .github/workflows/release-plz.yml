@@ -2,7 +2,7 @@ name: Release-plz
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ jobs:
   release-pr:
     if: >-
       github.repository == 'codyps/rust-systemd' &&
-      github.ref == 'refs/heads/master' &&
+      github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
@@ -33,7 +33,7 @@ jobs:
           permission-pull-requests: write
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: main
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
       - uses: dtolnay/rust-toolchain@stable
@@ -73,7 +73,7 @@ jobs:
     if: >-
       github.repository == 'codyps/rust-systemd' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/master'
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
