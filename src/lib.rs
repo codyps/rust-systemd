@@ -16,6 +16,11 @@
 //! `SYSTEMD_LIBS` selections and libraries selected by `SYSTEMD_PKG_NAME`,
 //! including libelogind. Disable unsupported features or install a library
 //! providing the selected APIs when the capability check fails.
+//!
+//! Fallible systemd APIs use [`Error`] and [`Result`]. The crate-owned error preserves errno
+//! and I/O error kinds while adding operation and argument context. See [`Error`] for migration
+//! from the previous `std::io::Error` re-export. D-Bus method errors use `bus::Error`
+//! when the `bus` feature is enabled; logger installation uses `log::SetLoggerError`.
 
 #[cfg(all(feature = "journal", doctest))]
 doc_comment::doctest!("../README.md", readme);
@@ -36,7 +41,11 @@ pub use journal::{
     FormattedJournalLog, Journal, JournalLog, JournalRecord, JournalSeek, JournalWaitResult,
 };
 use libc::{c_char, c_void, free, strlen};
-pub use std::io::{Error, Result};
+mod error;
+pub use error::Error;
+
+/// The result of a systemd operation. See [`Error`] for details and I/O conversions.
+pub type Result<T> = std::result::Result<T, Error>;
 
 mod cstring;
 pub use self::cstring::CStrArgument;
@@ -49,7 +58,11 @@ fn usec_from_duration(duration: std::time::Duration) -> Result<u64> {
         .and_then(|usecs| usecs.checked_add(u64::from(duration.subsec_micros())))
         // UINT64_MAX is libsystemd's infinity sentinel, reserved for None.
         .filter(|&usecs| usecs != u64::MAX)
-        .ok_or_else(|| Error::from_raw_os_error(libc::EOVERFLOW))
+        .ok_or_else(|| {
+            Error::from_raw_os_error(libc::EOVERFLOW)
+                .with_operation("convert timeout to microseconds")
+                .with_argument("timeout")
+        })
 }
 
 #[cfg(all(test, any(feature = "journal", feature = "bus")))]
@@ -83,6 +96,10 @@ pub fn ffi_result(ret: ffi::c_int) -> Result<ffi::c_int> {
     } else {
         Ok(ret)
     }
+}
+
+fn ffi_result_with_context(ret: ffi::c_int, operation: &'static str) -> Result<ffi::c_int> {
+    ffi_result(ret).map_err(|error| error.with_operation(operation))
 }
 
 /// Convert a malloc'd C string into a rust string and call free on it.

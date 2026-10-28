@@ -4,7 +4,7 @@
 //! simpler string format. See `man 3 sd-id128` for more details.
 
 use super::Result;
-use crate::{ffi_result, CStrArgument};
+use crate::{ffi_result_with_context as ffi_result, CStrArgument};
 #[cfg(feature = "serde")]
 use std::ffi::CStr;
 use std::fmt;
@@ -64,35 +64,52 @@ impl<'de> serde::Deserialize<'de> for Id128 {
 
 impl Id128 {
     pub fn from_cstr<'a>(s: impl CStrArgument<'a>) -> Result<Id128> {
-        let s = s.try_into_cstr()?;
+        let s = s
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("s"))?;
         let mut r = Id128::default();
-        ffi_result(unsafe { ffi::id128::sd_id128_from_string(s.as_ptr(), &mut r.inner) })?;
+        ffi_result(
+            unsafe { ffi::id128::sd_id128_from_string(s.as_ptr(), &mut r.inner) },
+            "sd_id128_from_string",
+        )?;
         Ok(r)
     }
 
     pub fn from_random() -> Result<Id128> {
         let mut r = Id128::default();
-        ffi_result(unsafe { ffi::id128::sd_id128_randomize(&mut r.inner) })?;
+        ffi_result(
+            unsafe { ffi::id128::sd_id128_randomize(&mut r.inner) },
+            "sd_id128_randomize",
+        )?;
         Ok(r)
     }
 
     pub fn from_machine() -> Result<Id128> {
         let mut r = Id128::default();
-        ffi_result(unsafe { ffi::id128::sd_id128_get_machine(&mut r.inner) })?;
+        ffi_result(
+            unsafe { ffi::id128::sd_id128_get_machine(&mut r.inner) },
+            "sd_id128_get_machine",
+        )?;
         Ok(r)
     }
 
     pub fn from_machine_app_specific(app_id: &Id128) -> Result<Id128> {
         let mut r = Id128::default();
-        ffi_result(unsafe {
-            ffi::id128::sd_id128_get_machine_app_specific(*app_id.as_raw(), &mut r.inner)
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::id128::sd_id128_get_machine_app_specific(*app_id.as_raw(), &mut r.inner)
+            },
+            "sd_id128_get_machine_app_specific",
+        )?;
         Ok(r)
     }
 
     pub fn from_boot() -> Result<Id128> {
         let mut r = Id128::default();
-        ffi_result(unsafe { ffi::id128::sd_id128_get_boot(&mut r.inner) })?;
+        ffi_result(
+            unsafe { ffi::id128::sd_id128_get_boot(&mut r.inner) },
+            "sd_id128_get_boot",
+        )?;
         Ok(r)
     }
 
@@ -100,9 +117,10 @@ impl Id128 {
     #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v240")))]
     pub fn from_boot_app_specific(app_id: &Id128) -> Result<Id128> {
         let mut r = Id128::default();
-        ffi_result(unsafe {
-            ffi::id128::sd_id128_get_boot_app_specific(*app_id.as_raw(), &mut r.inner)
-        })?;
+        ffi_result(
+            unsafe { ffi::id128::sd_id128_get_boot_app_specific(*app_id.as_raw(), &mut r.inner) },
+            "sd_id128_get_boot_app_specific",
+        )?;
         Ok(r)
     }
 

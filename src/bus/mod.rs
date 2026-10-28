@@ -66,7 +66,7 @@
 //    than what is possible with sd-bus directly.
 
 //use enumflags2_derive::EnumFlags;
-use crate::ffi_result;
+use crate::ffi_result_with_context as ffi_result;
 use crate::CStrArgument;
 use ffi::{c_char, c_int, c_void, pid_t};
 use foreign_types::{foreign_type, ForeignType, ForeignTypeRef};
@@ -100,8 +100,9 @@ macro_rules! name_argument {
 }
 name_argument!(ObjectPath, InterfaceName, BusName, MemberName);
 
-fn invalid_argument(error: impl fmt::Display) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+fn invalid_argument(error: impl fmt::Display) -> crate::Error {
+    crate::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+        .with_operation("validate D-Bus argument")
 }
 
 /**
@@ -148,6 +149,14 @@ impl ObjectPath {
      */
     /// Invalid syntax or NUL termination returns an `InvalidInput` error.
     pub fn from_bytes(b: &[u8]) -> crate::Result<&ObjectPath> {
+        Self::validate_bytes(b).map_err(|error| {
+            error
+                .with_operation("ObjectPath::from_bytes")
+                .with_argument("value")
+        })
+    }
+
+    fn validate_bytes(b: &[u8]) -> crate::Result<&ObjectPath> {
         if b.is_empty() {
             return Err(invalid_argument(
                 "Path must have at least 1 character ('/')",
@@ -265,6 +274,14 @@ impl InterfaceName {
      */
     /// Invalid syntax or NUL termination returns an `InvalidInput` error.
     pub fn from_bytes(b: &[u8]) -> crate::Result<&InterfaceName> {
+        Self::validate_bytes(b).map_err(|error| {
+            error
+                .with_operation("InterfaceName::from_bytes")
+                .with_argument("value")
+        })
+    }
+
+    fn validate_bytes(b: &[u8]) -> crate::Result<&InterfaceName> {
         if b.is_empty() {
             return Err(invalid_argument("Name must have more than 0 characters"));
         }
@@ -395,6 +412,14 @@ impl BusName {
      */
     /// Invalid syntax or NUL termination returns an `InvalidInput` error.
     pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
+        Self::validate_bytes(b).map_err(|error| {
+            error
+                .with_operation("BusName::from_bytes")
+                .with_argument("value")
+        })
+    }
+
+    fn validate_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.is_empty() {
             return Err(invalid_argument("Name must have more than 0 characters"));
         }
@@ -523,6 +548,14 @@ impl MemberName {
      */
     /// Invalid syntax or NUL termination returns an `InvalidInput` error.
     pub fn from_bytes(b: &[u8]) -> crate::Result<&Self> {
+        Self::validate_bytes(b).map_err(|error| {
+            error
+                .with_operation("MemberName::from_bytes")
+                .with_argument("value")
+        })
+    }
+
+    fn validate_bytes(b: &[u8]) -> crate::Result<&Self> {
         if b.len() < 2 {
             return Err(invalid_argument("Name must have more than 0 characters"));
         }
@@ -748,9 +781,17 @@ impl Error {
         name: impl CStrArgument<'a>,
         message: Option<impl CStrArgument<'a>>,
     ) -> crate::Result<Error> {
-        let name = name.try_into_cstr()?;
-        InterfaceName::from_bytes(name.to_bytes_with_nul())?;
-        let message = message.map(|m| m.try_into_cstr()).transpose()?;
+        let name = name
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("name"))?;
+        InterfaceName::from_bytes(name.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("name"))?;
+        let message = message
+            .map(|m| {
+                m.try_into_cstr()
+                    .map_err(|error| error.with_argument("message"))
+            })
+            .transpose()?;
         let name = Utf8CStr::from_bytes(name.to_bytes_with_nul())
             .map_err(|_| invalid_argument("D-Bus error strings must be UTF-8"))?;
         let message = message
@@ -801,6 +842,29 @@ impl From<std::io::Error> for Error {
                     .raw_os_error()
                     .filter(|code| *code > 0)
                     .unwrap_or(libc::EIO),
+            );
+            Self::from_raw(raw)
+        }
+    }
+}
+
+impl From<crate::Error> for Error {
+    fn from(error: crate::Error) -> Self {
+        let mut raw = RawError::default();
+        let errno = error
+            .raw_os_error()
+            .filter(|code| *code > 0)
+            .unwrap_or(libc::EIO);
+        // D-Bus messages are C strings; escape embedded NULs in custom diagnostics.
+        let message = std::ffi::CString::new(error.to_string().replace('\0', "\\0")).unwrap();
+        // SAFETY: raw is initialized and empty. The fixed format consumes one live C string,
+        // which libsystemd copies. Native allocation failure supplies a valid fallback error.
+        unsafe {
+            ffi::bus::sd_bus_error_set_errnof(
+                raw.as_mut_ptr(),
+                errno,
+                b"%s\0".as_ptr().cast(),
+                message.as_ptr(),
             );
             Self::from_raw(raw)
         }
@@ -1084,16 +1148,22 @@ unsafe fn float_userdata_slot<F>(
     slot: *mut ffi::bus::sd_bus_slot,
     userdata: *mut F,
 ) -> crate::Result<()> {
-    if let Err(error) = ffi_result(unsafe {
-        ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_userdata::<F>))
-    }) {
+    if let Err(error) = ffi_result(
+        unsafe {
+            ffi::bus::sd_bus_slot_set_destroy_callback(slot, Some(raw_destroy_userdata::<F>))
+        },
+        "sd_bus_slot_set_destroy_callback",
+    ) {
         // Destroy-callback installation failed, so Rust still owns the userdata.
         unsafe { ffi::bus::sd_bus_slot_unref(slot) };
         drop(unsafe { Box::from_raw(userdata) });
         return Err(error);
     }
 
-    let result = ffi_result(unsafe { ffi::bus::sd_bus_slot_set_floating(slot, 1) });
+    let result = ffi_result(
+        unsafe { ffi::bus::sd_bus_slot_set_floating(slot, 1) },
+        "sd_bus_slot_set_floating",
+    );
     // On success the bus holds its own reference. On failure the slot remains
     // regular and this unref destroys it, including its callback userdata.
     unsafe { ffi::bus::sd_bus_slot_unref(slot) };
@@ -1115,21 +1185,30 @@ impl Bus {
     #[inline]
     pub fn default() -> crate::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        ffi_result(unsafe { ffi::bus::sd_bus_default(b.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_default(b.as_mut_ptr()) },
+            "sd_bus_default",
+        )?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 
     #[inline]
     pub fn default_user() -> crate::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        ffi_result(unsafe { ffi::bus::sd_bus_default_user(b.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_default_user(b.as_mut_ptr()) },
+            "sd_bus_default_user",
+        )?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 
     #[inline]
     pub fn default_system() -> super::Result<Bus> {
         let mut b = MaybeUninit::uninit();
-        ffi_result(unsafe { ffi::bus::sd_bus_default_system(b.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_default_system(b.as_mut_ptr()) },
+            "sd_bus_default_system",
+        )?;
         Ok(unsafe { Bus::from_ptr(b.assume_init()) })
     }
 
@@ -1147,7 +1226,10 @@ impl Bus {
     pub fn open() -> crate::Result<Bus> {
         let mut bus = MaybeUninit::uninit();
         // SAFETY: success initializes bus and transfers one owned reference.
-        ffi_result(unsafe { ffi::bus::sd_bus_open(bus.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_open(bus.as_mut_ptr()) },
+            "sd_bus_open",
+        )?;
         Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
     }
 
@@ -1164,7 +1246,10 @@ impl Bus {
     pub fn open_user() -> crate::Result<Bus> {
         let mut bus = MaybeUninit::uninit();
         // SAFETY: success initializes bus and transfers one owned reference.
-        ffi_result(unsafe { ffi::bus::sd_bus_open_user(bus.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_open_user(bus.as_mut_ptr()) },
+            "sd_bus_open_user",
+        )?;
         Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
     }
 
@@ -1188,13 +1273,16 @@ impl Bus {
     /// let result = bus.flush();
     /// bus.close(); // Close even if flushing failed.
     /// result?;
-    /// # Ok::<(), std::io::Error>(())
+    /// # Ok::<(), systemd::Error>(())
     /// ```
     #[inline]
     pub fn open_system() -> crate::Result<Bus> {
         let mut bus = MaybeUninit::uninit();
         // SAFETY: success initializes bus and transfers one owned reference.
-        ffi_result(unsafe { ffi::bus::sd_bus_open_system(bus.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_open_system(bus.as_mut_ptr()) },
+            "sd_bus_open_system",
+        )?;
         Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
     }
 
@@ -1222,17 +1310,20 @@ impl Bus {
     /// let target = CString::new("alice@example.org:2222/my-container").unwrap();
     /// let bus = Bus::open_system_remote(target)?;
     /// println!("{:?}", bus.unique_name()?);
-    /// # Ok::<(), std::io::Error>(())
+    /// # Ok::<(), systemd::Error>(())
     /// ```
     #[inline]
     pub fn open_system_remote<'a>(host: impl CStrArgument<'a>) -> crate::Result<Bus> {
-        let host = host.try_into_cstr()?;
+        let host = host
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("host"))?;
         let mut bus = MaybeUninit::uninit();
         // SAFETY: host stays live throughout the call. Success initializes
         // bus and transfers one owned reference to the returned connection.
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_open_system_remote(bus.as_mut_ptr(), host.as_ptr())
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_open_system_remote(bus.as_mut_ptr(), host.as_ptr()) },
+            "sd_bus_open_system_remote",
+        )?;
         Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
     }
 
@@ -1263,17 +1354,20 @@ impl Bus {
     /// let bus = Bus::open_system_machine(&machine)?;
     /// drop(machine); // The bus does not retain a borrow of the input.
     /// println!("{:?}", bus.unique_name()?);
-    /// # Ok::<(), std::io::Error>(())
+    /// # Ok::<(), systemd::Error>(())
     /// ```
     #[inline]
     pub fn open_system_machine<'a>(machine: impl CStrArgument<'a>) -> crate::Result<Bus> {
-        let machine = machine.try_into_cstr()?;
+        let machine = machine
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("machine"))?;
         let mut bus = MaybeUninit::uninit();
         // SAFETY: machine stays alive throughout the call. On success,
         // libsystemd initializes bus and transfers one owned reference to us.
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_open_system_machine(bus.as_mut_ptr(), machine.as_ptr())
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_open_system_machine(bus.as_mut_ptr(), machine.as_ptr()) },
+            "sd_bus_open_system_machine",
+        )?;
         Ok(unsafe { Bus::from_ptr(bus.assume_init()) })
     }
 }
@@ -1328,7 +1422,10 @@ impl BusRef {
     /// [`sd_bus_flush`]: https://www.freedesktop.org/software/systemd/man/latest/sd_bus_close.html
     #[inline]
     pub fn flush(&mut self) -> crate::Result<()> {
-        ffi_result(unsafe { ffi::bus::sd_bus_flush(self.as_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_flush(self.as_ptr()) },
+            "sd_bus_flush",
+        )?;
         Ok(())
     }
 
@@ -1359,7 +1456,10 @@ impl BusRef {
     /// [`sd_bus_get_fd`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_fd.html
     #[inline]
     pub fn fd(&self) -> super::Result<c_int> {
-        ffi_result(unsafe { ffi::bus::sd_bus_get_fd(self.as_ptr()) })
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_fd(self.as_ptr()) },
+            "sd_bus_get_fd",
+        )
     }
 
     /// Returns the I/O events to wait for, suitable for passing to poll or a similar call.
@@ -1370,7 +1470,10 @@ impl BusRef {
     /// [`sd_bus_get_events`]: https://www.freedesktop.org/software/systemd/man/sd_bus_get_events.html
     #[inline]
     pub fn events(&self) -> super::Result<c_int> {
-        ffi_result(unsafe { ffi::bus::sd_bus_get_events(self.as_ptr()) })
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_events(self.as_ptr()) },
+            "sd_bus_get_events",
+        )
     }
 
     /// Returns the absolute deadline in microseconds on `CLOCK_MONOTONIC`.
@@ -1384,7 +1487,10 @@ impl BusRef {
     #[inline]
     pub fn timeout(&self) -> super::Result<u64> {
         let mut b = MaybeUninit::uninit();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_timeout(self.as_ptr(), b.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_timeout(self.as_ptr(), b.as_mut_ptr()) },
+            "sd_bus_get_timeout",
+        )?;
         let b = unsafe { b.assume_init() };
         Ok(b)
     }
@@ -1403,7 +1509,10 @@ impl BusRef {
     #[inline]
     pub fn process(&mut self) -> super::Result<Option<Option<Message>>> {
         let mut b = MaybeUninit::uninit();
-        let r = ffi_result(unsafe { ffi::bus::sd_bus_process(self.as_ptr(), b.as_mut_ptr()) })?;
+        let r = ffi_result(
+            unsafe { ffi::bus::sd_bus_process(self.as_ptr(), b.as_mut_ptr()) },
+            "sd_bus_process",
+        )?;
         if r > 0 {
             let b = unsafe { b.assume_init() };
             if b.is_null() {
@@ -1425,9 +1534,12 @@ impl BusRef {
         max_priority: i64,
     ) -> super::Result<Option<Option<Message>>> {
         let mut b = MaybeUninit::uninit();
-        let r = ffi_result(unsafe {
-            ffi::bus::sd_bus_process_priority(self.as_ptr(), max_priority, b.as_mut_ptr())
-        })?;
+        let r = ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_process_priority(self.as_ptr(), max_priority, b.as_mut_ptr())
+            },
+            "sd_bus_process_priority",
+        )?;
         if r > 0 {
             let b = unsafe { b.assume_init() };
             if b.is_null() {
@@ -1460,7 +1572,10 @@ impl BusRef {
             .map(usec_from_duration)
             .transpose()?
             .unwrap_or(u64::MAX);
-        Ok(ffi_result(unsafe { ffi::bus::sd_bus_wait(self.as_ptr(), timeout) })? > 0)
+        Ok(ffi_result(
+            unsafe { ffi::bus::sd_bus_wait(self.as_ptr(), timeout) },
+            "sd_bus_wait",
+        )? > 0)
     }
 
     /// Get the unique name (address) of this connection to this `Bus`.
@@ -1473,20 +1588,29 @@ impl BusRef {
     #[inline]
     pub fn unique_name(&self) -> super::Result<&BusName> {
         let mut e = MaybeUninit::uninit();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_unique_name(self.as_ptr(), e.as_mut_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_unique_name(self.as_ptr(), e.as_mut_ptr()) },
+            "sd_bus_get_unique_name",
+        )?;
         let e = unsafe { e.assume_init() };
         Ok(unsafe { BusName::from_ptr_unchecked(e) })
     }
 
     pub fn scope(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_scope(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_scope(self.as_ptr(), &mut ret) },
+            "sd_bus_get_scope",
+        )?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
     pub fn tid(&self) -> super::Result<pid_t> {
         let mut ret = 0;
-        ffi_result(unsafe { ffi::bus::sd_bus_get_tid(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_tid(self.as_ptr(), &mut ret) },
+            "sd_bus_get_tid",
+        )?;
         Ok(ret)
     }
 
@@ -1494,13 +1618,19 @@ impl BusRef {
 
     pub fn description(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_description(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_description(self.as_ptr(), &mut ret) },
+            "sd_bus_get_description",
+        )?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
     pub fn address(&self) -> super::Result<&CStr> {
         let mut ret = ptr::null();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_address(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_address(self.as_ptr(), &mut ret) },
+            "sd_bus_get_address",
+        )?;
         Ok(unsafe { CStr::from_ptr(ret) })
     }
 
@@ -1517,13 +1647,19 @@ impl BusRef {
 
     pub fn n_queued_write(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_n_queued_write(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_n_queued_write(self.as_ptr(), &mut ret) },
+            "sd_bus_get_n_queued_write",
+        )?;
         Ok(ret)
     }
 
     pub fn n_queued_read(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_n_queued_read(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_n_queued_read(self.as_ptr(), &mut ret) },
+            "sd_bus_get_n_queued_read",
+        )?;
         Ok(ret)
     }
 
@@ -1538,13 +1674,19 @@ impl BusRef {
     #[cfg_attr(feature = "unstable-doc-cfg", doc(cfg(feature = "systemd_v240")))]
     pub fn method_call_timeout(&self) -> super::Result<u64> {
         let mut ret = Default::default();
-        ffi_result(unsafe { ffi::bus::sd_bus_get_method_call_timeout(self.as_ptr(), &mut ret) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_get_method_call_timeout(self.as_ptr(), &mut ret) },
+            "sd_bus_get_method_call_timeout",
+        )?;
         Ok(ret)
     }
 
     pub fn bus_id(&self) -> super::Result<super::id128::Id128> {
         let mut id: super::id128::Id128 = Default::default();
-        crate::ffi_result(unsafe { ffi::bus::sd_bus_get_bus_id(self.as_ptr(), id.as_raw_mut()) })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_get_bus_id(self.as_ptr(), id.as_raw_mut()) },
+            "sd_bus_get_bus_id",
+        )?;
         Ok(id)
     }
 
@@ -1559,22 +1701,34 @@ impl BusRef {
         interface: impl CStrArgument<'s>,
         member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
-        let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
-        let interface = interface.try_into_cstr()?;
-        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
-        let member = member.try_into_cstr()?;
-        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
+        let path = path
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("path"))?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("path"))?;
+        let interface = interface
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("interface"))?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("interface"))?;
+        let member = member
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("member"))?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("member"))?;
         let mut m = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_new_signal(
-                self.as_ptr(),
-                m.as_mut_ptr(),
-                path.as_ptr() as *const _,
-                interface.as_ptr() as *const _,
-                member.as_ptr() as *const _,
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_new_signal(
+                    self.as_ptr(),
+                    m.as_mut_ptr(),
+                    path.as_ptr() as *const _,
+                    interface.as_ptr() as *const _,
+                    member.as_ptr() as *const _,
+                )
+            },
+            "sd_bus_message_new_signal",
+        )?;
         let m = unsafe { m.assume_init() };
         Ok(unsafe { Message::from_ptr(m) })
     }
@@ -1590,25 +1744,40 @@ impl BusRef {
         interface: impl CStrArgument<'s>,
         member: impl CStrArgument<'s>,
     ) -> super::Result<Message> {
-        let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
-        let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
-        let interface = interface.try_into_cstr()?;
-        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
-        let member = member.try_into_cstr()?;
-        let member = MemberName::from_bytes(member.to_bytes_with_nul())?;
+        let dest = dest
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("dest"))?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("dest"))?;
+        let path = path
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("path"))?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("path"))?;
+        let interface = interface
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("interface"))?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("interface"))?;
+        let member = member
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("member"))?;
+        let member = MemberName::from_bytes(member.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("member"))?;
         let mut m = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_new_method_call(
-                self.as_ptr(),
-                m.as_mut_ptr(),
-                dest as *const _ as *const _,
-                path as *const _ as *const _,
-                interface as *const _ as *const _,
-                member as *const _ as *const _,
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_new_method_call(
+                    self.as_ptr(),
+                    m.as_mut_ptr(),
+                    dest as *const _ as *const _,
+                    path as *const _ as *const _,
+                    interface as *const _ as *const _,
+                    member as *const _ as *const _,
+                )
+            },
+            "sd_bus_message_new_method_call",
+        )?;
         let m = unsafe { m.assume_init() };
         Ok(unsafe { Message::from_ptr(m) })
     }
@@ -1628,11 +1797,17 @@ impl BusRef {
         name: impl CStrArgument<'s>,
         flags: u64,
     ) -> super::Result<()> {
-        let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
-        })?;
+        let name = name
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("name"))?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("name"))?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_request_name(self.as_ptr(), name as *const _ as *const _, flags)
+            },
+            "sd_bus_request_name",
+        )?;
         Ok(())
     }
 
@@ -1646,8 +1821,11 @@ impl BusRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
+        let name = name
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("name"))?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("name"))?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1656,14 +1834,17 @@ impl BusRef {
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
         match unsafe {
-            crate::ffi_result(ffi::bus::sd_bus_request_name_async(
-                self.as_ptr(),
-                &mut slot,
-                name as *const _ as *const _,
-                flags,
-                Some(f),
-                b as *mut c_void,
-            ))
+            crate::ffi_result_with_context(
+                ffi::bus::sd_bus_request_name_async(
+                    self.as_ptr(),
+                    &mut slot,
+                    name as *const _ as *const _,
+                    flags,
+                    Some(f),
+                    b as *mut c_void,
+                ),
+                "sd_bus_request_name_async",
+            )
         } {
             Err(e) => {
                 // try not to leak
@@ -1677,11 +1858,15 @@ impl BusRef {
     /// This blocks. To get async behavior, use `request_name` directly.
     #[inline]
     pub fn release_name<'s>(&self, name: impl CStrArgument<'s>) -> super::Result<()> {
-        let name = name.try_into_cstr()?;
-        let name = BusName::from_bytes(name.to_bytes_with_nul())?;
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _)
-        })?;
+        let name = name
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("name"))?;
+        let name = BusName::from_bytes(name.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("name"))?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_release_name(self.as_ptr(), name as *const _ as *const _) },
+            "sd_bus_release_name",
+        )?;
         Ok(())
     }
 
@@ -1693,8 +1878,11 @@ impl BusRef {
     where
         F: Fn(&mut MessageRef) -> Result<()> + Send + Sync + 'static,
     {
-        let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
+        let path = path
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("path"))?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("path"))?;
         let f: unsafe extern "C" fn(
             *mut ffi::bus::sd_bus_message,
             *mut c_void,
@@ -1702,15 +1890,18 @@ impl BusRef {
         ) -> c_int = raw_message_handler::<F>;
         let mut slot = ptr::null_mut();
         let b = Box::into_raw(Box::new(callback));
-        match crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_add_object(
-                self.as_ptr(),
-                &mut slot,
-                path as *const _ as *const _,
-                Some(f),
-                b as *mut c_void,
-            )
-        }) {
+        match crate::ffi_result_with_context(
+            unsafe {
+                ffi::bus::sd_bus_add_object(
+                    self.as_ptr(),
+                    &mut slot,
+                    path as *const _ as *const _,
+                    Some(f),
+                    b as *mut c_void,
+                )
+            },
+            "sd_bus_add_object",
+        ) {
             Err(e) => {
                 let _ = unsafe { Box::from_raw(b) };
                 Err(e)
@@ -1721,15 +1912,21 @@ impl BusRef {
 
     #[inline]
     pub fn add_object_manager<'s>(&self, path: impl CStrArgument<'s>) -> super::Result<()> {
-        let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_add_object_manager(
-                self.as_ptr(),
-                ptr::null_mut(),
-                path as *const _ as *const _,
-            )
-        })?;
+        let path = path
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("path"))?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("path"))?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_add_object_manager(
+                    self.as_ptr(),
+                    ptr::null_mut(),
+                    path as *const _ as *const _,
+                )
+            },
+            "sd_bus_add_object_manager",
+        )?;
         Ok(())
     }
 
@@ -1741,10 +1938,16 @@ impl BusRef {
         interface: impl CStrArgument<'s>,
         vtable: Vtable,
     ) -> crate::Result<()> {
-        let path = path.try_into_cstr()?;
-        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())?;
-        let interface = interface.try_into_cstr()?;
-        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())?;
+        let path = path
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("path"))?;
+        let path = ObjectPath::from_bytes(path.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("path"))?;
+        let interface = interface
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("interface"))?;
+        let interface = InterfaceName::from_bytes(interface.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("interface"))?;
         vtable.register(self, path, interface)
     }
 
@@ -1849,11 +2052,20 @@ impl MessageRef {
     /// [`sd_bus_message_set_destination`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_destination.html
     #[inline]
     pub fn set_destination<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
-        let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_set_destination(self.as_ptr(), dest as *const _ as *const _)
-        })?;
+        let dest = dest
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("dest"))?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("dest"))?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_set_destination(
+                    self.as_ptr(),
+                    dest as *const _ as *const _,
+                )
+            },
+            "sd_bus_message_set_destination",
+        )?;
         Ok(())
     }
 
@@ -1876,9 +2088,10 @@ impl MessageRef {
     /// [`sd_bus_message_set_auto_start`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_set_auto_start.html
     #[inline]
     pub fn set_auto_start(&mut self, yes: bool) -> super::Result<()> {
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_set_auto_start(self.as_ptr(), yes as c_int)
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_message_set_auto_start(self.as_ptr(), yes as c_int) },
+            "sd_bus_message_set_auto_start",
+        )?;
         Ok(())
     }
 
@@ -1887,8 +2100,11 @@ impl MessageRef {
     /// [`sd_bus_message_get_type`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_type.html
     pub fn type_(&self) -> MessageType {
         let mut t = 0;
-        crate::ffi_result(unsafe { ffi::bus::sd_bus_message_get_type(self.as_ptr(), &mut t) })
-            .unwrap();
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_message_get_type(self.as_ptr(), &mut t) },
+            "sd_bus_message_get_type",
+        )
+        .unwrap();
 
         MessageType::from_raw(t)
     }
@@ -1972,7 +2188,12 @@ impl MessageRef {
     ///
     /// [`sd_bus_message_is_empty`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_is_empty.html
     pub fn is_empty(&self) -> bool {
-        crate::ffi_result(unsafe { ffi::bus::sd_bus_message_is_empty(self.as_ptr()) }).unwrap() != 0
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_message_is_empty(self.as_ptr()) },
+            "sd_bus_message_is_empty",
+        )
+        .unwrap()
+            != 0
     }
 
     /// This corresponds to [`sd_bus_message_get_error`]
@@ -2003,9 +2224,10 @@ impl MessageRef {
     /// [`sd_bus_message_get_monotonic_usec`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_monotonic_usec.html
     pub fn monotonic_usec(&self) -> super::Result<u64> {
         let mut usec = 0;
-        crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_message_get_monotonic_usec(self.as_ptr(), &mut usec)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_message_get_monotonic_usec(self.as_ptr(), &mut usec) },
+            "sd_bus_message_get_monotonic_usec",
+        )?;
 
         Ok(usec)
     }
@@ -2015,9 +2237,10 @@ impl MessageRef {
     /// [`sd_bus_message_get_realtime_usec`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_realtime_usec.html
     pub fn realtime_usec(&self) -> super::Result<u64> {
         let mut usec = 0;
-        crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_message_get_realtime_usec(self.as_ptr(), &mut usec)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_message_get_realtime_usec(self.as_ptr(), &mut usec) },
+            "sd_bus_message_get_realtime_usec",
+        )?;
 
         Ok(usec)
     }
@@ -2027,9 +2250,10 @@ impl MessageRef {
     /// [`sd_bus_message_get_seqnum`]: https://www.freedesktop.org/software/systemd/man/sd_bus_message_get_seqnum.html
     pub fn seqnum(&self) -> super::Result<u64> {
         let mut seqnum = 0;
-        crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_message_get_seqnum(self.as_ptr(), &mut seqnum)
-        })?;
+        crate::ffi_result_with_context(
+            unsafe { ffi::bus::sd_bus_message_get_seqnum(self.as_ptr(), &mut seqnum) },
+            "sd_bus_message_get_seqnum",
+        )?;
 
         Ok(seqnum)
     }
@@ -2065,9 +2289,10 @@ impl MessageRef {
     pub fn send(&mut self) -> super::Result<u64> {
         // self.bus().send(self)
         let mut m = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), m.as_mut_ptr())
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), m.as_mut_ptr()) },
+            "sd_bus_send",
+        )?;
         let m = unsafe { m.assume_init() };
         Ok(m)
     }
@@ -2081,9 +2306,10 @@ impl MessageRef {
     #[inline]
     pub fn send_no_reply(&mut self) -> super::Result<()> {
         // self.bus().send_no_reply(self)
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), ptr::null_mut())
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_send(ptr::null_mut(), self.as_ptr(), ptr::null_mut()) },
+            "sd_bus_send",
+        )?;
         Ok(())
     }
 
@@ -2098,18 +2324,24 @@ impl MessageRef {
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
     pub fn send_to<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<u64> {
-        let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
+        let dest = dest
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("dest"))?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("dest"))?;
         // self.bus().send_to(self, dest)
         let mut c = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_send_to(
-                ptr::null_mut(),
-                self.as_ptr(),
-                dest as *const _ as *const _,
-                c.as_mut_ptr(),
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_send_to(
+                    ptr::null_mut(),
+                    self.as_ptr(),
+                    dest as *const _ as *const _,
+                    c.as_mut_ptr(),
+                )
+            },
+            "sd_bus_send_to",
+        )?;
         let c = unsafe { c.assume_init() };
         Ok(c)
     }
@@ -2123,17 +2355,23 @@ impl MessageRef {
     /// [`sd_bus_send_to`]: https://www.freedesktop.org/software/systemd/man/sd_bus_send_to.html
     #[inline]
     pub fn send_to_no_reply<'s>(&mut self, dest: impl CStrArgument<'s>) -> super::Result<()> {
-        let dest = dest.try_into_cstr()?;
-        let dest = BusName::from_bytes(dest.to_bytes_with_nul())?;
+        let dest = dest
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("dest"))?;
+        let dest = BusName::from_bytes(dest.to_bytes_with_nul())
+            .map_err(|error| error.with_argument("dest"))?;
         // self.bus().send_to_no_reply(self, dest)
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_send_to(
-                ptr::null_mut(),
-                self.as_ptr(),
-                dest as *const _ as *const _,
-                ptr::null_mut(),
-            )
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_send_to(
+                    ptr::null_mut(),
+                    self.as_ptr(),
+                    dest as *const _ as *const _,
+                    ptr::null_mut(),
+                )
+            },
+            "sd_bus_send_to",
+        )?;
         Ok(())
     }
 
@@ -2188,16 +2426,19 @@ impl MessageRef {
         ) -> c_int = raw_message_handler::<F>;
         let b = Box::into_raw(Box::new(callback));
         let mut slot = ptr::null_mut();
-        match crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_call_async(
-                ptr::null_mut(),
-                &mut slot,
-                self.as_ptr(),
-                Some(f),
-                b as *mut c_void,
-                usec,
-            )
-        }) {
+        match crate::ffi_result_with_context(
+            unsafe {
+                ffi::bus::sd_bus_call_async(
+                    ptr::null_mut(),
+                    &mut slot,
+                    self.as_ptr(),
+                    Some(f),
+                    b as *mut c_void,
+                    usec,
+                )
+            },
+            "sd_bus_call_async",
+        ) {
             Err(e) => {
                 // try not to leak
                 let _ = unsafe { Box::from_raw(b) };
@@ -2213,9 +2454,16 @@ impl MessageRef {
     #[inline]
     pub fn new_method_error(&mut self, error: &Error) -> crate::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_new_method_error(self.as_ptr(), m.as_mut_ptr(), error.as_ptr())
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_new_method_error(
+                    self.as_ptr(),
+                    m.as_mut_ptr(),
+                    error.as_ptr(),
+                )
+            },
+            "sd_bus_message_new_method_error",
+        )?;
         Ok(unsafe { Message::from_ptr(m.assume_init()) })
     }
 
@@ -2225,9 +2473,10 @@ impl MessageRef {
     #[inline]
     pub fn new_method_return(&mut self) -> crate::Result<Message> {
         let mut m = MaybeUninit::uninit();
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), m.as_mut_ptr())
-        })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_message_new_method_return(self.as_ptr(), m.as_mut_ptr()) },
+            "sd_bus_message_new_method_return",
+        )?;
         Ok(unsafe { Message::from_ptr(m.assume_init()) })
     }
 
@@ -2249,11 +2498,10 @@ impl MessageRef {
         dbus_type: u8,
         v: *const c_void,
     ) -> crate::Result<()> {
-        crate::ffi_result(ffi::bus::sd_bus_message_append_basic(
-            self.as_ptr(),
-            dbus_type as c_char,
-            v,
-        ))?;
+        crate::ffi_result_with_context(
+            ffi::bus::sd_bus_message_append_basic(self.as_ptr(), dbus_type as c_char, v),
+            "sd_bus_message_append_basic",
+        )?;
         Ok(())
     }
 
@@ -2271,20 +2519,28 @@ impl MessageRef {
         kind: ContainerType,
         contents: impl CStrArgument<'a>,
     ) -> crate::Result<()> {
-        let contents = contents.try_into_cstr()?;
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_open_container(
-                self.as_ptr(),
-                kind as c_char,
-                contents.as_ptr(),
-            )
-        })?;
+        let contents = contents
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("contents"))?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_open_container(
+                    self.as_ptr(),
+                    kind as c_char,
+                    contents.as_ptr(),
+                )
+            },
+            "sd_bus_message_open_container",
+        )?;
         Ok(())
     }
 
     /// Close the innermost write container, checking its signature is complete.
     pub fn close_container(&mut self) -> crate::Result<()> {
-        ffi_result(unsafe { ffi::bus::sd_bus_message_close_container(self.as_ptr()) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_message_close_container(self.as_ptr()) },
+            "sd_bus_message_close_container",
+        )?;
         Ok(())
     }
 
@@ -2298,9 +2554,12 @@ impl MessageRef {
     #[inline]
     pub fn iter(&mut self) -> crate::Result<MessageIter<'_>> {
         /* probe the `Message` to check if we can iterate on it */
-        ffi_result(unsafe {
-            ffi::bus::sd_bus_message_peek_type(self.as_ptr(), ptr::null_mut(), ptr::null_mut())
-        })?;
+        ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_peek_type(self.as_ptr(), ptr::null_mut(), ptr::null_mut())
+            },
+            "sd_bus_message_peek_type",
+        )?;
         Ok(MessageIter {
             raw: self.as_ptr(),
             life: PhantomData,
@@ -2318,15 +2577,27 @@ impl<'a> MessageIter<'a> {
         kind: ContainerType,
         contents: impl CStrArgument<'s>,
     ) -> crate::Result<bool> {
-        let contents = contents.try_into_cstr()?;
-        Ok(ffi_result(unsafe {
-            ffi::bus::sd_bus_message_enter_container(self.raw, kind as c_char, contents.as_ptr())
-        })? > 0)
+        let contents = contents
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("contents"))?;
+        Ok(ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_enter_container(
+                    self.raw,
+                    kind as c_char,
+                    contents.as_ptr(),
+                )
+            },
+            "sd_bus_message_enter_container",
+        )? > 0)
     }
 
     /// Exit the innermost read container. All its members must have been read.
     pub fn exit_container(&mut self) -> crate::Result<()> {
-        ffi_result(unsafe { ffi::bus::sd_bus_message_exit_container(self.raw) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_message_exit_container(self.raw) },
+            "sd_bus_message_exit_container",
+        )?;
         Ok(())
     }
 
@@ -2334,15 +2605,21 @@ impl<'a> MessageIter<'a> {
     pub fn at_end(&self) -> crate::Result<bool> {
         // peek_type provides this check on older libsystemd releases too;
         // sd_bus_message_at_end itself was only introduced in version 246.
-        Ok(ffi_result(unsafe {
-            ffi::bus::sd_bus_message_peek_type(self.raw, ptr::null_mut(), ptr::null_mut())
-        })? == 0)
+        Ok(ffi_result(
+            unsafe {
+                ffi::bus::sd_bus_message_peek_type(self.raw, ptr::null_mut(), ptr::null_mut())
+            },
+            "sd_bus_message_peek_type",
+        )? == 0)
     }
 
     /// Return to the start of the whole message, leaving all read containers.
     /// Cloned messages share this cursor. Borrowed body values remain valid.
     pub fn rewind(&mut self) -> crate::Result<()> {
-        ffi_result(unsafe { ffi::bus::sd_bus_message_rewind(self.raw, 1) })?;
+        ffi_result(
+            unsafe { ffi::bus::sd_bus_message_rewind(self.raw, 1) },
+            "sd_bus_message_rewind",
+        )?;
         Ok(())
     }
 
@@ -2382,11 +2659,14 @@ impl<'a> MessageIter<'a> {
         T: 'a,
     {
         let mut v = MaybeUninit::<R>::uninit();
-        match crate::ffi_result(ffi::bus::sd_bus_message_read_basic(
-            self.as_mut_ptr(),
-            dbus_type as c_char,
-            v.as_mut_ptr() as *mut _,
-        )) {
+        match crate::ffi_result_with_context(
+            ffi::bus::sd_bus_message_read_basic(
+                self.as_mut_ptr(),
+                dbus_type as c_char,
+                v.as_mut_ptr() as *mut _,
+            ),
+            "sd_bus_message_read_basic",
+        ) {
             Ok(1) => Ok(Some(cons(v.assume_init()))),
             Ok(_) => Ok(None),
             Err(e) => Err(e),
@@ -2403,16 +2683,24 @@ impl<'a> MessageIter<'a> {
     pub fn peek_type(&mut self) -> crate::Result<(c_char, &str)> {
         let mut t = MaybeUninit::<c_char>::uninit();
         let mut cont = MaybeUninit::<*const c_char>::uninit();
-        crate::ffi_result(unsafe {
-            ffi::bus::sd_bus_message_peek_type(self.as_mut_ptr(), t.as_mut_ptr(), cont.as_mut_ptr())
-        })?;
+        crate::ffi_result_with_context(
+            unsafe {
+                ffi::bus::sd_bus_message_peek_type(
+                    self.as_mut_ptr(),
+                    t.as_mut_ptr(),
+                    cont.as_mut_ptr(),
+                )
+            },
+            "sd_bus_message_peek_type",
+        )?;
 
         let cont = unsafe { cont.assume_init() };
         self.peeked_signature.clear();
         if !cont.is_null() {
-            let signature = unsafe { CStr::from_ptr(cont) }
-                .to_str()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let signature = unsafe { CStr::from_ptr(cont) }.to_str().map_err(|e| {
+                crate::Error::new(std::io::ErrorKind::InvalidData, e)
+                    .with_operation("sd_bus_message_peek_type")
+            })?;
             self.peeked_signature.push_str(signature);
         }
         let t = unsafe { t.assume_init() };

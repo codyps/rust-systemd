@@ -1,10 +1,11 @@
 use super::{BusRef, InterfaceName, MemberName, MessageIter, MessageRef, ObjectPath};
 use crate::CStrArgument;
+use crate::Error;
 use ffi::bus::vtable::sd_bus_vtable;
 use ffi::{bus as raw, c_char, c_int, c_void};
 use foreign_types::ForeignTypeRef;
 use std::ffi::{CStr, CString};
-use std::io::{Error, ErrorKind};
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
@@ -240,8 +241,12 @@ impl Vtable {
         flags: VtableFlags,
         callbacks: Callbacks,
     ) -> crate::Result<Self> {
-        let member = member.try_into_cstr()?.into_owned();
-        MemberName::from_bytes(member.as_bytes_with_nul())?;
+        let member = member
+            .try_into_cstr()
+            .map_err(|error| error.with_argument("member"))?
+            .into_owned();
+        MemberName::from_bytes(member.as_bytes_with_nul())
+            .map_err(|error| error.with_argument("member"))?;
         if self.entries.iter().any(|e| {
             e.member == member
                 && std::mem::discriminant(&e.callbacks) == std::mem::discriminant(&callbacks)
@@ -250,8 +255,14 @@ impl Vtable {
         }
         self.entries.push(Entry {
             member,
-            signature: signature.try_into_cstr()?.into_owned(),
-            result: result.try_into_cstr()?.into_owned(),
+            signature: signature
+                .try_into_cstr()
+                .map_err(|error| error.with_argument("signature"))?
+                .into_owned(),
+            result: result
+                .try_into_cstr()
+                .map_err(|error| error.with_argument("result"))?
+                .into_owned(),
             flags,
             callbacks,
         });
@@ -275,16 +286,19 @@ impl Vtable {
         let mut slot = ptr::null_mut();
         // SAFETY: registration owns the terminated table, all its strings, and
         // callbacks. It stays live during registration and native error cleanup.
-        let result = super::ffi_result(unsafe {
-            raw::sd_bus_add_object_vtable(
-                bus.as_ptr(),
-                &mut slot,
-                path.as_ptr(),
-                interface.as_ptr(),
-                (*registration).table.as_ptr(),
-                registration.cast(),
-            )
-        });
+        let result = crate::ffi_result_with_context(
+            unsafe {
+                raw::sd_bus_add_object_vtable(
+                    bus.as_ptr(),
+                    &mut slot,
+                    path.as_ptr(),
+                    interface.as_ptr(),
+                    (*registration).table.as_ptr(),
+                    registration.cast(),
+                )
+            },
+            "sd_bus_add_object_vtable",
+        );
         if let Err(error) = result {
             drop(unsafe { Box::from_raw(registration) });
             return Err(error);
@@ -296,6 +310,8 @@ impl Vtable {
 
 fn invalid(error: impl std::fmt::Display) -> Error {
     Error::new(ErrorKind::InvalidInput, error.to_string())
+        .with_operation("validate D-Bus vtable")
+        .with_argument("member")
 }
 
 struct Registration {

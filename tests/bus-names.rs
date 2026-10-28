@@ -50,7 +50,7 @@ fn name_validation_errors_propagate_as_standard_errors() {
             }
             for bytes in [&b""[..], &b"\0"[..], &b"\xff\0"[..], &$invalid[..]] {
                 let error = parse(bytes).unwrap_err();
-                let error = error.downcast_ref::<std::io::Error>().unwrap();
+                let error = error.downcast_ref::<systemd::Error>().unwrap();
                 assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
                 assert!(!error.to_string().is_empty());
             }
@@ -100,18 +100,20 @@ fn convertible_names_are_validated_at_each_public_bus_boundary() {
             .kind(),
         invalid
     );
-    for (path, interface, member) in [
-        ("invalid", "org.example.Valid", "Valid"),
-        ("/org/example/Valid", "invalid", "Valid"),
-        ("/org/example/Valid", "org.example.Valid", "Invalid.Member"),
+    for (path, interface, member, argument) in [
+        ("invalid", "org.example.Valid", "Valid", "path"),
+        ("/org/example/Valid", "invalid", "Valid", "interface"),
+        (
+            "/org/example/Valid",
+            "org.example.Valid",
+            "Invalid.Member",
+            "member",
+        ),
     ] {
-        assert_eq!(
-            bus.new_signal(path, interface, member)
-                .err()
-                .unwrap()
-                .kind(),
-            invalid
-        );
+        let error = bus.new_signal(path, interface, member).err().unwrap();
+        assert_eq!(error.kind(), invalid);
+        assert_eq!(error.argument(), Some(argument));
+        assert!(error.operation().is_some());
     }
     let mut message = bus
         .new_signal("/org/example/Valid", "org.example.Valid", "Valid")

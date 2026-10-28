@@ -62,7 +62,7 @@ An example of the journal writing api:
 use log::warn;
 use systemd::{journal, sd_journal_log};
 
-fn main() -> std::io::Result<()> {
+fn main() -> systemd::Result<()> {
    journal::print(1, &format!("Rust can talk to the journal: {:?}", 4))?;
    journal::send(&["CODE_FILE=HI", "CODE_LINE=1213", "CODE_FUNCTION=LIES"])?;
    journal::JournalLog::init().unwrap();
@@ -74,6 +74,11 @@ fn main() -> std::io::Result<()> {
 
 `send`, `print`, `log`, `log_record`, and `sd_journal_log!` return a `Result`
 containing any error reported by libsystemd. Use `?` or handle the error explicitly.
+
+Fallible systemd APIs use the crate-owned `systemd::Error`, which preserves native
+errno and I/O error kinds while adding operation and argument context. See the
+[`Error` documentation](https://docs.rs/systemd/latest/systemd/struct.Error.html)
+for migration from `std::io::Error` and conversion options.
 
 Releases
 --------

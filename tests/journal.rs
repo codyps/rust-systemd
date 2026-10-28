@@ -162,7 +162,9 @@ fn journal_errors_are_returned() {
         logger.log_record(&record),
         sd_journal_log!(6, "Test descriptor exhaustion"),
     ] {
-        assert_eq!(result.unwrap_err().raw_os_error(), Some(libc::EMFILE));
+        let error = result.unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EMFILE));
+        assert_eq!(error.operation(), Some("sd_journal_sendv"));
     }
 
     // The log facade has no Result return, so its adapter remains best-effort.
