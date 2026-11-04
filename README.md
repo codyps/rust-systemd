@@ -11,7 +11,7 @@ notifications, login sessions, IDs, and D-Bus. For direct C bindings, use
 
 ```toml
 [dependencies]
-systemd = "0.11.1"
+systemd = "0.11.2"
 ```
 
 This crate links to a native libsystemd installation. With the default features,
@@ -23,7 +23,7 @@ login, unit-name, and ID APIs:
 
 ```toml
 [dependencies]
-systemd = { version = "0.11.1", default-features = false }
+systemd = { version = "0.11.2", default-features = false }
 ```
 
 Without `bus`, the base native requirements are systemd 233 or equivalent.
