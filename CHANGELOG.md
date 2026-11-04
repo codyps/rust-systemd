@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.11.2](https://github.com/codyps/rust-systemd/compare/systemd-0.11.1...systemd-0.11.2) - 2026-11-04
+
+### Other
+
+- *(deps)* bump log from 0.4.34 to 0.4.35
+- use main as the default branch
+
 ## [0.11.1](https://github.com/codyps/rust-systemd/compare/systemd-0.11.0...systemd-0.11.1) - 2026-10-28
 
 ### Fixed
